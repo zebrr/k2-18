@@ -1,0 +1,31 @@
+Глава 1. Введение в программирование
+
+Это введение в основы программирования. Здесь мы изучаем базовые концепции.
+
+Параграф 2.1 Переменные
+
+Переменные используются для хранения данных. Пример кода:
+
+```
+x = 5
+y = 10
+```
+
+Раздел 3 Функции
+
+Функции помогают организовать код. Математическая формула:
+
+$$f(x) = x^2 + 2x + 1$$
+
+Chapter 4 Advanced Topics
+
+This section covers advanced programming concepts! Are you ready? Let's begin.
+
+
+Section 5.1 Data Structures
+
+Here we discuss various data structures. Visit [documentation](https://docs.python.org) for more info.
+
+Часть 6 Заключение
+
+Финальная часть нашего учебника.

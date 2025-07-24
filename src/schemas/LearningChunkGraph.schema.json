@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/LearningChunkGraph.schema.json",
+  "title": "LearningChunkGraph",
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "text", "local_start"],
+        "properties": {
+          "id":          { "type": "string", "pattern": "^[A-Za-z0-9:_-]+$" },
+          "type":        { "type": "string", "enum": ["Chunk", "Concept", "Assessment"] },
+          "text":        { "type": "string" },
+          "local_start": { "type": "integer", "minimum": 0, "description": "Offset (in tokens) from the start of the slice; needed to calculate token_start" },
+          "definition":  { "type": "string" },
+          "concepts":    { "type": "array", "items": { "type": "string" }, "description": "Reserved for future use. Do not populate in current version - use MENTIONS edges instead" },
+          "difficulty":  { "type": "integer", "minimum": 1, "maximum": 5 },
+          "tags":        { "type": "array", "items": { "type": "string" } },
+          "language":    { "type": "string", "minLength": 2, "maxLength": 2 },
+          "metadata":    { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "type"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PREREQUISITE", "ELABORATES", "EXAMPLE_OF",
+              "HINT_FORWARD", "REFER_BACK", "PARALLEL",
+              "TESTS", "REVISION_OF", "MENTIONS"
+            ]
+          },
+          "weight":     { "type": "number", "minimum": 0, "maximum": 1 },
+          "conditions": { "type": "string" }
+        }
+      }
+    }
+  },
+  "required": ["nodes", "edges"]
+}

@@ -1,0 +1,63 @@
+[slicer]
+max_tokens              = 5000
+overlap                 = 0
+soft_boundary           = true
+soft_boundary_max_shift = 500
+tokenizer               = "o200k_base"
+allowed_extensions      = ["json", "txt", "md", "html"]
+
+[itext2kg]
+model               = "o4-mini-2025-04-16"         # РИЗОНЕР o4-mini-2025-04-16 НЕ РИЗОНЕР gpt-4.1-nano-2025-04-14
+# model               = "gpt-4.1-mini-2025-04-14"
+model_test          = "o4-mini-2025-04-16"
+# model_test          = "gpt-4.1-mini-2025-04-14" 
+tpm_limit           = 150000                       # минутный бюджет токенов
+tpm_safety_margin   = 0.15                         # запас безопасности для TPM (15%)
+max_completion      = 90000                        # максимум генерируемых токенов на вызов
+log_level           = "info"                       # уровень подробности логов
+api_key             = "REMOVED"
+temperature         = 0.6                          # для обычных моделей (не reasoning)
+reasoning_effort    = "medium"                     # для o-моделей: low/medium/high
+reasoning_summary   = "auto"                       # auto/concise/detailed
+timeout             = 360                          # таймаут запроса в секундах
+max_retries         = 3                            # сколько раз повторять при ошибке
+poll_interval       = 7                            # интервал проверки статуса (секунды)
+
+[dedup]
+embedding_model     = "text-embedding-3-small"
+embedding_api_key   = "REMOVED"
+embedding_tpm_limit = 350000                    # лимит для embedding моделей
+sim_threshold       = 0.97
+len_ratio_min       = 0.8
+faiss_M             = 32
+faiss_efC           = 200
+faiss_metric        = "INNER_PRODUCT"
+k_neighbors         = 5
+
+[refiner]
+run                 = true
+embedding_model     = "text-embedding-3-small"
+embedding_api_key   = "REMOVED"
+embedding_tpm_limit = 350000                    # лимит для embedding моделей
+sim_threshold       = 0.80
+max_pairs_per_node  = 20
+faiss_M             = 32
+faiss_metric        = "INNER_PRODUCT"
+model               = "o4-mini-2025-04-16"         # РИЗОНЕР o4-mini-2025-04-16 НЕ РИЗОНЕР gpt-4.1-nano-2025-04-14
+# model               = "gpt-4.1-mini-2025-04-14"
+model_test          = "o4-mini-2025-04-16"
+# model_test          = "gpt-4.1-mini-2025-04-14"     
+api_key             = "REMOVED"
+tpm_limit           = 100000
+tpm_safety_margin   = 0.15                      # запас безопасности для TPM (15%)
+max_completion      = 90000
+temperature         = 0.6      # для обычных моделей (не reasoning)
+reasoning_effort    = "medium" # для o-моделей: low/medium/high
+reasoning_summary   = "auto"   # auto/concise/detailed
+log_level           = "info"   # info/debug
+timeout             = 360
+max_retries         = 3
+poll_interval       = 7                            # интервал проверки статуса (секунды)
+weight_low          = 0.3
+weight_mid          = 0.6
+weight_high         = 0.9

@@ -15,7 +15,7 @@ tpm_limit           = 150000                       # минутный бюдже
 tpm_safety_margin   = 0.15                         # запас безопасности для TPM (15%)
 max_completion      = 90000                        # максимум генерируемых токенов на вызов
 log_level           = "info"                       # уровень подробности логов
-api_key             = "REMOVED"
+api_key             = "sk-proj-..."
 temperature         = 0.6                          # для обычных моделей (не reasoning)
 reasoning_effort    = "medium"                     # для o-моделей: low/medium/high
 reasoning_summary   = "auto"                       # auto/concise/detailed
@@ -25,7 +25,7 @@ poll_interval       = 7                            # интервал прове
 
 [dedup]
 embedding_model     = "text-embedding-3-small"
-embedding_api_key   = "REMOVED"
+embedding_api_key   = "sk-proj-..."
 embedding_tpm_limit = 350000                    # лимит для embedding моделей
 sim_threshold       = 0.97
 len_ratio_min       = 0.8
@@ -37,7 +37,7 @@ k_neighbors         = 5
 [refiner]
 run                 = true
 embedding_model     = "text-embedding-3-small"
-embedding_api_key   = "REMOVED"
+embedding_api_key   = "sk-proj-..."
 embedding_tpm_limit = 350000                    # лимит для embedding моделей
 sim_threshold       = 0.80
 max_pairs_per_node  = 20
@@ -47,7 +47,7 @@ model               = "o4-mini-2025-04-16"         # РИЗОНЕР o4-mini-2025
 # model               = "gpt-4.1-mini-2025-04-14"
 model_test          = "o4-mini-2025-04-16"
 # model_test          = "gpt-4.1-mini-2025-04-14"     
-api_key             = "REMOVED"
+api_key             = "sk-proj-..."
 tpm_limit           = 100000
 tpm_safety_margin   = 0.15                      # запас безопасности для TPM (15%)
 max_completion      = 90000

@@ -1,1 +1,9 @@
 .DS_Store
+OpenAI_Embeddings_API_K2-18_Reference.md
+OpenAI_Responses_API_K2-18_Reference.md
+/*.md
+!README.md
+logs/
+.env
+.env.local
+.env.*.local

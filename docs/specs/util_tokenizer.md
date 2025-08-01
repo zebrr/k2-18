@@ -2,95 +2,95 @@
 
 ## Status: READY
 
-Модуль для работы с токенизацией текста и поиском семантических границ. Использует кодек o200k_base (совместим со всеми современными моделями OpenAI). Поддерживает иерархический поиск границ и безопасное разрезание на уровне токенов.
+Module for text tokenization and semantic boundary detection. Uses o200k_base codec (compatible with all modern OpenAI models). Supports hierarchical boundary search and safe cutting at token level.
 
 ## Public API
 
 ### count_tokens(text: str) -> int
-Подсчитывает количество токенов в тексте используя кодек o200k_base.
-- **Input**: text (str) - входной текст для токенизации
-- **Returns**: int - количество токенов в тексте  
-- **Raises**: ValueError - если text не является строкой
+Counts the number of tokens in text using o200k_base codec.
+- **Input**: text (str) - input text for tokenization
+- **Returns**: int - number of tokens in text
+- **Raises**: ValueError - if text is not a string
 
 ### find_soft_boundary(text: str, target_pos: int, max_shift: int) -> Optional[int]
-Ищет ближайшую семантическую границу в тексте для мягкого разрыва используя иерархию приоритетов.
+Finds the nearest semantic boundary in text for soft breaks using priority hierarchy.
 - **Input**: 
-  - text (str) - исходный текст
-  - target_pos (int) - целевая позиция в символах
-  - max_shift (int) - максимальное смещение от target_pos
-- **Returns**: Optional[int] - позиция границы в символах или None если не найдена
-- **Algorithm**: Использует систему весов для выбора лучшей границы: score = weight × distance
+  - text (str) - source text
+  - target_pos (int) - target position in characters
+  - max_shift (int) - maximum offset from target_pos
+- **Returns**: Optional[int] - boundary position in characters or None if not found
+- **Algorithm**: Uses weight system for selecting best boundary: score = weight × distance
 
-#### Иерархия границ (от высшего приоритета к низшему):
-1. **section (вес 1)** - границы разделов:
-   - HTML заголовки (`</h1-6>`)
-   - Markdown заголовки (`#-####`)
-   - Текстовые заголовки (Глава, Параграф, Часть, Chapter, Section, Раздел, Урок, Тема)
-2. **paragraph (вес 2)** - границы абзацев:
-   - Двойные переносы строк (`\n\n`)
-   - Конец блока кода (` ``` `)
-   - Конец блока формулы (`$$`)
-   - HTML/Markdown ссылки (`</a>`, `](url)`)
-3. **sentence (вес 3)** - границы предложений:
-   - Конец предложения (`. ! ?` + пробел) с проверкой на сокращения
-   - Точка с запятой (`;` + пробел)
-4. **phrase (вес 4)** - границы фраз:
-   - Запятая (`,` + пробел)
-   - Двоеточие (`:` + пробел)  
-   - Тире (`—–-` + пробелы)
-5. **word (вес 5)** - границы слов (fallback):
-   - Любой пробельный символ
+#### Boundary hierarchy (from highest to lowest priority):
+1. **section (weight 1)** - section boundaries:
+   - HTML headers (`</h1-6>`)
+   - Markdown headers (`#-####`)
+   - Text headers (Глава, Параграф, Часть, Chapter, Section, Раздел, Урок, Тема)
+2. **paragraph (weight 2)** - paragraph boundaries:
+   - Double line breaks (`\n\n`)
+   - End of code block (` ``` `)
+   - End of formula block (`$$`)
+   - HTML/Markdown links (`</a>`, `](url)`)
+3. **sentence (weight 3)** - sentence boundaries:
+   - End of sentence (`. ! ?` + space) with abbreviation checking
+   - Semicolon (`;` + space)
+4. **phrase (weight 4)** - phrase boundaries:
+   - Comma (`,` + space)
+   - Colon (`:` + space)
+   - Dash (`—–-` + spaces)
+5. **word (weight 5)** - word boundaries (fallback):
+   - Any whitespace character
 
 ### find_safe_token_boundary(text: str, tokens: List[int], encoding, target_token_pos: int, max_shift_tokens: int) -> int
-Находит безопасную границу для разреза на уровне токенов.
+Finds a safe boundary for cutting at token level.
 - **Input**:
-  - text (str) - исходный текст
-  - tokens (List[int]) - список токенов
-  - encoding - объект tiktoken encoding
-  - target_token_pos (int) - целевая позиция в токенах
-  - max_shift_tokens (int) - максимальное смещение в токенах
-- **Returns**: int - безопасная позиция в токенах для разреза
-- **Algorithm**: Проверяет каждую позицию на безопасность и выбирает лучшую по качеству
+  - text (str) - source text
+  - tokens (List[int]) - list of tokens
+  - encoding - tiktoken encoding object
+  - target_token_pos (int) - target position in tokens
+  - max_shift_tokens (int) - maximum offset in tokens
+- **Returns**: int - safe position in tokens for cutting
+- **Algorithm**: Checks each position for safety and selects best by quality
 
 ## Internal Methods
 
 ### is_safe_cut_position(text: str, tokens: List[int], encoding, pos: int) -> bool
-Проверяет безопасность разреза в данной позиции токенов.
-- Не режет внутри слова
-- Не режет внутри URL
-- Не режет внутри markdown ссылки
-- Не режет внутри HTML тега
-- Не режет внутри формулы
-- Не режет внутри блока кода
+Checks if it's safe to cut at given token position.
+- Doesn't cut inside a word
+- Doesn't cut inside URL
+- Doesn't cut inside markdown link
+- Doesn't cut inside HTML tag
+- Doesn't cut inside formula
+- Doesn't cut inside code block
 
 ### evaluate_boundary_quality(text: str, tokens: List[int], encoding, pos: int) -> float
-Оценивает качество границы (чем меньше значение, тем лучше).
-- Заголовки: score = 1.0
-- Двойной перенос: score = 5.0
-- Конец предложения: score = 10.0
-- Конец абзаца: score = 15.0
-- После запятой/точки с запятой: score = 20.0
-- Между словами: score = 50.0
-- Прочие: score = 100.0
+Evaluates boundary quality (lower value is better).
+- Headers: score = 1.0
+- Double line break: score = 5.0
+- End of sentence: score = 10.0
+- End of paragraph: score = 15.0
+- After comma/semicolon: score = 20.0
+- Between words: score = 50.0
+- Other: score = 100.0
 
 ### is_inside_url(text_before: str, text_after: str) -> bool
-Проверяет, находится ли позиция внутри URL.
+Checks if position is inside URL.
 
 ### is_inside_markdown_link(text_before: str, text_after: str) -> bool
-Проверяет, находится ли позиция внутри markdown ссылки `[текст](url)`.
+Checks if position is inside markdown link `[text](url)`.
 
 ### is_inside_html_tag(text_before: str, text_after: str) -> bool
-Проверяет, находится ли позиция внутри HTML тега.
+Checks if position is inside HTML tag.
 
 ### is_inside_formula(text_before: str, text_after: str) -> bool
-Проверяет, находится ли позиция внутри математической формулы `$...$` или `$$...$$`.
+Checks if position is inside mathematical formula `$...$` or `$$...$$`.
 
 ### is_inside_code_block(text_before: str, text_after: str) -> bool
-Проверяет, находится ли позиция внутри блока кода ` ```...``` `.
+Checks if position is inside code block ` ```...``` `.
 
 ## Test Coverage
 
-- **test_count_tokens**: 7 тестов
+- **test_count_tokens**: 7 tests
   - test_basic_text
   - test_empty_string
   - test_russian_text
@@ -99,7 +99,7 @@
   - test_code_content
   - test_invalid_input_type
 
-- **test_find_soft_boundary**: 14 тестов
+- **test_find_soft_boundary**: 14 tests
   - test_invalid_inputs
   - test_no_boundaries_found
   - test_markdown_headers
@@ -115,7 +115,7 @@
   - test_closest_boundary_selection
   - test_boundary_within_range
 
-- **test_fixtures**: 4 теста
+- **test_fixtures**: 4 tests
   - test_markdown_fixture
   - test_html_fixture
   - test_mixed_fixture
@@ -127,27 +127,27 @@
 - **Internal**: None
 
 ## Performance Notes
-- Использует регулярные выражения для поиска границ - может быть медленным на очень больших текстах
-- find_soft_boundary выполняет множественные regex-поиски по иерархии приоритетов
-- Алгоритм выбора оптимизирован для образовательного контента
-- tiktoken достаточно быстрый для обработки больших текстов
+- Uses regular expressions for boundary search - can be slow on very large texts
+- find_soft_boundary performs multiple regex searches by priority hierarchy
+- Selection algorithm optimized for educational content
+- tiktoken is fast enough for processing large texts
 
 ## Usage Examples
 ```python
 from src.utils.tokenizer import count_tokens, find_soft_boundary, find_safe_token_boundary
 import tiktoken
 
-# Подсчет токенов
-tokens = count_tokens("Hello world!")  # возвращает количество токенов
+# Count tokens
+tokens = count_tokens("Hello world!")  # returns token count
 
-# Поиск мягкой границы с иерархией приоритетов
+# Find soft boundary with priority hierarchy
 boundary = find_soft_boundary(text, target_pos=1000, max_shift=100)
 if boundary:
-    # Найдена оптимальная граница на позиции boundary
+    # Found optimal boundary at position boundary
     left_part = text[:boundary]
     right_part = text[boundary:]
 
-# Безопасный разрез на уровне токенов
+# Safe cutting at token level
 encoding = tiktoken.get_encoding("o200k_base")
 tokens = encoding.encode(text)
 safe_pos = find_safe_token_boundary(
@@ -155,7 +155,7 @@ safe_pos = find_safe_token_boundary(
     target_token_pos=40000, 
     max_shift_tokens=500
 )
-# Разрезаем по безопасной позиции
+# Cut at safe position
 left_tokens = tokens[:safe_pos]
 right_tokens = tokens[safe_pos:]
 ```

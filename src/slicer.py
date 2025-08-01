@@ -1,74 +1,76 @@
 #!/usr/bin/env python3
 """
-CLI-утилита для разделения образовательных текстов на слайсы.
+CLI utility for splitting educational texts into slices.
 
-Читает файлы из /data/raw/, применяет препроцессинг и нарезает их на фрагменты 
-фиксированного размера с учетом семантических границ.
+Reads files from /data/raw/, applies preprocessing and cuts them into fragments
+of fixed size with consideration for semantic boundaries.
 
-Использование:
+Usage:
     python slicer.py
 
-Выходные файлы сохраняются в /data/staging/ в формате *.slice.json
+Output files are saved in /data/staging/ in *.slice.json format
 """
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 import argparse
 import json
 import logging
+import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
-import re
-from src.utils.tokenizer import count_tokens, find_soft_boundary, find_safe_token_boundary
+from typing import Any, Dict, List, Tuple
 
-# Добавляем корень проекта в PYTHONPATH для корректных импортов
+from src.utils.tokenizer import count_tokens
+
+# Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Внешние зависимости
-from unidecode import unidecode
 from bs4 import BeautifulSoup
+# External dependencies
+from unidecode import unidecode
 
-# Импорт утилит проекта
+# Import project utilities
 from src.utils.config import load_config
-from src.utils.tokenizer import count_tokens, find_soft_boundary
-from src.utils.validation import validate_json
-from src.utils.exit_codes import (
-    EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_INPUT_ERROR,
-    EXIT_RUNTIME_ERROR, EXIT_API_LIMIT_ERROR, EXIT_IO_ERROR,
-    log_exit
-)
-
-# Установка UTF-8 кодировки для Windows консоли
+# Setup UTF-8 encoding for Windows console
 from src.utils.console_encoding import setup_console_encoding
+from src.utils.exit_codes import (EXIT_CONFIG_ERROR, EXIT_INPUT_ERROR,
+                                  EXIT_IO_ERROR, EXIT_RUNTIME_ERROR,
+                                  EXIT_SUCCESS, log_exit)
+
 setup_console_encoding()
+
 
 def setup_logging(log_level: str = "info") -> None:
     """
-    Настройка логирования для slicer.
-    
+    Setup logging for slicer.
+
     Args:
-        log_level: Уровень логирования (debug, info, warning, error)
+        log_level: Logging level (debug, info, warning, error)
     """
     level_map = {
         "debug": logging.DEBUG,
-        "info": logging.INFO, 
+        "info": logging.INFO,
         "warning": logging.WARNING,
-        "error": logging.ERROR
+        "error": logging.ERROR,
     }
-    
+
     level = level_map.get(log_level.lower(), logging.INFO)
-    
-    # Настройка формата логов
+
+    # Setup log format
     formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)-8s | %(message)s',
-        datefmt='%H:%M:%S'
+        "[%(asctime)s] %(levelname)-8s | %(message)s", datefmt="%H:%M:%S"
     )
-    
-    # Консольный handler
+
+    # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
-    
-    # Настройка root logger
+
+    # Setup root logger
     logger = logging.getLogger()
     logger.setLevel(level)
     logger.addHandler(console_handler)
@@ -76,69 +78,82 @@ def setup_logging(log_level: str = "info") -> None:
 
 def validate_config_parameters(config: Dict[str, Any]) -> None:
     """
-    Валидация параметров конфигурации slicer.
-    
+    Validate slicer configuration parameters.
+
     Args:
-        config: Словарь конфигурации
-        
+        config: Configuration dictionary
+
     Raises:
-        ValueError: При некорректных параметрах
+        ValueError: For invalid parameters
     """
-    slicer_config = config.get('slicer', {})
-    
-    # Проверка обязательных параметров
-    required_params = ['max_tokens', 'overlap', 'soft_boundary_max_shift', 'allowed_extensions']
+    slicer_config = config.get("slicer", {})
+
+    # Check required parameters
+    required_params = [
+        "max_tokens",
+        "overlap",
+        "soft_boundary_max_shift",
+        "allowed_extensions",
+    ]
     for param in required_params:
         if param not in slicer_config:
-            raise ValueError(f"Отсутствует обязательный параметр slicer.{param}")
-    
-    # Проверка типов и диапазонов
-    max_tokens = slicer_config['max_tokens']
+            raise ValueError(f"Missing required parameter slicer.{param}")
+
+    # Check types and ranges
+    max_tokens = slicer_config["max_tokens"]
     if not isinstance(max_tokens, int) or max_tokens <= 0:
-        raise ValueError(f"slicer.max_tokens должен быть положительным целым числом, получен: {max_tokens}")
-    
-    overlap = slicer_config['overlap']
+        raise ValueError(
+            f"slicer.max_tokens must be a positive integer, got: {max_tokens}"
+        )
+
+    overlap = slicer_config["overlap"]
     if not isinstance(overlap, int) or overlap < 0:
-        raise ValueError(f"slicer.overlap должен быть неотрицательным целым числом, получен: {overlap}")
-    
+        raise ValueError(
+            f"slicer.overlap must be a non-negative integer, got: {overlap}"
+        )
+
     if overlap >= max_tokens:
-        raise ValueError(f"slicer.overlap ({overlap}) должен быть меньше max_tokens ({max_tokens})")
-    
-    soft_boundary_max_shift = slicer_config['soft_boundary_max_shift']
+        raise ValueError(
+            f"slicer.overlap ({overlap}) must be less than max_tokens ({max_tokens})"
+        )
+
+    soft_boundary_max_shift = slicer_config["soft_boundary_max_shift"]
     if not isinstance(soft_boundary_max_shift, int) or soft_boundary_max_shift < 0:
-        raise ValueError(f"slicer.soft_boundary_max_shift должен быть неотрицательным целым числом")
-    
-    # Специальная валидация для overlap > 0
+        raise ValueError(
+            "slicer.soft_boundary_max_shift must be a non-negative integer"
+        )
+
+    # Special validation for overlap > 0
     if overlap > 0:
         max_allowed_shift = int(overlap * 0.8)
         if soft_boundary_max_shift > max_allowed_shift:
             raise ValueError(
-                f"При overlap > 0, soft_boundary_max_shift ({soft_boundary_max_shift}) "
-                f"не должен превышать overlap*0.8 ({max_allowed_shift})"
+                f"When overlap > 0, soft_boundary_max_shift ({soft_boundary_max_shift}) "
+                f"must not exceed overlap*0.8 ({max_allowed_shift})"
             )
-    
-    allowed_extensions = slicer_config['allowed_extensions']
+
+    allowed_extensions = slicer_config["allowed_extensions"]
     if not isinstance(allowed_extensions, list) or not allowed_extensions:
-        raise ValueError("slicer.allowed_extensions должен быть непустым списком")
+        raise ValueError("slicer.allowed_extensions must be a non-empty list")
 
 
 def create_slug(filename: str) -> str:
     """
-    Создает slug из имени файла согласно ТЗ.
-    
-    Правила:
-    - Удалить расширение
-    - Транслитерировать кириллицу в латиницу  
-    - Привести к нижнему регистру
-    - Заменить пробелы на _
-    - Остальные символы без изменений
-    
+    Creates slug from filename according to specification.
+
+    Rules:
+    - Remove extension
+    - Transliterate Cyrillic to Latin
+    - Convert to lowercase
+    - Replace spaces with _
+    - Leave other characters unchanged
+
     Args:
-        filename: Имя файла с расширением
-        
+        filename: Filename with extension
+
     Returns:
-        Обработанный slug
-        
+        Processed slug
+
     Examples:
         >>> create_slug("Алгоритмы и Структуры.txt")
         'algoritmy_i_struktury'
@@ -147,294 +162,309 @@ def create_slug(filename: str) -> str:
         >>> create_slug("python-basics.html")
         'python-basics'
     """
-    # Удаляем расширение
+    # Remove extension
     name_without_ext = Path(filename).stem
-    
-    # Транслитерируем кириллицу в латиницу
+
+    # Transliterate Cyrillic to Latin
     transliterated = unidecode(name_without_ext)
-    
-    # Приводим к нижнему регистру
+
+    # Convert to lowercase
     lowercased = transliterated.lower()
-    
-    # Заменяем пробелы на подчеркивания
-    slug = lowercased.replace(' ', '_')
-    
+
+    # Replace spaces with underscores
+    slug = lowercased.replace(" ", "_")
+
     return slug
 
 
 def preprocess_text(text: str) -> str:
     """
-    Применяет препроцессинг к тексту согласно ТЗ.
-    
-    Включает:
-    - Удаление содержимого <script> и <style> тегов
-    - Unicode нормализацию NFC
-    - Остальное содержимое остается без изменений
-    
+    Applies preprocessing to text according to specification.
+
+    Includes:
+    - Removing content of <script> and <style> tags
+    - Unicode NFC normalization
+    - Other content remains unchanged
+
     Args:
-        text: Исходный текст
-        
+        text: Source text
+
     Returns:
-        Обработанный текст
+        Processed text
     """
     if not isinstance(text, str):
-        raise ValueError("Входной параметр должен быть строкой")
-    
-    # Сначала применяем Unicode нормализацию
+        raise ValueError("Input parameter must be a string")
+
+    # First apply Unicode normalization
     normalized_text = unicodedata.normalize("NFC", text)
-    
-    # Проверяем наличие HTML тегов script или style
-    if '<script' in normalized_text.lower() or '<style' in normalized_text.lower():
-        # Используем BeautifulSoup для безопасного удаления тегов
-        soup = BeautifulSoup(normalized_text, 'html.parser')
-        
-        # Удаляем все script теги и их содержимое
-        for script in soup.find_all('script'):
+
+    # Check for presence of HTML script or style tags
+    if "<script" in normalized_text.lower() or "<style" in normalized_text.lower():
+        # Use BeautifulSoup for safe tag removal
+        soup = BeautifulSoup(normalized_text, "html.parser")
+
+        # Remove all script tags and their content
+        for script in soup.find_all("script"):
             script.decompose()
-        
-        # Удаляем все style теги и их содержимое
-        for style in soup.find_all('style'):
+
+        # Remove all style tags and their content
+        for style in soup.find_all("style"):
             style.decompose()
-        
-        # Получаем обработанный текст
+
+        # Get processed text
         processed_text = str(soup)
     else:
-        # Если нет script/style тегов, оставляем как есть
+        # If no script/style tags, leave as is
         processed_text = normalized_text
-    
+
     return processed_text
 
 
 class InputError(Exception):
-    """Исключение для ошибок входных данных."""
+    """Exception for input data errors."""
+
     pass
 
 
 def load_and_validate_file(file_path: Path, allowed_extensions: List[str]) -> str:
     """
-    Загружает и валидирует файл.
-    
+    Loads and validates file.
+
     Args:
-        file_path: Путь к файлу
-        allowed_extensions: Список разрешенных расширений
-        
+        file_path: Path to file
+        allowed_extensions: List of allowed extensions
+
     Returns:
-        Содержимое файла
-        
+        File content
+
     Raises:
-        InputError: При пустом файле или неподдерживаемом расширении
+        InputError: For empty file or unsupported extension
     """
-    # Проверка расширения
-    if file_path.suffix.lstrip('.').lower() not in [ext.lower() for ext in allowed_extensions]:
-        raise InputError(f"Неподдерживаемое расширение файла: {file_path.suffix}")
-    
+    # Check extension
+    if file_path.suffix.lstrip(".").lower() not in [
+        ext.lower() for ext in allowed_extensions
+    ]:
+        raise InputError(f"Unsupported file extension: {file_path.suffix}")
+
     try:
-        # Загрузка с автоопределением кодировки
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Load with encoding auto-detection
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
     except UnicodeDecodeError:
-        # Fallback на другие кодировки
+        # Fallback to other encodings
         try:
-            with open(file_path, 'r', encoding='cp1251') as f:
+            with open(file_path, "r", encoding="cp1251") as f:
                 content = f.read()
         except UnicodeDecodeError:
-            with open(file_path, 'r', encoding='latin1') as f:
+            with open(file_path, "r", encoding="latin1") as f:
                 content = f.read()
-    
-    # Применение препроцессинга
+
+    # Apply preprocessing
     content = preprocess_text(content)
-    
-    # Проверка на пустоту после препроцессинга
+
+    # Check for emptiness after preprocessing
     if not content.strip():
-        raise InputError(f"Empty file detected: {file_path.name}. Please remove empty files from /data/raw/")
-    
+        raise InputError(
+            f"Empty file detected: {file_path.name}. Please remove empty files from /data/raw/"
+        )
+
     return content
 
 
-def slice_text_with_window(text: str, max_tokens: int, overlap: int, 
-                          soft_boundary: bool, soft_boundary_max_shift: int) -> List[Tuple[str, int, int]]:
+def slice_text_with_window(
+    text: str,
+    max_tokens: int,
+    overlap: int,
+    soft_boundary: bool,
+    soft_boundary_max_shift: int,
+) -> List[Tuple[str, int, int]]:
     """
-    Нарезает текст на слайсы с помощью скользящего окна.
-    
+    Slices text into chunks using sliding window.
+
     Args:
-        text: Исходный текст для нарезки
-        max_tokens: Максимальный размер слайса в токенах  
-        overlap: Количество токенов перекрытия
-        soft_boundary: Использовать ли мягкие границы
-        soft_boundary_max_shift: Максимальное смещение для мягких границ
-        
+        text: Source text for slicing
+        max_tokens: Maximum slice size in tokens
+        overlap: Number of overlapping tokens
+        soft_boundary: Whether to use soft boundaries
+        soft_boundary_max_shift: Maximum shift for soft boundaries
+
     Returns:
-        Список кортежей (slice_text, slice_token_start, slice_token_end)
+        List of tuples (slice_text, slice_token_start, slice_token_end)
     """
     if not text or not text.strip():
         return []
-    
-    # Подсчитаем общее количество токенов в тексте
+
+    # Count total tokens in text
     total_tokens = count_tokens(text)
-    
-    # Если весь текст помещается в один слайс
+
+    # If entire text fits in one slice
     if total_tokens <= max_tokens:
         return [(text, 0, total_tokens)]
-    
-    # Токенизируем весь текст для работы с позициями
+
+    # Tokenize entire text for position handling
     import tiktoken
+
     encoding = tiktoken.get_encoding("o200k_base")
     tokens = encoding.encode(text)
-    
+
     slices = []
     current_token_start = 0
-    
+
     while current_token_start < len(tokens):
-        # Определяем конец текущего окна
+        # Determine end of current window
         window_end = min(current_token_start + max_tokens, len(tokens))
-        
-        # Если это последний фрагмент, берем до конца
+
+        # If this is the last fragment, take to the end
         if window_end == len(tokens):
             slice_tokens = tokens[current_token_start:]
             slice_text = encoding.decode(slice_tokens)
             slice_token_start = current_token_start
             slice_token_end = len(tokens)
-            
+
             slices.append((slice_text, slice_token_start, slice_token_end))
             break
-        
-        # Ищем soft boundary если включено
+
+        # Look for soft boundary if enabled
         actual_end = window_end
         if soft_boundary and soft_boundary_max_shift > 0:
-            # Конвертируем soft_boundary_max_shift из символов в примерное количество токенов
-            # Примерное соотношение: 1 токен ≈ 4 символа (для o200k_base)
+            # Convert soft_boundary_max_shift from characters to approximate token count
+            # Approximate ratio: 1 token ≈ 4 characters (for o200k_base)
             max_shift_tokens = max(1, soft_boundary_max_shift // 4)
-            
-            # Используем новую функцию для поиска безопасной границы
+
+            # Use new function to find safe boundary
             from src.utils.tokenizer import find_safe_token_boundary
-            
+
             safe_end = find_safe_token_boundary(
                 text=text,
                 tokens=tokens,
                 encoding=encoding,
                 target_token_pos=window_end,
-                max_shift_tokens=max_shift_tokens
+                max_shift_tokens=max_shift_tokens,
             )
-            
-            # Логирование для отладки
+
+            # Logging for debugging
             if safe_end != window_end:
                 shift = safe_end - window_end
-                logging.info(f"Soft boundary найдена: сдвиг {shift:+d} токенов")
-                
-                # Показываем тип границы для отладки
+                logging.info(f"Soft boundary found: shift {shift:+d} tokens")
+
+                # Show boundary type for debugging
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    context = encoding.decode(tokens[max(0, safe_end-20):safe_end])
-                    if context.endswith('\n\n'):
-                        logging.debug(f"Тип границы: двойной перенос строки")
-                    elif re.search(r'[.!?]\s*$', context):
-                        logging.debug(f"Тип границы: конец предложения")
-                    elif re.search(r'</h[1-6]>\s*$', context):
-                        logging.debug(f"Тип границы: HTML заголовок")
-            
+                    context = encoding.decode(tokens[max(0, safe_end - 20) : safe_end])
+                    if context.endswith("\n\n"):
+                        logging.debug("Boundary type: double line break")
+                    elif re.search(r"[.!?]\s*$", context):
+                        logging.debug("Boundary type: end of sentence")
+                    elif re.search(r"</h[1-6]>\s*$", context):
+                        logging.debug("Boundary type: HTML heading")
+
             actual_end = safe_end
-        
-        # Создаем итоговый слайс
+
+        # Create final slice
         final_slice_tokens = tokens[current_token_start:actual_end]
         slice_text = encoding.decode(final_slice_tokens)
         slice_token_start = current_token_start
         slice_token_end = actual_end
-        
+
         slices.append((slice_text, slice_token_start, slice_token_end))
-        
-        # Вычисляем начало следующего окна
+
+        # Calculate start of next window
         if overlap == 0:
-            current_token_start = actual_end  # Без перекрытий
+            current_token_start = actual_end  # Without overlaps
         else:
-            current_token_start = actual_end - overlap  # С перекрытием
-            # Защита от бесконечного цикла
+            current_token_start = actual_end - overlap  # With overlap
+            # Protection from infinite loop
             if current_token_start <= slice_token_start:
                 current_token_start = slice_token_start + 1
-    
-    # Обработка граничных случаев для overlap > 0 согласно ТЗ
+
+    # Handle edge cases for overlap > 0 according to specification
     if overlap > 0 and len(slices) >= 2:
         last_slice = slices[-1]
         prev_slice = slices[-2]
-        
-        # Если последний фрагмент меньше overlap, объединяем с предыдущим
+
+        # If last fragment is smaller than overlap, merge with previous
         last_slice_size = last_slice[2] - last_slice[1]  # token_end - token_start
         if last_slice_size < overlap:
-            # Обновляем предыдущий слайс
+            # Update previous slice
             prev_start = prev_slice[1]
             combined_end = last_slice[2]
             combined_tokens = tokens[prev_start:combined_end]
             combined_text = encoding.decode(combined_tokens)
-            
-            # Заменяем предыдущий слайс обновленным
+
+            # Replace previous slice with updated one
             slices[-2] = (combined_text, prev_start, combined_end)
-            # Удаляем последний слайс
+            # Remove last slice
             slices.pop()
-    
+
     return slices
 
 
 def save_slice(slice_data: Dict[str, Any], output_dir: Path) -> None:
     """
-    Сохраняет слайс в JSON файл.
-    
+    Saves slice to JSON file.
+
     Args:
-        slice_data: Данные слайса
-        output_dir: Директория для сохранения
-        
+        slice_data: Slice data
+        output_dir: Directory for saving
+
     Raises:
-        IOError: При ошибках записи файла
+        IOError: For file writing errors
     """
-    slice_id = slice_data['id']
+    slice_id = slice_data["id"]
     output_file = output_dir / f"{slice_id}.slice.json"
-    
+
     try:
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json.dump(slice_data, f, ensure_ascii=False, indent=2)
-        
-        logging.info(f"Сохранен слайс: {output_file}")
+
+        logging.info(f"Slice saved: {output_file}")
     except Exception as e:
-        logging.error(f"Ошибка сохранения слайса {slice_id}: {e}")
-        raise IOError(f"Не удалось сохранить слайс {slice_id}: {e}")
+        logging.error(f"Error saving slice {slice_id}: {e}")
+        raise IOError(f"Failed to save slice {slice_id}: {e}")
 
 
-def process_file(file_path: Path, config: Dict[str, Any], global_slice_counter: int) -> Tuple[List[Dict[str, Any]], int]:
+def process_file(
+    file_path: Path, config: Dict[str, Any], global_slice_counter: int
+) -> Tuple[List[Dict[str, Any]], int]:
     """
-    Обрабатывает один файл и возвращает список слайсов.
-    
+    Processes one file and returns list of slices.
+
     Args:
-        file_path: Путь к файлу
-        config: Конфигурация slicer
-        global_slice_counter: Глобальный счетчик слайсов
-        
+        file_path: Path to file
+        config: Slicer configuration
+        global_slice_counter: Global slice counter
+
     Returns:
-        Кортеж (список слайсов, обновленный счетчик)
-        
+        Tuple (slice list, updated counter)
+
     Raises:
-        InputError: При ошибках входных данных
-        RuntimeError: При ошибках обработки
+        InputError: For input data errors
+        RuntimeError: For processing errors
     """
-    slicer_config = config['slicer']
-    
-    logging.info(f"Обработка файла: {file_path.name}")
-    
+    slicer_config = config["slicer"]
+
+    logging.info(f"Processing file: {file_path.name}")
+
     try:
-        # Загрузка и валидация файла
-        content = load_and_validate_file(file_path, slicer_config['allowed_extensions'])
-        
-        # Создание slug
+        # Load and validate file
+        content = load_and_validate_file(file_path, slicer_config["allowed_extensions"])
+
+        # Create slug
         slug = create_slug(file_path.name)
-        
-        # Нарезка на слайсы
+
+        # Slice into chunks
         slices_data = slice_text_with_window(
             content,
-            slicer_config['max_tokens'],
-            slicer_config['overlap'],
-            slicer_config['soft_boundary'],
-            slicer_config['soft_boundary_max_shift']
+            slicer_config["max_tokens"],
+            slicer_config["overlap"],
+            slicer_config["soft_boundary"],
+            slicer_config["soft_boundary_max_shift"],
         )
-        
-        # Создание объектов слайсов
+
+        # Create slice objects
         slices = []
-        for i, (slice_text, slice_token_start, slice_token_end) in enumerate(slices_data):
+        for i, (slice_text, slice_token_start, slice_token_end) in enumerate(
+            slices_data
+        ):
             slice_obj = {
                 "id": f"slice_{global_slice_counter:03d}",
                 "order": global_slice_counter,
@@ -442,126 +472,132 @@ def process_file(file_path: Path, config: Dict[str, Any], global_slice_counter: 
                 "slug": slug,
                 "text": slice_text,
                 "slice_token_start": slice_token_start,
-                "slice_token_end": slice_token_end
+                "slice_token_end": slice_token_end,
             }
             slices.append(slice_obj)
             global_slice_counter += 1
-        
-        logging.info(f"Файл {file_path.name}: создано {len(slices)} слайсов")
+
+        logging.info(f"File {file_path.name}: created {len(slices)} slices")
         return slices, global_slice_counter
-        
+
     except InputError:
-        # Переподнимаем InputError как есть
+        # Re-raise InputError as is
         raise
     except Exception as e:
-        logging.error(f"Ошибка обработки файла {file_path.name}: {e}")
-        raise RuntimeError(f"Не удалось обработать файл {file_path.name}: {e}")
+        logging.error(f"Error processing file {file_path.name}: {e}")
+        raise RuntimeError(f"Failed to process file {file_path.name}: {e}")
 
 
 def main(argv=None):
-    """Основная функция slicer."""
-    
-    # Настройка CLI
+    """Main slicer function."""
+
+    # CLI setup
     parser = argparse.ArgumentParser(
-        description="Утилита для разделения образовательных текстов на слайсы",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        description="Utility for splitting educational texts into slices",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    
-    # Пока параметров нет - конфиг прошит
+
+    # No parameters yet - config is hardcoded
     args = parser.parse_args(argv)
-    
+
     try:
-        # Загрузка конфигурации
+        # Load configuration
         config = load_config()
-        
-        # Настройка логирования
-        log_level = config.get('slicer', {}).get('log_level', 'info')
+
+        # Setup logging
+        log_level = config.get("slicer", {}).get("log_level", "info")
         setup_logging(log_level)
-        
-        logging.info("Запуск slicer.py")
-        
-        # Валидация параметров конфигурации
+
+        logging.info("Starting slicer.py")
+
+        # Validate configuration parameters
         try:
             validate_config_parameters(config)
         except ValueError as e:
-            logging.error(f"Ошибка конфигурации: {e}")
+            logging.error(f"Configuration error: {e}")
             return EXIT_CONFIG_ERROR
-        
-        # Определение путей
+
+        # Define paths
         raw_dir = Path("data/raw")
         staging_dir = Path("data/staging")
-        
-        # Проверка существования директорий
+
+        # Check directory existence
         if not raw_dir.exists():
-            logging.error(f"Директория {raw_dir} не существует")
+            logging.error(f"Directory {raw_dir} does not exist")
             return EXIT_INPUT_ERROR
-        
+
         try:
             staging_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            logging.error(f"Не удалось создать директорию {staging_dir}: {e}")
+            logging.error(f"Failed to create directory {staging_dir}: {e}")
             return EXIT_IO_ERROR
-        
-        # Получение списка файлов в лексикографическом порядке
-        allowed_extensions = config['slicer']['allowed_extensions']
+
+        # Get file list in lexicographic order
+        allowed_extensions = config["slicer"]["allowed_extensions"]
         input_files = []
-        
+
         for ext in allowed_extensions:
             pattern = f"*.{ext.lower()}"
             input_files.extend(raw_dir.glob(pattern))
-            # Также ищем с заглавными буквами
+            # Also search with uppercase letters
             pattern_upper = f"*.{ext.upper()}"
             input_files.extend(raw_dir.glob(pattern_upper))
-        
-        # Удаление дубликатов и сортировка
+
+        # Remove duplicates and sort
         input_files = sorted(set(input_files))
-        
+
         if not input_files:
-            logging.warning(f"Не найдено файлов для обработки в {raw_dir}")
-            logging.warning(f"Поддерживаемые расширения: {allowed_extensions}")
+            logging.warning(f"No files found for processing in {raw_dir}")
+            logging.warning(f"Supported extensions: {allowed_extensions}")
             return EXIT_SUCCESS
-        
-        # Вывод файлов, которые будут пропущены
+
+        # Output files that will be skipped
         all_files = list(raw_dir.iterdir())
         for file_path in all_files:
             if file_path.is_file() and file_path not in input_files:
                 logging.warning(f"Unsupported file skipped: {file_path.name}")
-        
-        logging.info(f"Найдено {len(input_files)} файлов для обработки")
-        
-        # Обработка файлов
+
+        logging.info(f"Found {len(input_files)} files for processing")
+
+        # Process files
         global_slice_counter = 1
         total_slices = 0
-        
+
         for file_path in input_files:
             try:
-                slices, global_slice_counter = process_file(file_path, config, global_slice_counter)
-                
-                # Сохранение слайсов
+                slices, global_slice_counter = process_file(
+                    file_path, config, global_slice_counter
+                )
+
+                # Save slices
                 for slice_data in slices:
                     save_slice(slice_data, staging_dir)
-                
+
                 total_slices += len(slices)
-                
+
             except InputError as e:
-                logging.error(f"Ошибка входных данных в файле {file_path.name}: {e}")
+                logging.error(f"Input data error in file {file_path.name}: {e}")
                 return EXIT_INPUT_ERROR
             except IOError as e:
-                logging.error(f"Ошибка ввода/вывода при обработке {file_path.name}: {e}")
+                logging.error(
+                    f"I/O error when processing {file_path.name}: {e}"
+                )
                 return EXIT_IO_ERROR
             except RuntimeError as e:
-                logging.error(f"Ошибка выполнения при обработке {file_path.name}: {e}")
+                logging.error(f"Runtime error when processing {file_path.name}: {e}")
                 return EXIT_RUNTIME_ERROR
             except Exception as e:
-                logging.error(f"Неожиданная ошибка при обработке {file_path.name}: {e}")
+                logging.error(f"Unexpected error when processing {file_path.name}: {e}")
                 return EXIT_RUNTIME_ERROR
-        
-        logging.info(f"Обработка завершена: {total_slices} слайсов сохранено в {staging_dir}")
+
+        logging.info(
+            f"Processing completed: {total_slices} slices saved in {staging_dir}"
+        )
         log_exit(logging.getLogger(), EXIT_SUCCESS)
         return EXIT_SUCCESS
-        
+
     except Exception as e:
-        logging.error(f"Критическая ошибка: {e}")
+        logging.error(f"Critical error: {e}")
         log_exit(logging.getLogger(), EXIT_RUNTIME_ERROR)
         return EXIT_RUNTIME_ERROR
 

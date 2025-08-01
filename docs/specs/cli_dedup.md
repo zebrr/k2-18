@@ -2,92 +2,106 @@
 
 ## Status: READY
 
-Утилита для удаления дубликатов узлов из графа знаний. Использует векторные эмбеддинги и FAISS для поиска похожих узлов типа Chunk и Assessment.
+Utility for removing duplicate nodes from the knowledge graph. Uses vector embeddings and FAISS to find similar nodes of type Chunk and Assessment.
 
 ## CLI Interface
 
-**Запуск:**
+**Launch:**
 ```bash
 python -m src.dedup
 ```
 
-**Входные каталоги:**
-- `/data/out/LearningChunkGraph_raw.json` - граф после itext2kg
+**Input directories:**
+- `/data/out/LearningChunkGraph_raw.json` - graph after itext2kg
 
-**Выходные каталоги:**
-- `/data/out/LearningChunkGraph_dedup.json` - граф без дубликатов
-- `/logs/dedup_map.csv` - маппинг дубликатов
+**Output directories:**
+- `/data/out/LearningChunkGraph_dedup.json` - graph without duplicates
+- `/logs/dedup_map.csv` - duplicate mapping
 
 ## Core Algorithm
 
-1. **Загрузка и валидация** - проверка входного графа по схеме
-2. **Фильтрация узлов** - отбор Chunk/Assessment с непустым текстом
-3. **Получение эмбеддингов** - через OpenAI API (text-embedding-3-small)
-4. **Построение FAISS индекса** - HNSW для быстрого поиска
-5. **Поиск дубликатов** - по cosine similarity и length ratio
-6. **Кластеризация** - Union-Find для транзитивных дубликатов
-7. **Перезапись графа** - удаление дубликатов и пустых узлов
+1. **Load and validate** - check input graph against schema
+2. **Filter nodes** - select Chunk/Assessment with non-empty text
+3. **Get embeddings** - via OpenAI API (text-embedding-3-small)
+4. **Build FAISS index** - HNSW for fast search
+5. **Find duplicates** - by cosine similarity and length ratio
+6. **Cluster duplicates** - Union-Find for transitive duplicates
+7. **Rewrite graph** - remove duplicates and empty nodes
 
 ## Terminal Output
 
-Утилита использует стандартное логирование с форматом:
+The utility uses standard logging with format:
 ```
-[HH:MM:SS] LEVEL    | Сообщение
-```
-
-Примеры вывода:
-```
-[10:30:00] INFO     | Загрузка графа знаний...
-[10:30:01] INFO     | Отфильтровано 156 узлов из 189 для дедупликации
-[10:30:02] INFO     | Получение эмбеддингов для 156 узлов...
-[10:30:15] INFO     | Построение FAISS индекса...
-[10:30:15] INFO     | Поиск дубликатов...
-[10:30:16] INFO     | Найдено 23 потенциальных дубликатов
-[10:30:16] INFO     | Кластеризация дубликатов...
-[10:30:16] INFO     | Сформировано 8 кластеров, 15 узлов помечены как дубликаты
-[10:30:16] INFO     | Перезапись графа...
-[10:30:16] INFO     | Удалено 15 узлов-дубликатов, 3 пустых узлов
-[10:30:16] INFO     | Обновлено 42 рёбер, финальное количество: 287
-[10:30:17] INFO     | Сохранение результатов...
-[10:30:17] INFO     | Сохранён маппинг дубликатов в logs/dedup_map.csv
-[10:30:17] INFO     | Дедупликация завершена за 17.24 секунд
-[10:30:17] INFO     | Узлов было: 189, стало: 171
-[10:30:17] INFO     | Рёбер было: 312, стало: 287
+[HH:MM:SS] LEVEL    | Message
 ```
 
-При ошибках:
+Example output:
 ```
-[10:30:00] ERROR    | Входной файл не найден: data\out\LearningChunkGraph_raw.json
-[10:30:00] WARNING  | Недостаточно узлов для дедупликации, копируем граф без изменений
-[10:30:00] ERROR    | Превышен лимит API: Rate limit exceeded
+[10:30:00] INFO     | Loading knowledge graph...
+[10:30:01] INFO     | Filtered 156 nodes out of 189 for deduplication
+[10:30:02] INFO     | Getting embeddings for 156 nodes...
+[10:30:15] INFO     | Building FAISS index...
+[10:30:15] INFO     | Searching for duplicates...
+[10:30:16] INFO     | Found 23 potential duplicates
+[10:30:16] INFO     | Clustering duplicates...
+[10:30:16] INFO     | Formed 8 clusters, 15 nodes marked as duplicates
+[10:30:16] INFO     | Rewriting graph...
+[10:30:16] INFO     | Removed 15 duplicate nodes, 3 empty nodes
+[10:30:16] INFO     | Updated 42 edges, final count: 287
+[10:30:17] INFO     | Saving results...
+[10:30:17] INFO     | Saved duplicate mapping to logs/dedup_map.csv
+[10:30:17] INFO     | Deduplication completed in 17.24 seconds
+[10:30:17] INFO     | Nodes were: 189, became: 171
+[10:30:17] INFO     | Edges were: 312, became: 287
+```
+
+Error messages:
+```
+[10:30:00] ERROR    | Input file not found: data/out/LearningChunkGraph_raw.json
+[10:30:00] INFO     | Not enough nodes for deduplication, copying graph without changes
+[10:30:00] ERROR    | API limit exceeded: Rate limit exceeded
 ```
 
 ## Public Functions
 
 ### filter_nodes_for_dedup(nodes: List[Dict]) -> List[Dict]
-Фильтрация узлов для дедупликации.
-- **Input**: nodes - список всех узлов графа
-- **Returns**: отфильтрованные узлы (Chunk/Assessment с текстом)
+Filter nodes for deduplication.
+- **Input**: nodes - list of all graph nodes
+- **Returns**: filtered nodes (Chunk/Assessment with text)
 
 ### build_faiss_index(embeddings: np.ndarray, config: Dict) -> faiss.IndexHNSWFlat
-Создание FAISS индекса.
-- **Input**: embeddings - матрица эмбеддингов, config - параметры FAISS
-- **Returns**: построенный индекс
+Create FAISS index.
+- **Input**: embeddings - embedding matrix, config - FAISS parameters
+- **Returns**: built index
+- **Note**: Always uses METRIC_INNER_PRODUCT for normalized vectors
 
 ### find_duplicates(nodes, embeddings, index, config) -> List[Tuple[str, str, float]]
-Поиск кандидатов-дубликатов.
-- **Input**: nodes - узлы, embeddings - векторы, index - FAISS, config - параметры
-- **Returns**: список (master_id, duplicate_id, similarity)
+Find duplicate candidates.
+- **Input**: nodes - nodes, embeddings - vectors, index - FAISS, config - parameters
+- **Returns**: list of (master_id, duplicate_id, similarity)
 
 ### cluster_duplicates(duplicates) -> Dict[str, str]
-Кластеризация через Union-Find.
-- **Input**: duplicates - пары дубликатов
-- **Returns**: словарь {duplicate_id: master_id}
+Cluster through Union-Find.
+- **Input**: duplicates - duplicate pairs
+- **Returns**: dictionary {duplicate_id: master_id}
 
 ### rewrite_graph(graph, dedup_map) -> Dict
-Перезапись графа с удалением дубликатов и пустых узлов.
-- **Input**: graph - исходный граф, dedup_map - маппинг дубликатов
-- **Returns**: новый граф без дубликатов
+Rewrite graph removing duplicates and empty nodes.
+- **Input**: graph - original graph, dedup_map - duplicate mapping
+- **Returns**: new graph without duplicates
+
+### save_dedup_map(dedup_map, duplicates)
+Save duplicate mapping to CSV file.
+- **Input**: dedup_map - {duplicate: master}, duplicates - original pairs with similarities
+- **Creates**: /logs/dedup_map.csv
+
+## Internal Classes
+
+### UnionFind
+Union-Find data structure for clustering duplicates.
+- **find(x)**: Find root with path compression
+- **union(x, y)**: Union two elements by rank
+- **get_clusters()**: Return all clusters as Dict[root, List[elements]]
 
 ## Output Format
 
@@ -100,7 +114,7 @@ python -m src.dedup
       "type": "Chunk|Concept|Assessment",
       "text": "string",
       "local_start": 0,
-      // другие поля согласно схеме
+      // other fields according to schema
     }
   ],
   "edges": [
@@ -123,51 +137,56 @@ chunk_789,chunk_042,0.9756
 
 ## Configuration
 
-Секция `[dedup]` в config.toml:
+Section `[dedup]` in config.toml:
 
-- **embedding_model**: "text-embedding-3-small" - модель для эмбеддингов
-- **embedding_api_key**: "sk-..." - API ключ (опционально, берется из api_key)
-- **embedding_tpm_limit**: 350000 - лимит токенов в минуту
-- **sim_threshold**: 0.97 - порог косинусной близости
-- **len_ratio_min**: 0.8 - минимальное отношение длин текстов
-- **faiss_M**: 32 - параметр HNSW (связность графа)
-- **faiss_efC**: 200 - параметр HNSW (качество построения)
-- **k_neighbors**: 5 - количество ближайших соседей
+- **embedding_model**: "text-embedding-3-small" - model for embeddings
+- **embedding_api_key**: "sk-..." - API key (optional, falls back to api_key)
+- **embedding_tpm_limit**: 350000 - tokens per minute limit
+- **sim_threshold**: 0.97 - cosine similarity threshold
+- **len_ratio_min**: 0.8 - minimum text length ratio
+- **faiss_M**: 32 - HNSW parameter (graph connectivity)
+- **faiss_efC**: 200 - HNSW parameter (construction quality)
+- **faiss_metric**: "INNER_PRODUCT" - not used, hardcoded in code
+- **k_neighbors**: 5 - number of nearest neighbors
 
 ## Error Handling & Exit Codes
 
-- **0 (SUCCESS)**: Успешное выполнение
-- **1 (CONFIG_ERROR)**: Ошибки конфигурации (неверные параметры)
-- **2 (INPUT_ERROR)**: Отсутствует входной файл или не проходит валидацию
-- **3 (RUNTIME_ERROR)**: Ошибки выполнения (FAISS, обработка данных)
-- **4 (API_LIMIT_ERROR)**: Превышены лимиты OpenAI API
-- **5 (IO_ERROR)**: Ошибки записи файлов
+- **0 (SUCCESS)**: Successful execution
+- **1 (CONFIG_ERROR)**: Configuration errors (invalid parameters)
+- **2 (INPUT_ERROR)**: Missing input file or validation failure
+- **3 (RUNTIME_ERROR)**: Runtime errors (FAISS, data processing)
+- **4 (API_LIMIT_ERROR)**: OpenAI API limits exceeded
+- **5 (IO_ERROR)**: File write errors
 
 ## Boundary Cases
 
-**Недостаточно узлов для дедупликации (<2):**
-- Граф копируется без изменений
-- Создается пустой dedup_map.csv
-- Код выхода: 0 (SUCCESS)
+**Not enough nodes for deduplication (<2):**
+- Graph is copied without changes
+- Empty dedup_map.csv is created
+- Exit code: 0 (SUCCESS)
 
-**Пустые узлы (Chunk/Assessment):**
-- Удаляются из финального графа
-- Рёбра на них также удаляются
+**Empty nodes (Chunk/Assessment):**
+- Removed from final graph
+- Edges referencing them are also removed
 
-**Слишком длинные тексты (>8192 токенов):**
-- Обрезаются до 8000 токенов с предупреждением
-- Обработка продолжается
+**Texts too long (>8192 tokens):**
+- Handled by llm_embeddings module
+- Processing continues
 
-**Нет дубликатов найдено:**
-- Граф копируется с удалением пустых узлов
-- Создается пустой dedup_map.csv
+**No duplicates found:**
+- Graph is copied with empty nodes removed
+- Empty dedup_map.csv is created
 
-**Master selection при равных local_start:**
-- Выбирается узел с лексикографически меньшим ID
+**Master selection with equal local_start:**
+- Node with lexicographically smaller ID is chosen
+
+**Dangling edges:**
+- Edges referencing non-existent nodes (including removed empty ones) are dropped
+- Logged at DEBUG level
 
 ## Test Coverage
 
-- **test_dedup**: 24 теста
+- **test_dedup**: 24 tests
   - test_union_find_basic
   - test_filter_nodes_for_dedup
   - test_find_duplicates_with_mock
@@ -176,7 +195,7 @@ chunk_789,chunk_042,0.9756
   - test_main_success
   - test_edge_cases
 
-- **test_dedup_integration**: 5 тестов
+- **test_dedup_integration**: 5 tests
   - test_full_dedup_process
   - test_no_duplicates_case
   - test_transitive_duplicates
@@ -186,45 +205,45 @@ chunk_789,chunk_042,0.9756
 ## Dependencies
 
 - **Standard Library**: sys, json, logging, time, pathlib, csv
-- **External**: numpy, faiss-cpu
-- **Internal**: utils.config, utils.validation, utils.llm_embeddings, utils.exit_codes
+- **External**: numpy, faiss-cpu, python-dotenv
+- **Internal**: utils.config, utils.validation, utils.llm_embeddings, utils.exit_codes, utils.console_encoding
 
 ## Performance Notes
 
-- **Эмбеддинги**: Батчевая обработка до 2048 текстов за запрос
-- **FAISS индекс**: HNSW обеспечивает O(log N) поиск соседей
-- **Память**: ~2GB для 10K узлов (эмбеддинги + индекс)
-- **Скорость**: ~1000 узлов/минуту (включая API запросы)
-- **TPM контроль**: Автоматический через EmbeddingsClient
+- **Embeddings**: Batch processing up to 2048 texts per request
+- **FAISS index**: HNSW provides O(log N) neighbor search
+- **Memory**: ~2GB for 10K nodes (embeddings + index)
+- **Speed**: ~1000 nodes/minute (including API requests)
+- **TPM control**: Automatic via EmbeddingsClient
 
 ## Usage Examples
 
-### Запуск дедупликации
+### Running deduplication
 ```bash
-# Убедитесь, что есть входной файл
-dir data\out\LearningChunkGraph_raw.json
+# Ensure input file exists
+dir data/out/LearningChunkGraph_raw.json
 
-# Запустите дедупликацию
+# Run deduplication
 python -m src.dedup
 
-# Проверьте результаты
-dir data\out\LearningChunkGraph_dedup.json
-type logs\dedup_map.csv
+# Check results
+dir data/out/LearningChunkGraph_dedup.json
+type logs/dedup_map.csv
 ```
 
-### Проверка результатов
+### Checking results
 ```python
 import json
 
-# Загрузка графов
+# Load graphs
 with open('data/out/LearningChunkGraph_raw.json') as f:
     raw_graph = json.load(f)
     
 with open('data/out/LearningChunkGraph_dedup.json') as f:
     dedup_graph = json.load(f)
 
-# Статистика
-print(f"Узлов было: {len(raw_graph['nodes'])}")
-print(f"Узлов стало: {len(dedup_graph['nodes'])}")
-print(f"Удалено: {len(raw_graph['nodes']) - len(dedup_graph['nodes'])}")
+# Statistics
+print(f"Nodes were: {len(raw_graph['nodes'])}")
+print(f"Nodes became: {len(dedup_graph['nodes'])}")
+print(f"Removed: {len(raw_graph['nodes']) - len(dedup_graph['nodes'])}")
 ```

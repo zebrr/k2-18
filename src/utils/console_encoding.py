@@ -1,69 +1,70 @@
 """
-Утилита для безопасной настройки UTF-8 кодировки в Windows консоли.
+Utility for safe UTF-8 encoding setup in Windows console.
 """
 
-import sys
-import os
 import io
+import os
+import sys
 
 
 def setup_console_encoding():
     """
-    Настраивает UTF-8 кодировку для Windows консоли безопасным способом.
-    Не ломает pytest и другие инструменты, которые перехватывают stdout.
+    Sets up UTF-8 encoding for Windows console in a safe way.
+    Doesn't break pytest and other tools that intercept stdout.
     """
-    # Проверяем, работаем ли мы в Windows
-    if sys.platform != 'win32':
+    # Check if we're running on Windows
+    if sys.platform != "win32":
         return
-    
-    # Проверяем, не запущены ли мы под pytest
-    if 'pytest' in sys.modules:
-        # Под pytest не трогаем stdout/stderr
+
+    # Check if we're running under pytest
+    if "pytest" in sys.modules:
+        # Under pytest don't touch stdout/stderr
         return
-    
-    # Проверяем, не переопределены ли уже потоки
-    if (hasattr(sys.stdout, '_original_stream') or 
-        hasattr(sys.stderr, '_original_stream')):
-        # Уже настроено, не трогаем
+
+    # Check if streams are already overridden
+    if hasattr(sys.stdout, "_original_stream") or hasattr(
+        sys.stderr, "_original_stream"
+    ):
+        # Already configured, don't touch
         return
-    
-    # Проверяем, являются ли потоки TTY (терминалом)
+
+    # Check if streams are TTY (terminal)
     if not sys.stdout.isatty() or not sys.stderr.isatty():
-        # Не терминал (возможно, перенаправление в файл) - не трогаем
+        # Not a terminal (possibly redirected to file) - don't touch
         return
-    
+
     try:
-        # Пытаемся установить кодировку через переменную окружения
-        # Это более безопасный способ для Python 3.7+
+        # Try to set encoding via environment variable
+        # This is a safer approach for Python 3.7+
         if sys.version_info >= (3, 7):
-            # Устанавливаем переменную окружения для будущих процессов
-            os.environ['PYTHONIOENCODING'] = 'utf-8'
-            
-            # Для текущего процесса используем reconfigure (Python 3.7+)
-            if hasattr(sys.stdout, 'reconfigure'):
-                sys.stdout.reconfigure(encoding='utf-8')
-                sys.stderr.reconfigure(encoding='utf-8')
+            # Set environment variable for future processes
+            os.environ["PYTHONIOENCODING"] = "utf-8"
+
+            # For current process use reconfigure (Python 3.7+)
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+                sys.stderr.reconfigure(encoding="utf-8")
         else:
-            # Для старых версий Python используем обертку, но сохраняем оригинал
-            # и добавляем флаг, чтобы не переопределять повторно
+            # For older Python versions use wrapper, but save original
+            # and add flag to avoid re-defining
             original_stdout = sys.stdout
             original_stderr = sys.stderr
-            
+
             sys.stdout = io.TextIOWrapper(
-                original_stdout.buffer, 
-                encoding='utf-8',
-                line_buffering=original_stdout.line_buffering
+                original_stdout.buffer,
+                encoding="utf-8",
+                line_buffering=original_stdout.line_buffering,
             )
             sys.stderr = io.TextIOWrapper(
                 original_stderr.buffer,
-                encoding='utf-8', 
-                line_buffering=original_stderr.line_buffering
+                encoding="utf-8",
+                line_buffering=original_stderr.line_buffering,
             )
-            
-            # Помечаем, что потоки были изменены
+
+            # Mark that streams were modified
             sys.stdout._original_stream = original_stdout
             sys.stderr._original_stream = original_stderr
-            
+
     except Exception:
-        # Если что-то пошло не так, не падаем, а просто работаем как есть
+        # If something went wrong, don't crash, just work as is
         pass

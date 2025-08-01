@@ -2,7 +2,7 @@
 
 ## Status: READY
 
-CLI-утилита для разделения образовательных текстов на слайсы. Читает файлы из /data/raw/, применяет препроцессинг и нарезает их на фрагменты фиксированного размера с учетом семантических границ.
+CLI utility for splitting educational texts into slices. Reads files from /data/raw/, applies preprocessing and cuts them into fragments of fixed size with consideration for semantic boundaries.
 
 ## CLI Interface
 
@@ -12,132 +12,134 @@ python -m src.slicer
 ```
 
 ### Input Directory
-- **Source**: `/data/raw/` - исходные файлы корпуса
-- **Supported formats**: .json, .txt, .md, .html (настраивается в конфиге)
-- **Processing order**: лексикографический (для детерминированности)
-- **Case handling**: поиск файлов учитывает регистр расширений (ищет .txt и .TXT)
+- **Source**: `/data/raw/` - source corpus files
+- **Supported formats**: .json, .txt, .md, .html (configurable)
+- **Processing order**: lexicographic (for determinism)
+- **Case handling**: file search considers extension case (finds both .txt and .TXT)
 
 ### Output Directory  
-- **Target**: `/data/staging/` - слайсы в формате *.slice.json
+- **Target**: `/data/staging/` - slices in *.slice.json format
 - **Naming**: slice_001.slice.json, slice_002.slice.json, etc.
 
 ## Core Algorithm
 
 ### File Processing Pipeline
-1. **File Discovery**: поиск файлов по allowed_extensions в лексикографическом порядке (с учетом регистра)
-2. **Preprocessing**: Unicode нормализация NFC + удаление <script>/<style> тегов через BeautifulSoup
-3. **Validation**: проверка на пустоту после препроцессинга
-4. **Slicing**: нарезка скользящим окном с учетом soft boundaries
-5. **Output**: сохранение в JSON формате с валидацией
+1. **Environment setup**: Load environment variables via dotenv
+2. **File Discovery**: search files by allowed_extensions in lexicographic order (case-aware)
+3. **Preprocessing**: Unicode normalization NFC + remove <script>/<style> tags via BeautifulSoup
+4. **Validation**: check for emptiness after preprocessing
+5. **Slicing**: cut with sliding window considering soft boundaries
+6. **Output**: save in JSON format with validation
 
 ### Sliding Window Algorithm
-- **Window size**: max_tokens (настраивается)
-- **Overlap**: configurable overlap между слайсами 
-- **Soft boundaries**: поиск семантических границ в пределах soft_boundary_max_shift токенов
-- **Token conversion**: soft_boundary_max_shift конвертируется из символов в токены (≈1 токен = 4 символа)
-- **Boundary detection**: использует find_safe_token_boundary для поиска оптимальной границы
-- **Token calculation**: точный подсчет через tiktoken o200k_base
+- **Window size**: max_tokens (configurable)
+- **Overlap**: configurable overlap between slices 
+- **Soft boundaries**: search for semantic boundaries within soft_boundary_max_shift tokens
+- **Token conversion**: soft_boundary_max_shift is converted from characters to tokens (≈1 token = 4 characters)
+- **Boundary detection**: uses find_safe_token_boundary from utils.tokenizer for optimal boundary search
+- **Token calculation**: precise counting via tiktoken o200k_base
 
 ### Boundary Rules
-- При overlap = 0: slice_token_start(next) = slice_token_end(current)
-- При overlap > 0: slice_token_start(next) = slice_token_end(current) - overlap
-- Защита от бесконечного цикла: если новый start ≤ старого, то start = старый + 1
-- Граничные случаи: последний фрагмент при overlap обновляет предыдущий слайс
-- File boundaries: жесткие границы, overlap никогда не захватывает следующий файл
+- With overlap = 0: slice_token_start(next) = slice_token_end(current)
+- With overlap > 0: slice_token_start(next) = slice_token_end(current) - overlap
+- Infinite loop protection: if new start ≤ old, then start = old + 1
+- Edge cases: last fragment with overlap updates previous slice
+- File boundaries: hard boundaries, overlap never captures next file
 
 ## Terminal Output
 
 ### Console Encoding
-На Windows автоматически настраивается UTF-8 кодировка консоли через `setup_console_encoding()`.
+UTF-8 console encoding is automatically configured on Windows via `setup_console_encoding()`.
 
 ### Log Format
-Утилита использует стандартное логирование с форматом:
+The utility uses standard logging with format:
 ```
-[HH:MM:SS] LEVEL    | Сообщение
+[HH:MM:SS] LEVEL    | Message
 ```
 
 ### Standard Output Examples
 ```
-[10:30:00] INFO     | Запуск slicer.py
-[10:30:00] INFO     | Найдено 3 файлов для обработки
-[10:30:00] INFO     | Обработка файла: chapter1.md
-[10:30:01] INFO     | Soft boundary найдена: сдвиг +15 токенов
-[10:30:01] INFO     | Сохранен слайс: data\staging\slice_001.slice.json
-[10:30:01] INFO     | Файл chapter1.md: создано 4 слайсов
-[10:30:02] INFO     | Обработка завершена: 8 слайсов сохранено в data\staging
-[10:30:02] INFO     | Завершение работы с кодом: SUCCESS (0)
+[10:30:00] INFO     | Starting slicer.py
+[10:30:00] INFO     | Found 3 files for processing
+[10:30:00] INFO     | Processing file: chapter1.md
+[10:30:01] INFO     | Soft boundary found: shift +15 tokens
+[10:30:01] INFO     | Slice saved: data\staging\slice_001.slice.json
+[10:30:01] INFO     | File chapter1.md: created 4 slices
+[10:30:02] INFO     | Processing completed: 8 slices saved in data\staging
+[10:30:02] INFO     | Terminating with code: SUCCESS (0)
 ```
 
 ### Debug Output Examples
-В режиме DEBUG показывается тип найденной границы:
+In DEBUG mode, boundary type is shown:
 ```
-[10:30:01] INFO     | Soft boundary найдена: сдвиг -23 токенов
-[10:30:01] DEBUG    | Тип границы: двойной перенос строки
-[10:30:01] INFO     | Soft boundary найдена: сдвиг +8 токенов
-[10:30:01] DEBUG    | Тип границы: конец предложения
-[10:30:01] INFO     | Soft boundary найдена: сдвиг +12 токенов
-[10:30:01] DEBUG    | Тип границы: HTML заголовок
+[10:30:01] INFO     | Soft boundary found: shift -23 tokens
+[10:30:01] DEBUG    | Boundary type: double line break
+[10:30:01] INFO     | Soft boundary found: shift +8 tokens
+[10:30:01] DEBUG    | Boundary type: end of sentence
+[10:30:01] INFO     | Soft boundary found: shift +12 tokens
+[10:30:01] DEBUG    | Boundary type: HTML heading
 ```
 
 ### Warning and Error Examples
 ```
-[10:30:00] WARNING  | Не найдено файлов для обработки в data\raw
-[10:30:00] WARNING  | Поддерживаемые расширения: ['json', 'txt', 'md', 'html']
+[10:30:00] WARNING  | No files found for processing in data\raw
+[10:30:00] WARNING  | Supported extensions: ['json', 'txt', 'md', 'html']
 [10:30:00] WARNING  | Unsupported file skipped: image.png
-[10:30:00] ERROR    | Ошибка конфигурации: slicer.max_tokens должен быть положительным целым числом
-[10:30:00] ERROR    | Ошибка входных данных в файле empty.md: Empty file detected: empty.md. Please remove empty files from /data/raw/
-[10:30:00] ERROR    | Ошибка ввода/вывода при обработке file.txt: Не удалось сохранить слайс slice_001
+[10:30:00] ERROR    | Configuration error: slicer.max_tokens must be a positive integer
+[10:30:00] ERROR    | Input data error in file empty.md: Empty file detected: empty.md. Please remove empty files from /data/raw/
+[10:30:00] ERROR    | I/O error when processing file.txt: Failed to save slice slice_001
 ```
 
 ## Public Functions
 
 ### create_slug(filename: str) -> str
-Создает slug из имени файла.
-- **Rules**: удаление расширения, транслитерация кириллицы (unidecode), lowercase, пробелы → "_"
+Creates slug from filename.
+- **Rules**: remove extension, transliterate Cyrillic (unidecode), lowercase, spaces → "_"
 - **Examples**: "Алгоритмы.txt" → "algoritmy", "My Course 1.md" → "my_course_1"
 
 ### preprocess_text(text: str) -> str
-Применяет препроцессинг к тексту.
-- **Steps**: Unicode нормализация NFC, удаление <script>/<style> через BeautifulSoup
-- **Preservation**: остальное содержимое остается без изменений
-- **Raises**: ValueError если входной параметр не строка
+Applies preprocessing to text.
+- **Steps**: Unicode normalization NFC, remove <script>/<style> via BeautifulSoup
+- **Preservation**: other content remains unchanged
+- **Raises**: ValueError if input parameter is not a string
 
 ### validate_config_parameters(config: Dict[str, Any]) -> None
-Валидация параметров конфигурации slicer.
-- **Checks**: обязательные параметры, типы, диапазоны, специальные правила overlap
-- **Constraint**: при overlap > 0, soft_boundary_max_shift ≤ overlap * 0.8
-- **Raises**: ValueError с детальным описанием ошибки
+Validates slicer configuration parameters.
+- **Checks**: required parameters, types, ranges, special overlap rules
+- **Constraint**: with overlap > 0, soft_boundary_max_shift ≤ overlap * 0.8
+- **Raises**: ValueError with detailed error description
 
 ### slice_text_with_window(text: str, max_tokens: int, overlap: int, soft_boundary: bool, soft_boundary_max_shift: int) -> List[Tuple[str, int, int]]
-Основной алгоритм нарезки текста на слайсы.
-- **Returns**: список кортежей (slice_text, slice_token_start, slice_token_end)
-- **Features**: soft boundary detection через find_safe_token_boundary, overlap handling, граничные случаи
-- **Token conversion**: soft_boundary_max_shift делится на 4 для конвертации в токены
+Main text slicing algorithm.
+- **Returns**: list of tuples (slice_text, slice_token_start, slice_token_end)
+- **Features**: soft boundary detection via find_safe_token_boundary, overlap handling, edge cases
+- **Token conversion**: soft_boundary_max_shift divided by 4 for character-to-token conversion
+- **Imports**: uses find_safe_token_boundary from utils.tokenizer
 
 ### load_and_validate_file(file_path: Path, allowed_extensions: List[str]) -> str
-Загрузка файла с автоопределением кодировки.
+Loads file with automatic encoding detection.
 - **Encodings**: utf-8 → cp1251 → latin1 (fallback chain)
-- **Validation**: проверка расширения, проверка на пустоту после препроцессинга
-- **Raises**: InputError для пустых файлов или неподдерживаемых расширений
+- **Validation**: extension check, emptiness check after preprocessing
+- **Raises**: InputError for empty files or unsupported extensions
 
 ### process_file(file_path: Path, config: Dict[str, Any], global_slice_counter: int) -> Tuple[List[Dict[str, Any]], int]
-Обрабатывает один файл и возвращает список слайсов.
-- **Input**: путь к файлу, конфигурация, глобальный счетчик слайсов
-- **Returns**: кортеж (список слайсов, обновленный счетчик)
-- **Workflow**: загрузка → создание slug → нарезка → формирование slice объектов
+Processes one file and returns list of slices.
+- **Input**: file path, configuration, global slice counter
+- **Returns**: tuple (slice list, updated counter)
+- **Workflow**: load → create slug → slice → form slice objects
 - **Raises**: InputError, RuntimeError, IOError
 
 ### save_slice(slice_data: Dict[str, Any], output_dir: Path) -> None
-Сохраняет слайс в JSON файл.
+Saves slice to JSON file.
 - **Filename**: {slice_id}.slice.json
-- **Encoding**: UTF-8 с ensure_ascii=False
-- **Raises**: IOError при ошибках записи
+- **Encoding**: UTF-8 with ensure_ascii=False
+- **Raises**: IOError on write errors
 
 ### setup_logging(log_level: str = "info") -> None
-Настройка логирования для slicer.
+Sets up logging for slicer.
 - **Levels**: debug, info, warning, error
 - **Format**: [HH:MM:SS] LEVEL | Message
-- **Handler**: консольный вывод в stdout
+- **Handler**: console output to stdout
 
 ## Output Format
 
@@ -157,68 +159,68 @@ python -m src.slicer
 ### ID Generation
 - **Pattern**: slice_{order:03d} (slice_001, slice_002, ...)
 - **Uniqueness**: global counter across all files
-- **Deterministic**: повторные запуски дают идентичные ID
+- **Deterministic**: repeated runs produce identical IDs
 
 ## Configuration
 
 ### Required Parameters (slicer section)
-- **max_tokens** (int, >0) - размер окна в токенах
-- **overlap** (int, ≥0) - перекрытие между слайсами  
-- **soft_boundary** (bool) - использовать мягкие границы
-- **soft_boundary_max_shift** (int, ≥0) - максимальное смещение для поиска границ (в символах)
-- **tokenizer** (str, ="o200k_base") - токенизатор
-- **allowed_extensions** (list, не пустой) - допустимые расширения файлов
-- **log_level** (str) - уровень логирования (debug/info/warning/error)
+- **max_tokens** (int, >0) - window size in tokens
+- **overlap** (int, ≥0) - overlap between slices  
+- **soft_boundary** (bool) - use soft boundaries
+- **soft_boundary_max_shift** (int, ≥0) - maximum shift for boundary search (in characters)
+- **tokenizer** (str, ="o200k_base") - tokenizer
+- **allowed_extensions** (list, non-empty) - allowed file extensions
+- **log_level** (str) - logging level (debug/info/warning/error)
 
 ### Validation Rules
 - overlap < max_tokens
-- При overlap > 0: soft_boundary_max_shift ≤ overlap * 0.8
-- allowed_extensions не пустой список
+- With overlap > 0: soft_boundary_max_shift ≤ overlap * 0.8
+- allowed_extensions non-empty list
 
 ## Error Handling & Exit Codes
 
 ### Custom Exceptions
-- **InputError** - специальное исключение для ошибок входных данных (пустые файлы, неподдерживаемые расширения)
+- **InputError** - special exception for input data errors (empty files, unsupported extensions)
 
 ### Exit Codes
-- **0 (EXIT_SUCCESS)** - успешное выполнение
-- **1 (EXIT_CONFIG_ERROR)** - ошибки конфигурации  
-- **2 (EXIT_INPUT_ERROR)** - пустые файлы, неподдерживаемые расширения
-- **3 (EXIT_RUNTIME_ERROR)** - ошибки обработки
-- **5 (EXIT_IO_ERROR)** - ошибки записи файлов, доступа к каталогам
+- **0 (EXIT_SUCCESS)** - successful execution
+- **1 (EXIT_CONFIG_ERROR)** - configuration errors  
+- **2 (EXIT_INPUT_ERROR)** - empty files, unsupported extensions
+- **3 (EXIT_RUNTIME_ERROR)** - processing errors
+- **5 (EXIT_IO_ERROR)** - file write errors, directory access issues
 
 ### Error Types
-- **InputError** - пустые файлы, неподдерживаемые расширения
-- **ValueError** - некорректные параметры конфигурации
-- **IOError** - проблемы записи в /data/staging/
-- **RuntimeError** - неожиданные ошибки обработки
+- **InputError** - empty files, unsupported extensions
+- **ValueError** - invalid configuration parameters
+- **IOError** - problems writing to /data/staging/
+- **RuntimeError** - unexpected processing errors
 
 ### Exit Code Logging
-Используется функция `log_exit()` для логирования кода завершения в читаемом формате.
+Uses `log_exit()` function to log exit code in readable format.
 
 ## Boundary Cases
 
 ### Empty Files
-Ошибка EXIT_INPUT_ERROR с сообщением: "Empty file detected: {filename}. Please remove empty files from /data/raw/"
+EXIT_INPUT_ERROR with message: "Empty file detected: {filename}. Please remove empty files from /data/raw/"
 
 ### Unsupported Files  
-Предупреждение: "Unsupported file skipped: {filename}"
+Warning: "Unsupported file skipped: {filename}"
 
 ### Last Fragment Handling
-- **overlap = 0**: создается отдельный слайс независимо от размера
-- **overlap > 0**: если последний фрагмент < overlap, обновляется предыдущий слайс
+- **overlap = 0**: separate slice created regardless of size
+- **overlap > 0**: if last fragment < overlap, previous slice is updated
 
 ### No Files Found
-При отсутствии файлов для обработки:
-- Выводится предупреждение о поддерживаемых расширениях
-- Возвращается EXIT_SUCCESS (не считается ошибкой)
+When no files to process:
+- Warns about supported extensions
+- Returns EXIT_SUCCESS (not considered an error)
 
 ### Infinite Loop Protection
-При расчете overlap добавлена защита: если новый start ≤ старого, принудительно увеличивается на 1.
+Overlap calculation has protection: if new start ≤ old, force increment by 1.
 
 ## Test Coverage
 
-- **test_create_slug**: 6 тестов
+- **test_create_slug**: 6 tests
   - test_cyrillic_transliteration
   - test_english_with_spaces  
   - test_hyphens_preserved
@@ -226,82 +228,83 @@ python -m src.slicer
   - test_complex_filename
   - test_special_characters
 
-- **test_preprocess_text**: множество тестов
+- **test_preprocess_text**: multiple tests
   - test_unicode_normalization
-  - test_script_tag_removal (через BeautifulSoup)
-  - test_style_tag_removal (через BeautifulSoup)
+  - test_script_tag_removal (via BeautifulSoup)
+  - test_style_tag_removal (via BeautifulSoup)
   - test_plain_text_unchanged
   - test_invalid_input_type
 
-- **test_validate_config_parameters**: тесты валидации
+- **test_validate_config_parameters**: validation tests
   - test_valid_config
   - test_missing_parameters
   - test_invalid_types
   - test_overlap_constraint
 
-- **test_slice_text_with_window**: тесты алгоритма нарезки
+- **test_slice_text_with_window**: slicing algorithm tests
   - test_single_slice
   - test_multiple_slices_no_overlap
   - test_overlap_handling
   - test_soft_boundary_detection
   - test_infinite_loop_protection
 
-- **test_process_file**: тесты обработки файлов
+- **test_process_file**: file processing tests
   - test_successful_processing
   - test_empty_file_error
   - test_unsupported_extension
 
-- **integration tests**: полный pipeline тесты
-- **large file tests**: производительность на больших файлах
+- **integration tests**: full pipeline tests
+- **large file tests**: performance on large files
 
 ## Dependencies
 - **Standard Library**: argparse, json, logging, sys, unicodedata, pathlib, typing, re
-- **External**: unidecode, beautifulsoup4 (bs4), tiktoken
+- **External**: unidecode, beautifulsoup4 (bs4), tiktoken, python-dotenv
 - **Internal**: utils.config, utils.tokenizer (find_safe_token_boundary), utils.validation, utils.exit_codes, utils.console_encoding
 
 ## Performance Notes
-- Детерминированная обработка (лексикографический порядок файлов)
-- Точный подсчет токенов через tiktoken o200k_base
-- Эффективная обработка больших файлов через streaming токенизацию
-- Soft boundary поиск с автоматической конвертацией символов в токены
-- Поиск файлов с учетом регистра расширений для кроссплатформенности
+- **Deterministic processing**: lexicographic file order
+- **Accurate token counting**: via tiktoken o200k_base
+- **Efficient large file handling**: through streaming tokenization
+- **Soft boundary search**: with automatic character-to-token conversion
+- **Cross-platform file search**: case-aware extension matching
+- **Environment variables**: loaded via dotenv for flexibility
 
 ## Usage Examples
 ```bash
-# Простой запуск (использует config.toml)
+# Simple run (uses config.toml)
 python -m src.slicer
 
-# Проверка результатов
+# Check results
 dir data\staging\
 # slice_001.slice.json
 # slice_002.slice.json
 # ...
 
-# Структура файлов до:
+# File structure before:
 /data/raw/
   chapter1.md
   lesson2.txt
   exercises.json
-  README.TXT    # будет обработан (регистр расширения)
+  README.TXT    # will be processed (case-insensitive extension)
 
-# Структура файлов после:  
+# File structure after:  
 /data/staging/
-  slice_001.slice.json  # из chapter1.md
-  slice_002.slice.json  # из chapter1.md (продолжение)
-  slice_003.slice.json  # из lesson2.txt
-  slice_004.slice.json  # из exercises.json
-  slice_005.slice.json  # из README.TXT
+  slice_001.slice.json  # from chapter1.md
+  slice_002.slice.json  # from chapter1.md (continuation)
+  slice_003.slice.json  # from lesson2.txt
+  slice_004.slice.json  # from exercises.json
+  slice_005.slice.json  # from README.TXT
   
-# Просмотр слайса
+# View slice
 type data\staging\slice_001.slice.json
 
-# Проверка кодировки файлов
+# Check file encodings
 python -m src.slicer
-# Автоматически обработает разные кодировки (utf-8, cp1251, latin1)
+# Automatically handles different encodings (utf-8, cp1251, latin1)
 
-# Debug режим для анализа soft boundaries
-# Установите log_level = "debug" в config.toml
+# Debug mode for soft boundary analysis
+# Set log_level = "debug" in config.toml
 python -m src.slicer
-# [10:30:01] INFO     | Soft boundary найдена: сдвиг +15 токенов
-# [10:30:01] DEBUG    | Тип границы: двойной перенос строки
+# [10:30:01] INFO     | Soft boundary found: shift +15 tokens
+# [10:30:01] DEBUG    | Boundary type: double line break
 ```

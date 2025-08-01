@@ -2,167 +2,167 @@
 
 ## Status: READY
 
-Клиент для работы с OpenAI Responses API с поддержкой асинхронного режима, контроля лимитов токенов, цепочек ответов и reasoning моделей.
+Client for working with OpenAI Responses API with support for asynchronous mode, token limit control, response chains, and reasoning models.
 
 ## Public API
 
 ### ResponseUsage
-Dataclass для учета использованных токенов.
+Dataclass for tracking used tokens.
 - **Fields**: 
-  - input_tokens (int) - токены во входных данных
-  - output_tokens (int) - токены в ответе
-  - total_tokens (int) - общее количество (input + output)
-  - reasoning_tokens (int) - токены на reasoning (для o* моделей)
+  - input_tokens (int) - tokens in input data
+  - output_tokens (int) - tokens in response
+  - total_tokens (int) - total count (input + output)
+  - reasoning_tokens (int) - reasoning tokens (for o* models)
 
 ### TPMBucket
-Класс для контроля лимитов токенов в минуту через response headers.
+Class for tokens per minute limit control via response headers.
 
 #### TPMBucket.__init__(initial_limit: int)
-Инициализация bucket с начальным лимитом.
-- **Input**: initial_limit - начальный лимит токенов в минуту
+Initialize bucket with initial limit.
+- **Input**: initial_limit - initial tokens per minute limit
 - **Attributes**: 
-  - initial_limit - сохраненный начальный лимит
-  - remaining_tokens - текущий остаток токенов
-  - reset_time - Unix timestamp сброса лимита
+  - initial_limit - saved initial limit
+  - remaining_tokens - current token balance
+  - reset_time - Unix timestamp for limit reset
 
 #### TPMBucket.update_from_headers(headers: Dict[str, str]) -> None
-Обновление состояния из response headers.
-- **Input**: headers - словарь с headers от API (x-ratelimit-remaining-tokens, x-ratelimit-reset-tokens)
-- **Logic**: Парсит remaining tokens и reset time (формат "XXXms" или "Xs")
+Update state from response headers.
+- **Input**: headers - dictionary with API headers (x-ratelimit-remaining-tokens, x-ratelimit-reset-tokens)
+- **Logic**: Parses remaining tokens and reset time (format "XXXms" or "Xs")
 
 #### TPMBucket.wait_if_needed(required_tokens: int, safety_margin: float = 0.15) -> None
-Проверка достаточности токенов и ожидание при необходимости.
-- **Input**: required_tokens - необходимое количество, safety_margin - запас безопасности
-- **Logic**: Ждет до reset_time если токенов недостаточно
-- **Terminal Output**: При ожидании выводит информационное сообщение о восстановлении лимита
+Check token sufficiency and wait if necessary.
+- **Input**: required_tokens - required amount, safety_margin - safety margin
+- **Logic**: Waits until reset_time if insufficient tokens
+- **Terminal Output**: Shows informational message about limit reset when waiting
 
 ### IncompleteResponseError
-Exception для обработки incomplete статуса ответа (превышен лимит токенов).
+Exception for handling incomplete response status (token limit exceeded).
 
 ### OpenAIClient
-Основной клиент для работы с OpenAI Responses API.
+Main client for working with OpenAI Responses API.
 
 #### OpenAIClient.__init__(config: Dict[str, Any])
-Инициализация клиента с конфигурацией.
-- **Input**: config - словарь с параметрами:
-  - api_key (str) - ключ OpenAI API
-  - model (str) - модель (gpt-4o, o4-mini и т.д.)
-  - tpm_limit (int) - лимит токенов в минуту
-  - tpm_safety_margin (float) - запас безопасности (default 0.15)
-  - max_completion (int) - максимум токенов для генерации
-  - timeout (int) - таймаут запроса в секундах
-  - max_retries (int) - количество повторных попыток
-  - temperature (float, optional) - для обычных моделей
-  - reasoning_effort (str, optional) - для reasoning моделей
-  - reasoning_summary (str, optional) - тип summary для reasoning
-  - poll_interval (int) - интервал polling в секундах (default 5)
+Initialize client with configuration.
+- **Input**: config - dictionary with parameters:
+  - api_key (str) - OpenAI API key
+  - model (str) - model (gpt-4o, o4-mini, etc.)
+  - tpm_limit (int) - tokens per minute limit
+  - tpm_safety_margin (float) - safety margin (default 0.15)
+  - max_completion (int) - maximum tokens for generation
+  - timeout (int) - request timeout in seconds
+  - max_retries (int) - number of retry attempts
+  - temperature (float, optional) - for regular models
+  - reasoning_effort (str, optional) - for reasoning models
+  - reasoning_summary (str, optional) - summary type for reasoning
+  - poll_interval (int) - polling interval in seconds (default 5)
 
 #### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
-Создание response через OpenAI Responses API (публичный интерфейс).
+Create response via OpenAI Responses API (public interface).
 - **Input**: 
-  - instructions - системный промпт
-  - input_data - пользовательские данные
-  - previous_response_id - ID предыдущего ответа (опционально)
+  - instructions - system prompt
+  - input_data - user data
+  - previous_response_id - ID of previous response (optional)
 - **Returns**: (response_text, response_id, usage_info)
 - **Raises**: 
-  - TimeoutError - при превышении timeout
-  - IncompleteResponseError - при incomplete статусе
-  - ValueError - при failed статусе или отказе модели
-  - openai.RateLimitError - при превышении rate limit
+  - TimeoutError - when timeout exceeded
+  - IncompleteResponseError - for incomplete status
+  - ValueError - for failed status or model refusal
+  - openai.RateLimitError - when rate limit exceeded
 
 #### OpenAIClient.repair_response(instructions: str, input_data: str) -> Tuple[str, str, ResponseUsage]
-Repair запрос с тем же previous_response_id для исправления невалидного JSON.
-- **Input**: instructions - оригинальный промпт, input_data - оригинальные данные
+Repair request with same previous_response_id to fix invalid JSON.
+- **Input**: instructions - original prompt, input_data - original data
 - **Returns**: (response_text, response_id, usage_info)
-- **Logic**: Добавляет требование вернуть только валидный JSON
+- **Logic**: Adds requirement to return only valid JSON
 
 ## Internal Methods
 
 ### OpenAIClient._update_tpm_via_probe() -> None
-Получение актуальных rate limit данных через probe запрос.
-- **Logic**: Синхронный запрос к gpt-4.1-nano с "2+2=?" для получения headers
-- **Note**: Необходим т.к. в background режиме OpenAI не возвращает rate limit headers
+Get current rate limit data via probe request.
+- **Logic**: Synchronous request to gpt-4.1-nano with "2+2=?" to get headers
+- **Note**: Necessary because OpenAI doesn't return rate limit headers in background mode
 
 ### OpenAIClient._create_response_async(instructions, input_data, previous_response_id) -> Tuple[str, str, ResponseUsage]
-Основная логика создания response в асинхронном режиме.
+Main logic for creating response in asynchronous mode.
 - **Steps**:
-  1. TPM probe для актуализации лимитов
-  2. Создание background запроса (background=true)
-  3. Polling loop с проверкой статуса
-  4. Обработка статусов: completed, incomplete, failed, cancelled, queued
-  5. Автоматическое увеличение токенов при incomplete (×1.5, ×2.0)
-  6. Отмена при timeout с попыткой cancellation
+  1. TPM probe to update limits
+  2. Create background request (background=true)
+  3. Polling loop with status check
+  4. Handle statuses: completed, incomplete, failed, cancelled, queued
+  5. Automatic token increase on incomplete (×1.5, ×2.0)
+  6. Cancel on timeout with cancellation attempt
 - **Progress Display**: 
-  - Статус queued показывается при первом обнаружении
-  - Прогресс отображается каждые 3 polling итерации с временем ожидания
+  - Queued status shown at first detection
+  - Progress displayed every 3 polling iterations with elapsed time
 
 ### OpenAIClient._prepare_request_params(instructions, input_data, previous_response_id) -> Dict[str, Any]
-Подготовка параметров для Responses API.
+Prepare parameters for Responses API.
 - **Logic**: 
-  - Базовые параметры + store=true
-  - Для reasoning моделей: reasoning параметры, без temperature
-  - Для обычных: temperature, без reasoning
+  - Base parameters + store=true
+  - For reasoning models: reasoning parameters, no temperature
+  - For regular models: temperature, no reasoning
 
 ### OpenAIClient._extract_response_content(response) -> str
-Извлечение текста из response объекта.
+Extract text from response object.
 - **Logic**:
-  - Reasoning модели: output[0]=reasoning, output[1]=message
-  - Обычные модели: output[0]=message
-  - Обработка refusal и incomplete статусов
-  - Поддержка как completed, так и incomplete статусов
+  - Reasoning models: output[0]=reasoning, output[1]=message
+  - Regular models: output[0]=message
+  - Handle refusal and incomplete statuses
+  - Support both completed and incomplete statuses
 
 ### OpenAIClient._extract_usage_info(response) -> ResponseUsage
-Извлечение информации о токенах из response.
+Extract token usage information from response.
 
 ### OpenAIClient._clean_json_response(response_text: str) -> str
-Очистка ответа от markdown оберток.
-- **Logic**: Удаляет ```json...``` и ```...``` обертки
+Clean response from markdown wrappers.
+- **Logic**: Removes ```json...``` and ```...``` wrappers
 
 ## Terminal Output
 
-Модуль использует структурированный вывод в терминал с форматом `[HH:MM:SS] TAG | сообщение`:
+Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 
-### Асинхронная генерация ответов
-- **QUEUE** - ожидание в очереди OpenAI (показывается при первом обнаружении)
+### Asynchronous Response Generation
+- **QUEUE** - waiting in OpenAI queue (shown at first detection)
   ```
-  [10:30:01] QUEUE    | ⏳ Response 6871a162606c... waiting in queue...
-  ```
-
-- **PROGRESS** - прогресс ожидания в очереди (каждые 3 polling итерации)
-  ```
-  [10:30:08] PROGRESS | ⏳ Still queued (7s elapsed)...
-  [10:30:15] PROGRESS | ⏳ Still queued (14s elapsed)...
-  [10:30:22] PROGRESS | ⏳ Still queued (21s elapsed)...
-  [10:31:08] PROGRESS | ⏳ Still queued (1m 7s elapsed)...
+  [10:30:01] QUEUE    | ⏳ Response 6871a162606c... in progress
   ```
 
-- **ERROR** - критические ошибки
+- **PROGRESS** - waiting progress (every 3 polling iterations)
+  ```
+  [10:30:08] PROGRESS | ⏳ Elapsed: 7s
+  [10:30:15] PROGRESS | ⏳ Elapsed: 14s
+  [10:30:22] PROGRESS | ⏳ Elapsed: 21s
+  [10:31:08] PROGRESS | ⏳ Elapsed: 1m 7s
+  ```
+
+- **ERROR** - critical errors
   ```
   [10:30:15] ERROR    | ❌ Response incomplete: max_output_tokens
   [10:30:15] ERROR    |    Generated only 4000 tokens
   [10:30:20] ERROR    | ❌ Response generation failed: Server error
   ```
 
-- **HINT** - полезные подсказки для reasoning моделей
+- **HINT** - useful hints for reasoning models
   ```
   [10:30:16] HINT     | 💡 Reasoning model needs more tokens. Current limit: 10000
   ```
 
-- **RETRY** - информация о повторных попытках
+- **RETRY** - retry information
   ```
   [10:30:25] RETRY    | 🔄 Increasing token limit: 10000 → 15000
   [10:30:30] RETRY    | ⏳ Waiting 40s before retry 2/3...
   ```
 
-### TPM контроль
-- **INFO** - восстановление лимита после ожидания
+### TPM Control
+- **INFO** - limit reset after waiting
   ```
   [10:31:15] INFO     | ✅ TPM limit reset, continuing...
   ```
 
 ## Test Coverage
 
-- **test_llm_client**: 23 теста
+- **test_llm_client**: 23 tests
   - test_initialization
   - test_tpm_bucket_*
   - test_prepare_request_params_*
@@ -172,7 +172,7 @@ Repair запрос с тем же previous_response_id для исправле�
   - test_incomplete_handling
   - test_timeout_handling
   
-- **test_llm_client_integration**: 13 тестов
+- **test_llm_client_integration**: 13 tests
   - test_simple_response
   - test_json_response
   - test_response_chain
@@ -194,43 +194,43 @@ Repair запрос с тем же previous_response_id для исправле�
 
 ## Performance Notes
 
-### Асинхронный режим
-- Все запросы выполняются в background режиме для контроля над timeout
-- Polling с адаптивным интервалом:
-  - Первые 3 проверки: каждые 2 секунды (быстрая реакция)
-  - Далее: используется poll_interval из конфига
-- При timeout выполняется попытка отмены запроса
+### Asynchronous Mode
+- All requests executed in background mode for timeout control
+- Polling with adaptive interval:
+  - First 3 checks: every 2 seconds (fast response)
+  - Then: use poll_interval from config
+- On timeout, attempt to cancel request
 
-### Отображение прогресса
-- **Оптимизировано для читаемости**: прогресс показывается каждые 3 polling итерации
-- **Форматирование времени**: до 60 секунд показывается как "42s", после - как "2m 15s"
-- **Единственный промежуточный статус**: только queued, нет промежуточной информации о токенах
+### Progress Display
+- **Optimized for readability**: progress shown every 3 polling iterations
+- **Time formatting**: below 60 seconds shown as "42s", after as "2m 15s"
+- **Single intermediate status**: only queued, no intermediate token information
 
-### TPM Probe механизм
-- **ВАЖНО**: OpenAI не возвращает rate limit headers в background режиме
-- Probe запрос к дешевой модели gpt-4.1-nano перед основным запросом
-- Overhead: ~20 токенов (0.02% от типичного лимита)
-- В коде закомментированы попытки обновления TPM из async headers
+### TPM Probe Mechanism
+- **IMPORTANT**: OpenAI doesn't return rate limit headers in background mode
+- Probe request to cheap gpt-4.1-nano model before main request
+- Overhead: ~20 tokens (0.02% of typical limit)
+- Code has commented attempts to update TPM from async headers
 
-### Обработка incomplete
-- Автоматическое увеличение max_output_tokens при retry:
-  - 1-й retry: ×1.5 от исходного
-  - 2-й retry: ×2.0 от исходного
-  - 3-й retry: критическая ошибка
-- **Исправлен баг**: переменная old_limit теперь корректно определяется перед использованием
+### Incomplete Handling
+- Automatic max_output_tokens increase on retry:
+  - 1st retry: ×1.5 from original
+  - 2nd retry: ×2.0 from original
+  - 3rd retry: critical error
+- **Bug fixed**: old_limit variable now correctly defined before use
 
-### Консольный вывод прогресса
-- [QUEUE] ⏳ - запрос в очереди (только первый раз)
-- [PROGRESS] ⏳ - прогресс ожидания с временем (каждые 3 проверки)
-- [ERROR] ❌ - ошибки генерации
-- [RETRY] ⏳ - ожидание перед повторной попыткой
-- [RETRY] 🔄 - увеличение лимита токенов при incomplete
-- [HINT] 💡 - подсказки для reasoning моделей
-- [INFO] ✅ - восстановление TPM лимита
+### Console Progress Output
+- [QUEUE] ⏳ - request in queue (first time only)
+- [PROGRESS] ⏳ - waiting progress with time (every 3 checks)
+- [ERROR] ❌ - generation errors
+- [RETRY] ⏳ - waiting before retry
+- [RETRY] 🔄 - token limit increase on incomplete
+- [HINT] 💡 - hints for reasoning models
+- [INFO] ✅ - TPM limit reset
 
 ## Usage Examples
 
-### Базовое использование
+### Basic Usage
 ```python
 from src.utils.llm_client import OpenAIClient
 
@@ -248,7 +248,7 @@ config = {
 
 client = OpenAIClient(config)
 
-# Простой запрос
+# Simple request
 response_text, response_id, usage = client.create_response(
     "You are a helpful assistant",
     "What is the capital of France?"
@@ -257,33 +257,33 @@ print(f"Response: {response_text}")
 print(f"Tokens used: {usage.total_tokens}")
 ```
 
-### Цепочка запросов с контекстом
+### Request Chain with Context
 ```python
-# Первый запрос
+# First request
 text1, id1, usage1 = client.create_response(
     "You are a math tutor",
     "My name is Alice. What is 5 + 3?"
 )
 
-# Второй запрос помнит контекст
+# Second request remembers context
 text2, id2, usage2 = client.create_response(
     "Continue being a math tutor",
     "What was my name?",
-    previous_response_id=id1  # Явная передача контекста
+    previous_response_id=id1  # Explicit context passing
 )
-# Ответ будет содержать "Alice"
+# Response will contain "Alice"
 ```
 
-### Работа с reasoning моделями
+### Working with Reasoning Models
 ```python
 config = {
     'api_key': 'sk-...',
-    'model': 'o4-mini-2025-04-16',  # Reasoning модель
+    'model': 'o4-mini-2025-04-16',  # Reasoning model
     'tpm_limit': 100000,
-    'max_completion': 25000,  # Больше токенов для reasoning
+    'max_completion': 25000,  # More tokens for reasoning
     'reasoning_effort': 'medium',
     'reasoning_summary': 'auto',
-    # temperature не указываем для reasoning моделей!
+    # don't specify temperature for reasoning models!
 }
 
 client = OpenAIClient(config)
@@ -294,7 +294,7 @@ response_text, _, usage = client.create_response(
 print(f"Reasoning tokens: {usage.reasoning_tokens}")
 ```
 
-### Обработка JSON ответов с repair
+### JSON Response Handling with Repair
 ```python
 import json
 
@@ -305,7 +305,7 @@ try:
     )
     data = json.loads(response_text)
 except json.JSONDecodeError:
-    # Пробуем repair с тем же контекстом
+    # Try repair with same context
     response_text, _, _ = client.repair_response(
         "Return a JSON object",
         "Create user object with name and age"
@@ -313,7 +313,7 @@ except json.JSONDecodeError:
     data = json.loads(response_text)
 ```
 
-### Обработка ошибок
+### Error Handling
 ```python
 try:
     response_text, response_id, usage = client.create_response(
@@ -322,20 +322,20 @@ try:
     )
 except IncompleteResponseError as e:
     print(f"Response was incomplete: {e}")
-    # Можно повторить с большим max_completion
+    # Can retry with larger max_completion
 except TimeoutError as e:
     print(f"Request timed out: {e}")
 except openai.RateLimitError as e:
     print(f"Rate limit exceeded: {e}")
 ```
 
-### Мониторинг TPM
+### TPM Monitoring
 ```python
-# Проверка текущего состояния TPM
+# Check current TPM state
 print(f"TPM remaining: {client.tpm_bucket.remaining_tokens}")
 print(f"TPM reset at: {client.tpm_bucket.reset_time}")
 
-# После запроса
+# After request
 response_text, _, usage = client.create_response(...)
 print(f"Tokens used: {usage.total_tokens}")
 print(f"TPM remaining after: {client.tpm_bucket.remaining_tokens}")

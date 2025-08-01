@@ -2,117 +2,117 @@
 
 ## Status: READY
 
-Модуль для работы с OpenAI Embeddings API. Предоставляет функции для получения векторных представлений текста и вычисления косинусной близости между векторами.
+Module for working with OpenAI Embeddings API. Provides functions for obtaining vector representations of text and calculating cosine similarity between vectors.
 
 ## Public API
 
 ### EmbeddingsClient
-Клиент для работы с OpenAI Embeddings API с поддержкой батчевой обработки и контроля TPM лимитов.
+Client for working with OpenAI Embeddings API with support for batch processing and TPM limit control.
 
 #### EmbeddingsClient.__init__(config: Dict[str, Any])
-Инициализация клиента.
-- **Input**: config - словарь конфигурации с ключами:
-  - embedding_api_key (str, optional) - API ключ для embeddings (fallback на api_key)
-  - api_key (str) - основной API ключ
-  - embedding_model (str) - модель для эмбеддингов (по умолчанию "text-embedding-3-small")
-  - embedding_tpm_limit (int) - TPM лимит (по умолчанию 350000)
-  - max_retries (int) - количество повторных попыток (по умолчанию 3)
-- **Raises**: ValueError - если API ключ не найден
+Client initialization.
+- **Input**: config - configuration dictionary with keys:
+  - embedding_api_key (str, optional) - API key for embeddings (fallback to api_key)
+  - api_key (str) - main API key
+  - embedding_model (str) - model for embeddings (default "text-embedding-3-small")
+  - embedding_tpm_limit (int) - TPM limit (default 350000)
+  - max_retries (int) - number of retry attempts (default 3)
+- **Raises**: ValueError - if API key not found
 
 #### EmbeddingsClient.get_embeddings(texts: List[str]) -> np.ndarray
-Получение эмбеддингов для списка текстов.
-- **Input**: texts - список текстов для обработки
-- **Returns**: numpy array shape (n_texts, 1536) с нормализованными векторами
-- **Terminal Output**: При обработке нескольких батчей показывает прогресс и статус
+Get embeddings for a list of texts.
+- **Input**: texts - list of texts to process
+- **Returns**: numpy array shape (n_texts, 1536) with normalized vectors
+- **Terminal Output**: Shows progress and status when processing multiple batches
 - **Features**: 
-  - Автоматическое разбиение на батчи (до 2048 текстов за запрос)
-  - Обрезка текстов длиннее 8192 токенов
-  - Контроль TPM лимитов с ожиданием
-  - Retry логика с exponential backoff
-  - **Обработка пустых строк**: пустые строки (после strip()) не отправляются в API, для них возвращаются нулевые векторы
-  - **Сохранение порядка**: исходный порядок текстов сохраняется в результате
-- **Raises**: Exception - при ошибках API после всех retry попыток
+  - Automatic batching (up to 2048 texts per request)
+  - Truncation of texts longer than 8192 tokens
+  - TPM limit control with waiting
+  - Retry logic with exponential backoff
+  - **Empty string handling**: empty strings (after strip()) are not sent to API, zero vectors are returned for them
+  - **Order preservation**: original text order is preserved in results
+- **Raises**: Exception - on API errors after all retry attempts
 
 ### get_embeddings(texts: List[str], config: Dict[str, Any]) -> np.ndarray
-Простая обертка для получения эмбеддингов.
+Simple wrapper for getting embeddings.
 - **Input**: 
-  - texts - список текстов
-  - config - конфигурация (должна содержать embedding_api_key или api_key)
-- **Returns**: numpy array с эмбеддингами
+  - texts - list of texts
+  - config - configuration (must contain embedding_api_key or api_key)
+- **Returns**: numpy array with embeddings
 
 ### cosine_similarity_batch(embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray
-Вычисление косинусной близости между двумя наборами векторов.
+Calculate cosine similarity between two sets of vectors.
 - **Input**: 
-  - embeddings1 - массив векторов shape (n1, dim)
-  - embeddings2 - массив векторов shape (n2, dim)
-- **Returns**: массив косинусных близостей shape (n1, n2)
-- **Note**: Векторы должны быть нормализованы (OpenAI API возвращает нормализованные)
+  - embeddings1 - vector array shape (n1, dim)
+  - embeddings2 - vector array shape (n2, dim)
+- **Returns**: cosine similarity array shape (n1, n2)
+- **Note**: Vectors must be normalized (OpenAI API returns normalized)
 
 ## Internal Methods
 
 #### _count_tokens(text: str) -> int
-Подсчет токенов в тексте с использованием cl100k_base токенизера.
+Count tokens in text using cl100k_base tokenizer.
 
 #### _truncate_text(text: str, max_tokens: int = 8000) -> str
-Обрезка текста до указанного количества токенов.
+Truncate text to specified number of tokens.
 
 #### _update_tpm_state(tokens_used: int, headers: Optional[Dict[str, str]] = None)
-Обновление состояния TPM bucket из response headers или простым вычитанием.
+Update TPM bucket state from response headers or by simple subtraction.
 
 #### _wait_for_tokens(required_tokens: int, safety_margin: float = 0.15)
-Ожидание доступности токенов с учетом safety margin.
-- **Terminal Output**: Информирует пользователя об ожидании и восстановлении лимита
+Wait for token availability with safety margin.
+- **Terminal Output**: Informs user about waiting and limit reset
 
 #### _batch_texts(texts: List[str]) -> List[List[str]]
-Разбиение текстов на батчи с учетом лимитов API (2048 текстов, ~100K токенов).
-- **Terminal Output**: Предупреждает об обрезке текстов длиннее 8192 токенов
+Split texts into batches considering API limits (2048 texts, ~100K tokens).
+- **Terminal Output**: Warns about truncation of texts longer than 8192 tokens
 
 ## Terminal Output
 
-Модуль выводит информацию о прогрессе обработки в терминал с форматом `[HH:MM:SS] EMBEDDINGS | сообщение`:
+Module outputs processing progress information to terminal with format `[HH:MM:SS] EMBEDDINGS | message`:
 
-### Обработка батчей
-- Информация о начале обработки (при >1 батча):
+### Batch Processing
+- Processing start information (when >1 batch):
   ```
   [10:30:00] EMBEDDINGS | Processing 457 texts in 5 batches...
   ```
 
-- Прогресс по батчам (при >1 батча):
+- Batch progress (when >1 batch):
   ```
   [10:30:05] EMBEDDINGS | ✅ Batch 1/5 completed
   [10:30:10] EMBEDDINGS | ✅ Batch 2/5 completed
   ```
 
-- Финальное сообщение (при >1 батча):
+- Final message (when >1 batch):
   ```
   [10:31:08] EMBEDDINGS | ✅ Completed: 457 texts processed
   ```
 
-### Обработка текстов
-- Предупреждение об обрезке длинных текстов:
+### Text Processing
+- Warning about long text truncation:
   ```
   [10:30:01] EMBEDDINGS | ⚠️ Text truncated: 9234 → 8000 tokens
   ```
 
-### TPM контроль
-- Ожидание восстановления лимита:
+### TPM Control
+- Waiting for limit reset:
   ```
   [10:30:12] EMBEDDINGS | ⏳ Waiting 42.3s for TPM limit reset...
   [10:30:55] EMBEDDINGS | ✅ TPM limit reset, continuing...
   ```
 
-### Обработка ошибок
-- Rate limit с retry:
+### Error Handling
+- Rate limit with retry:
   ```
   [10:31:20] EMBEDDINGS | ⏳ Rate limit hit, retry 1/3 in 10s...
   ```
 
-**Примечание**: Вывод в терминал происходит только для операций с несколькими батчами. При обработке небольшого количества текстов (1 батч) модуль работает "тихо".
+**Note**: Terminal output only occurs for operations with multiple batches. When processing small amounts of text (1 batch), the module works "silently".
 
 ## Test Coverage
 
 ### Unit Tests (test_llm_embeddings.py)
-- **TestEmbeddingsClient**: 14 тестов
+- **TestEmbeddingsClient**: 14 tests
   - test_init_with_embedding_api_key
   - test_init_fallback_to_api_key
   - test_init_no_api_key
@@ -128,21 +128,21 @@
   - test_get_embeddings_rate_limit_retry
   - test_get_embeddings_max_retries_exceeded
 
-- **TestHelperFunctions**: 3 теста
+- **TestHelperFunctions**: 3 tests
   - test_get_embeddings_wrapper
   - test_cosine_similarity_batch
   - test_cosine_similarity_batch_normalized
 
 ### Integration Tests (test_llm_embeddings_integration.py)
-- **TestSingleEmbedding**: 2 теста (одиночные тексты)
-- **TestBatchProcessing**: 3 теста (батчи разных размеров)
-- **TestLongTexts**: 3 теста (обработка длинных текстов)
-- **TestCosineSimilarity**: 4 теста (проверка similarity)
-- **TestEdgeCases**: 5 тестов (пустые строки, спецсимволы)
-- **TestTPMLimits**: 2 теста (контроль лимитов)
-- **TestErrorHandling**: 2 теста (обработка ошибок)
-- **TestVectorProperties**: 2 теста (свойства векторов)
-- **TestPerformance**: 1 тест (производительность)
+- **TestSingleEmbedding**: 2 tests (single texts)
+- **TestBatchProcessing**: 3 tests (batches of different sizes)
+- **TestLongTexts**: 3 tests (long text processing)
+- **TestCosineSimilarity**: 4 tests (similarity verification)
+- **TestEdgeCases**: 5 tests (empty strings, special characters)
+- **TestTPMLimits**: 2 tests (limit control)
+- **TestErrorHandling**: 2 tests (error handling)
+- **TestVectorProperties**: 2 tests (vector properties)
+- **TestPerformance**: 1 test (performance)
 
 ## Dependencies
 
@@ -152,50 +152,50 @@
 
 ## Configuration
 
-Модуль использует следующие параметры из конфигурации:
-- `embedding_api_key` - API ключ для embeddings (опционально)
-- `api_key` - основной API ключ (fallback)
-- `embedding_model` - модель OpenAI для эмбеддингов
-- `embedding_tpm_limit` - лимит токенов в минуту (350000 для embedding моделей)
-- `max_retries` - количество повторных попыток при ошибках
+Module uses the following configuration parameters:
+- `embedding_api_key` - API key for embeddings (optional)
+- `api_key` - main API key (fallback)
+- `embedding_model` - OpenAI model for embeddings
+- `embedding_tpm_limit` - tokens per minute limit (350000 for embedding models)
+- `max_retries` - number of retry attempts on errors
 
 ## Performance Notes
 
-- **Токенизер**: Использует cl100k_base (НЕ o200k_base!) согласно требованиям OpenAI Embeddings API
-- **Батчинг**: Автоматическое разбиение на батчи для оптимальной производительности
-- **TPM контроль**: Встроенный контроль лимитов с ожиданием восстановления
-- **Размерность**: text-embedding-3-small возвращает векторы размерности 1536
-- **Нормализация**: Векторы автоматически нормализованы (норма = 1)
-- **Пустые строки**: OpenAI API не принимает пустые строки, модуль автоматически фильтрует их и возвращает нулевые векторы
+- **Tokenizer**: Uses cl100k_base (NOT o200k_base!) as required by OpenAI Embeddings API
+- **Batching**: Automatic batching for optimal performance
+- **TPM control**: Built-in limit control with wait for reset
+- **Dimensions**: text-embedding-3-small returns vectors of dimension 1536
+- **Normalization**: Vectors are automatically normalized (norm = 1)
+- **Empty strings**: OpenAI API doesn't accept empty strings, module automatically filters them and returns zero vectors
 
 ## Usage Examples
 
 ```python
 from utils import load_config, get_embeddings, cosine_similarity_batch
 
-# Загрузка конфигурации
+# Load configuration
 config = load_config()
 
-# Получение эмбеддингов для текстов
+# Get embeddings for texts
 texts = ["Python programming", "Machine learning", "Data science"]
 embeddings = get_embeddings(texts, config['dedup'])
 
-# Вычисление попарной косинусной близости
+# Calculate pairwise cosine similarity
 similarity_matrix = cosine_similarity_batch(embeddings, embeddings)
 print(f"Similarity between text 0 and 1: {similarity_matrix[0, 1]:.3f}")
 
-# Использование с классом напрямую для более тонкого контроля
+# Using the class directly for finer control
 from utils.llm_embeddings import EmbeddingsClient
 
 client = EmbeddingsClient(config['dedup'])
-# Обработка большого количества текстов
-large_text_list = ["text"] * 5000  # Будет автоматически разбито на батчи
+# Processing large number of texts
+large_text_list = ["text"] * 5000  # Will be automatically split into batches
 embeddings = client.get_embeddings(large_text_list)
 
-# Обработка текстов с пустыми строками
+# Processing texts with empty strings
 mixed_texts = ["Hello", "", "World", "   ", "!"]
 embeddings = client.get_embeddings(mixed_texts)
-# Результат: shape (5, 1536), где embeddings[1] и embeddings[3] - нулевые векторы
+# Result: shape (5, 1536), where embeddings[1] and embeddings[3] are zero vectors
 ```
 
 ## Error Handling
@@ -204,10 +204,10 @@ embeddings = client.get_embeddings(mixed_texts)
 try:
     embeddings = get_embeddings(texts, config)
 except ValueError as e:
-    # Ошибка конфигурации (нет API ключа)
+    # Configuration error (no API key)
     print(f"Config error: {e}")
 except Exception as e:
-    # API ошибки после всех retry попыток
+    # API errors after all retry attempts
     if "rate_limit" in str(e).lower():
         print("Rate limit exceeded, try again later")
     else:
@@ -216,8 +216,8 @@ except Exception as e:
 
 ## Edge Cases
 
-- **Пустые строки**: Автоматически заменяются на нулевые векторы без вызова API
-- **Слишком длинные тексты**: Обрезаются до 8000 токенов с логированием предупреждения
-- **Пустой входной массив**: Возвращает пустой numpy array shape (0,)
-- **Смешанные языки**: Поддерживаются, модель multilingual
-- **Специальные символы и эмодзи**: Обрабатываются корректно
+- **Empty strings**: Automatically replaced with zero vectors without API call
+- **Too long texts**: Truncated to 8000 tokens with warning logging
+- **Empty input array**: Returns empty numpy array shape (0,)
+- **Mixed languages**: Supported, model is multilingual
+- **Special characters and emoji**: Processed correctly

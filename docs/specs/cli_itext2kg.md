@@ -2,125 +2,125 @@
 
 ## Status: READY
 
-CLI утилита для инкрементального построения графа знаний из образовательных текстов. Обрабатывает слайсы последовательно, отправляет в LLM с сохранением контекста через previous_response_id. Включает механизмы восстановления после ошибок и сохранение промежуточных результатов.
+CLI utility for incremental knowledge graph construction from educational texts. Processes slices sequentially, sends them to LLM while preserving context through previous_response_id. Includes error recovery mechanisms and intermediate result saving.
 
 ## CLI Interface
 
-**Запуск:**
+**Launch:**
 ```bash
 python -m src.itext2kg
 ```
 
-**Входные данные:**
-- `/data/staging/*.slice.json` - слайсы от slicer.py
+**Input data:**
+- `/data/staging/*.slice.json` - slices from slicer.py
 
-**Выходные данные:**
-- `/data/out/ConceptDictionary.json` - словарь концептов
-- `/data/out/LearningChunkGraph_raw.json` - граф знаний
-- `/logs/itext2kg_YYYY-MM-DD_HH-MM-SS.log` - детальные логи
-- `/logs/{slice_id}_bad.json` - проблемные ответы LLM (при ошибках)
-- `/logs/*_temp_*.json` - временные дампы (при критических ошибках)
+**Output data:**
+- `/data/out/ConceptDictionary.json` - concept dictionary
+- `/data/out/LearningChunkGraph_raw.json` - knowledge graph
+- `/logs/itext2kg_YYYY-MM-DD_HH-MM-SS.log` - detailed logs
+- `/logs/{slice_id}_bad.json` - problematic LLM responses (on errors)
+- `/logs/*_temp_*.json` - temporary dumps (on critical errors)
 
-**Коды завершения:**
-- 0 (SUCCESS) - успешная обработка
-- 1 (CONFIG_ERROR) - ошибки конфигурации
-- 2 (INPUT_ERROR) - нет слайсов в staging
-- 3 (RUNTIME_ERROR) - все слайсы failed или критическая ошибка
-- 4 (API_LIMIT_ERROR) - исчерпаны лимиты API
-- 5 (IO_ERROR) - ошибки записи файлов
+**Exit codes:**
+- 0 (SUCCESS) - successful processing
+- 1 (CONFIG_ERROR) - configuration errors
+- 2 (INPUT_ERROR) - no slices in staging
+- 3 (RUNTIME_ERROR) - all slices failed or critical error
+- 4 (API_LIMIT_ERROR) - API limits exhausted
+- 5 (IO_ERROR) - file write errors
 
 ## Core Algorithm
 
-1. **Загрузка слайсов** из staging в лексикографическом порядке
-2. **Последовательная обработка** с сохранением previous_response_id:
-   - Форматирование входных данных (ConceptDictionary + Slice)
-   - Вызов LLM через Responses API
-   - Валидация и парсинг ответа
-   - Repair-reprompt при ошибках (1 попытка)
-   - Инкрементальное обновление структур данных
-   - **Промежуточная валидация** после каждого слайса
-   - Автоматическое добавление MENTIONS edges для всех обработанных Chunks
-3. **Обработка сбоев** с graceful degradation:
-   - Продолжение при частичных сбоях
-   - Сохранение временных дампов при критических ошибках
-4. **Финальная валидация** с использованием промежуточной валидации (допускает дубликаты концептов)
-5. **Сохранение результатов** в output
+1. **Load slices** from staging in lexicographic order
+2. **Sequential processing** with previous_response_id preservation:
+   - Format input data (ConceptDictionary + Slice)
+   - Call LLM via Responses API
+   - Validate and parse response
+   - Repair-reprompt on errors (1 attempt)
+   - Incremental data structure update
+   - **Intermediate validation** after each slice
+   - Automatic addition of MENTIONS edges for all processed Chunks
+3. **Error handling** with graceful degradation:
+   - Continue on partial failures
+   - Save temporary dumps on critical errors
+4. **Final validation** using intermediate validation (allows concept duplicates)
+5. **Save results** to output
 
 ## Terminal Output
 
-Утилита использует структурированный вывод прогресса с унифицированным форматом:
+The utility uses structured progress output with unified format:
 ```
-[HH:MM:SS] TAG      | Данные
+[HH:MM:SS] TAG      | Data
 ```
 
-### Формат вывода прогресса
+### Progress Output Format
 
-**START - начало обработки:**
+**START - processing start:**
 ```
 [10:30:00] START    | 157 slices | model=o4-mini-2025-04-16 | tpm=100k
 ```
 
-**SLICE - успешная обработка слайса:**
+**SLICE - successful slice processing:**
 ```
 [10:30:05] SLICE    | ✅ 001/157 | tokens_used=12.35k | tokens_current=1.23k | 5s | concepts=23 | nodes=156 | edges=287
 [10:30:12] SLICE    | ✅ 002/157 | tokens_used=112.34k | tokens_current=11.23k incl. reasoning=567 | 8s | concepts=25 | nodes=163 | edges=301
 ```
 
-**REPAIR - попытка исправления ошибок валидации:**
+**REPAIR - validation error fix attempts:**
 ```
 [10:30:45] REPAIR   | 🔧 Attempting to fix JSON validation error...
 [10:30:45] REPAIR   | 📝 Adding clarification to prompt and retrying...
 [10:30:50] REPAIR   | ✅ JSON validation fixed successfully!
 ```
 
-**ERROR - ошибки обработки:**
+**ERROR - processing errors:**
 ```
 [10:30:45] ERROR    | ❌ 042/157 | slice_042 | JSON validation failed after repair
 [10:30:45] ERROR    | ❌ Incremental validation failed for slice_042
-[10:30:45] ERROR    | 📋 Error: Дублированный ID узла (Assessment): algo101:q:1234:0...
+[10:30:45] ERROR    | 📋 Error: Duplicate node ID (Assessment): algo101:q:1234:0...
 [10:31:02] ERROR    | ⚠️ RateLimitError | waiting for retry...
 [10:31:15] ERROR    | ⚠️ APIError | slice slice_055
 ```
 
-**FAILED - критические ошибки:**
+**FAILED - critical errors:**
 ```
 [10:45:30] FAILED   | ❌ All slices failed processing
 [10:45:30] FAILED   | ❌ Critical error: Connection timeout...
 [10:45:30] FAILED   | ❌ Validation failed: Invalid graph structure...
 ```
 
-**SAVING - сохранение временных файлов:**
+**SAVING - saving temporary files:**
 ```
 [10:45:30] SAVING   | 💾 Attempting to save empty structures...
 [10:45:30] SAVING   | 💾 Emergency dump of current state...
 [10:45:30] SAVING   | 💾 Attempting to save partial results...
 ```
 
-**INFO - информационные сообщения:**
+**INFO - informational messages:**
 ```
 [10:45:31] INFO     | Check /logs/ for temporary files and diagnostics
 ```
 
-**SUCCESS - успешное завершение:**
+**SUCCESS - successful completion:**
 ```
 [10:45:30] SUCCESS  | ✅ Results saved to /data/out/
                     | - ConceptDictionary.json
                     | - LearningChunkGraph_raw.json
 ```
 
-**END - завершение работы:**
+**END - work completion:**
 ```
 [10:45:30] END      | Done | slices=157 | time=15m 30s
 ```
 
-### Логирование в файлы
+### File Logging
 
-В файлах логов используется JSON Lines формат для структурированного анализа:
-- **INFO уровень**: основные события обработки
-- **DEBUG уровень**: полные промпты и ответы LLM (при log_level=debug)
-- **ERROR уровень**: ошибки валидации и API
+Log files use JSON Lines format for structured analysis:
+- **INFO level**: main processing events
+- **DEBUG level**: full LLM prompts and responses (when log_level=debug)
+- **ERROR level**: validation and API errors
 
-Ошибки также выводятся в консоль через стандартный logger:
+Errors are also output to console via standard logger:
 ```
 [10:30:00] ERROR    | No slice files found in staging directory
 ```
@@ -128,228 +128,228 @@ python -m src.itext2kg
 ## Public Classes
 
 ### ProcessingStats
-Статистика обработки слайсов.
+Slice processing statistics.
 - **Attributes**: total_slices, processed_slices, failed_slices, total_concepts, total_nodes, total_edges, total_tokens_used, start_time
 
 ### SliceData
-Данные одного слайса.
+Single slice data.
 - **Attributes**: id, order, source_file, slug, text, slice_token_start, slice_token_end
 
 ### SliceProcessor
-Основной класс обработки.
-- **__init__(config)** - инициализация с конфигурацией
-- **run()** - основной метод запуска обработки
+Main processing class.
+- **__init__(config)** - initialization with configuration
+- **run()** - main processing launch method
 
 ## Internal Methods
 
 ### SliceProcessor._format_tokens(tokens)
-Форматирование количества токенов в читаемый вид.
-- **Input**: tokens - количество токенов
-- **Returns**: строка вида "123", "45.61k", "1.22M"
+Format token count to readable form.
+- **Input**: tokens - number of tokens
+- **Returns**: string like "123", "45.61k", "1.22M"
 - **Features**:
-  - Числа < 1000: без изменений ("123")
-  - Тысячи (1K-999K): форматируются как "45.61k" с двумя знаками после запятой
-  - Миллионы (1M+): форматируются как "1.22M" с двумя знаками после запятой
+  - Numbers < 1000: unchanged ("123")
+  - Thousands (1K-999K): formatted as "45.61k" with two decimal places
+  - Millions (1M+): formatted as "1.22M" with two decimal places
 
 ### SliceProcessor._process_chunk_nodes(new_nodes)
-Обработка узлов типа Chunk и Assessment с проверкой дубликатов.
-- **Input**: new_nodes - список новых узлов из патча
-- **Returns**: список узлов для добавления в граф
+Process Chunk and Assessment nodes with duplicate checking.
+- **Input**: new_nodes - list of new nodes from patch
+- **Returns**: list of nodes to add to graph
 - **Features**:
-  - Для Chunk: сравнение длины текста, обновление если новый длиннее
-  - Для Assessment: игнорирование дубликатов с логированием предупреждения
-  - Для остальных типов: добавление без изменений
+  - For Chunk: text length comparison, update if new is longer
+  - For Assessment: ignore duplicates with warning logging
+  - For other types: add without changes
 
 ### SliceProcessor._validate_edges(edges)
-Валидация рёбер с проверкой существования узлов и фильтрацией дубликатов.
-- **Input**: edges - список рёбер для проверки
-- **Returns**: список валидных рёбер
+Edge validation with node existence checking and duplicate filtering.
+- **Input**: edges - list of edges to check
+- **Returns**: list of valid edges
 - **Features**:
-  - Проверка существования source/target узлов (включая концепты из ConceptDictionary)
-  - Отбрасывание PREREQUISITE self-loops
-  - Проверка весов в диапазоне [0,1]
-  - **Фильтрация дублированных рёбер**:
-    - Проверка против существующих рёбер в графе
-    - Проверка дубликатов внутри текущего патча
-    - Дубликаты определяются по комбинации (source, target, type)
-    - Вес игнорируется при определении дубликата
-  - Битые рёбра отбрасываются с WARNING логированием
-  - Дублированные рёбра отбрасываются с INFO логированием
+  - Check source/target node existence (including concepts from ConceptDictionary)
+  - Drop PREREQUISITE self-loops
+  - Check weights in range [0,1]
+  - **Duplicate edge filtering**:
+    - Check against existing edges in graph
+    - Check duplicates within current patch
+    - Duplicates determined by combination (source, target, type)
+    - Weight ignored when determining duplicate
+  - Invalid edges dropped with WARNING logging
+  - Duplicate edges dropped with INFO logging
 
 ### SliceProcessor._save_bad_response(slice_id, original_response, error, repair_response=None)
-Сохранение некорректного ответа LLM для анализа.
-- **Input**: slice_id, оригинальный ответ, описание ошибки, repair ответ (если был)
-- **Output**: файл `/logs/{slice_id}_bad.json` с полной информацией
+Save incorrect LLM response for analysis.
+- **Input**: slice_id, original response, error description, repair response (if any)
+- **Output**: file `/logs/{slice_id}_bad.json` with full information
 
 ### SliceProcessor._save_temp_dumps(reason)
-Сохранение временных дампов при критических ошибках.
-- **Input**: reason - причина сохранения (interrupted, validation_failed, io_error, all_failed, critical_error, validation_error_slice_{id})
+Save temporary dumps on critical errors.
+- **Input**: reason - save reason (interrupted, validation_failed, io_error, all_failed, critical_error, validation_error_slice_{id})
 - **Output**: 
   - ConceptDictionary_temp_{reason}_{timestamp}.json
   - LearningChunkGraph_temp_{reason}_{timestamp}.json
   - processing_stats_{reason}_{timestamp}.json
 
 ### SliceProcessor._process_single_slice(slice_file)
-Обработка одного слайса с полной обработкой ошибок.
-- **Returns**: True при успехе, False при неудаче
+Process single slice with full error handling.
+- **Returns**: True on success, False on failure
 - **Features**: 
-  - repair-reprompt при невалидном JSON
-  - сохранение bad responses
-  - промежуточная валидация после применения патча
+  - repair-reprompt on invalid JSON
+  - save bad responses
+  - intermediate validation after patch application
   - graceful error handling
 
 ### SliceProcessor._add_mentions_edges(chunk_nodes)
-Автоматически добавляет MENTIONS edges от Chunks к Concepts на основе текстового поиска.
-- **Input**: chunk_nodes - список узлов типа Chunk для обработки
-- **Returns**: количество добавленных MENTIONS edges
+Automatically add MENTIONS edges from Chunks to Concepts based on text search.
+- **Input**: chunk_nodes - list of Chunk type nodes for processing
+- **Returns**: number of added MENTIONS edges
 - **Algorithm**:
-  - Для каждого Chunk ищет упоминания всех концептов из ConceptDictionary
-  - Поиск выполняется по term.primary и всем term.aliases
-  - **Правила поиска**:
-    - Full word matches only (использует regex `\b` границы слов)
-    - Case-insensitive (сравнение в нижнем регистре)
-    - Exact forms only (без морфологии, "стеки" ≠ "стек")
-  - Избегает дублирования существующих MENTIONS edges
-  - Все MENTIONS edges имеют weight=1.0
+  - For each Chunk searches for mentions of all concepts from ConceptDictionary
+  - Search performed on term.primary and all term.aliases
+  - **Search rules**:
+    - Full word matches only (uses regex `\b` word boundaries)
+    - Case-insensitive (lowercase comparison)
+    - Exact forms only (no morphology, "stacks" ≠ "stack")
+  - Avoids duplicating existing MENTIONS edges
+  - All MENTIONS edges have weight=1.0
 
 ### SliceProcessor._process_llm_response(response_text, slice_id)
-Обработка и валидация ответа LLM с предварительной очисткой известных проблем.
-- **Input**: response_text - сырой ответ от LLM, slice_id - ID текущего слайса
-- **Returns**: (success, parsed_data) - успех и распарсенные данные или None
+Process and validate LLM response with pre-cleaning of known issues.
+- **Input**: response_text - raw LLM response, slice_id - current slice ID
+- **Returns**: (success, parsed_data) - success and parsed data or None
 - **Features**:
-  - **Предварительная очистка HTML атрибутов**:
-    - Исправляет паттерны типа `href='\"url\"'` → `href="url"`
-    - Исправляет паттерны типа `src="'url'"` → `src="url"` 
-    - Применяется ко всем ответам перед парсингом JSON
-    - Обрабатывает атрибуты: href, src, target, action, name, frameborder, width, height, align
-    - Использует регулярные выражения для замены
-  - Парсинг очищенного JSON
-  - Валидация структуры ответа (наличие concepts_added и chunk_graph_patch)
-  - Базовая валидация по схемам ConceptDictionary и LearningChunkGraph
-  - При ошибке логирует детали для отладки
+  - **HTML attribute pre-cleaning**:
+    - Fixes patterns like `href='\"url\"'` → `href="url"`
+    - Fixes patterns like `src="'url'"` → `src="url"` 
+    - Applied to all responses before JSON parsing
+    - Processes attributes: href, src, target, action, name, frameborder, width, height, align
+    - Uses regular expressions for replacement
+  - Parse cleaned JSON
+  - Validate response structure (presence of concepts_added and chunk_graph_patch)
+  - Basic schema validation for ConceptDictionary and LearningChunkGraph
+  - Logs details for debugging on error
 
 ## Key Features
 
-### Управление контекстом
-- Автоматическое управление previous_response_id
-- Сохранение контекста между слайсами до 128K токенов
-- При retry и repair используется тот же previous_response_id
+### Context Management
+- Automatic previous_response_id management
+- Context preservation between slices up to 128K tokens
+- Same previous_response_id used for retry and repair
 
-### Инкрементальное обновление ConceptDictionary
-- Новые концепты добавляются целиком с автоматической очисткой case-insensitive дубликатов в aliases
-- Для существующих концептов:
-  - Обновляются только aliases с проверкой case-insensitive уникальности
-  - Primary термин и definition сохраняются от первого появления
-  - Новые aliases добавляются только если их lowercase версии еще нет в списке
-- Создание узлов типа Concept для новых концептов
-- **Case-insensitive логика**:
-  - При добавлении нового концепта: удаляются дубликаты aliases (например, ["Stack", "stack"] → ["Stack"])
-  - При обновлении существующего: новые aliases проверяются case-insensitive против существующих
-  - Сохраняется первое вхождение каждого уникального alias с его оригинальным регистром
+### Incremental ConceptDictionary Update
+- New concepts added entirely with automatic case-insensitive duplicate cleanup in aliases
+- For existing concepts:
+  - Only aliases updated with case-insensitive uniqueness check
+  - Primary term and definition preserved from first appearance
+  - New aliases added only if their lowercase versions not already in list
+- Creation of Concept type nodes for new concepts
+- **Case-insensitive logic**:
+  - When adding new concept: removes duplicate aliases (e.g., ["Stack", "stack"] → ["Stack"])
+  - When updating existing: new aliases checked case-insensitive against existing
+  - First occurrence of each unique alias preserved with original case
 
-**Примечание:** Система автоматически обеспечивает case-insensitive уникальность aliases внутри каждого концепта, что предотвращает ошибки валидации при инкрементальной обработке. LLM может возвращать дубликаты типа ["Brute Force", "brute force"], но система сохранит только первый вариант.
+**Note:** The system automatically ensures case-insensitive uniqueness of aliases within each concept, preventing validation errors during incremental processing. LLM may return duplicates like ["Brute Force", "brute force"], but system will keep only first variant.
 
-### Обработка дубликатов узлов
-- **Chunk узлы**: при одинаковых ID сохраняется более длинная версия текста
-- **Assessment узлы**: дубликаты игнорируются с предупреждением
-- **Concept узлы**: дубликаты НЕ предотвращаются (семантическая дедупликация в dedup.py)
-- Все изменения и предупреждения логируются
+### Node Duplicate Processing
+- **Chunk nodes**: for identical IDs keeps longer text version
+- **Assessment nodes**: duplicates ignored with warning
+- **Concept nodes**: duplicates NOT prevented (semantic deduplication in dedup.py)
+- All changes and warnings logged
 
-### Промежуточная валидация
-- Выполняется после обработки каждого слайса
-- Использует `validate_graph_invariants_intermediate()`:
-  - Проверяет уникальность ID для Chunk и Assessment
-  - НЕ проверяет уникальность ID для Concept (допустимы дубликаты)
-  - Проверяет все остальные инварианты графа
-- При ошибке валидации:
-  - Слайс помечается как failed
-  - Сохраняется временное состояние для отладки
-  - Обработка продолжается со следующего слайса
+### Intermediate Validation
+- Performed after processing each slice
+- Uses `validate_graph_invariants_intermediate()`:
+  - Checks ID uniqueness for Chunk and Assessment
+  - Does NOT check ID uniqueness for Concept (duplicates allowed)
+  - Checks all other graph invariants
+- On validation error:
+  - Slice marked as failed
+  - Temporary state saved for debugging
+  - Processing continues with next slice
 
-### Валидация рёбер
-- Проверка существования source/target узлов
-- Отбрасывание PREREQUISITE self-loops
-- Проверка весов в диапазоне [0,1]
-- **Фильтрация дублированных рёбер** (добавлено для решения проблемы с previous_response_id):
-  - LLM может повторно создавать MENTIONS для узлов из предыдущих слайсов
-  - Все дубликаты автоматически отфильтровываются
-  - Логирование на уровне INFO для отслеживания
-- Поддержка ссылок на концепты из ConceptDictionary
+### Edge Validation
+- Check source/target node existence
+- Drop PREREQUISITE self-loops
+- Check weights in range [0,1]
+- **Duplicate edge filtering** (added to solve previous_response_id issue):
+  - LLM may recreate MENTIONS for nodes from previous slices
+  - All duplicates automatically filtered
+  - INFO level logging for tracking
+- Support for references to concepts from ConceptDictionary
 
-### Автоматическое добавление MENTIONS edges
-- После применения каждого патча автоматически ищутся упоминания концептов
-- Обрабатываются как новые Chunk узлы, так и обновленные существующие
-- Поиск по всем термам из ConceptDictionary (primary + aliases)
-- Гарантирует полноту графа даже если LLM пропустил очевидные связи
-- Пример:
+### Automatic MENTIONS Edges Addition
+- After applying each patch automatically searches for concept mentions
+- Processes both new Chunk nodes and updated existing ones
+- Search across all terms from ConceptDictionary (primary + aliases)
+- Ensures graph completeness even if LLM missed obvious connections
+- Example:
   ```
-  Концепт: {"primary": "Стек", "aliases": ["stack", "LIFO"]}
-  Chunk text: "Используем стек для хранения. Stack - это LIFO структура."
-  Результат: 1 MENTIONS edge (все три упоминания ведут к одному концепту)
+  Concept: {"primary": "Stack", "aliases": ["стек", "LIFO"]}
+  Chunk text: "We use стек for storage. Stack is a LIFO structure."
+  Result: 1 MENTIONS edge (all three mentions lead to same concept)
   ```
 
 ### Error Recovery
-- **Repair-reprompt**: при невалидном JSON делается повторный запрос с уточнением
-  - Метод `repair_response()` автоматически использует сохранённый previous_response_id
-  - В repair промпт добавляется явное указание на ошибку и требование валидного JSON
-- **HTML attributes cleanup**: перед парсингом JSON автоматически исправляются известные проблемы с кавычками в HTML атрибутах, которые LLM иногда генерирует при копировании ссылок из слайсов
-- **Graceful degradation**: процесс продолжается при частичных сбоях
-- **Temporary dumps**: сохранение состояния при критических ошибках
-- **Interrupt handling**: корректная обработка Ctrl+C с сохранением результатов
+- **Repair-reprompt**: on invalid JSON makes repeat request with clarification
+  - Method `repair_response()` automatically uses saved previous_response_id
+  - Repair prompt adds explicit error indication and valid JSON requirement
+- **HTML attributes cleanup**: before JSON parsing automatically fixes known issues with quotes in HTML attributes that LLM sometimes generates when copying links from slices
+- **Graceful degradation**: process continues on partial failures
+- **Temporary dumps**: state saving on critical errors
+- **Interrupt handling**: correct Ctrl+C handling with result saving
 
 ## Configuration
 
-Секция `[itext2kg]` в config.toml:
-- **model** - модель LLM (o4-mini-2025-04-16)
-- **tpm_limit** - лимит токенов в минуту
-- **tpm_safety_margin** - запас безопасности для TPM (0.15)
-- **max_completion** - максимум токенов на генерацию
-- **log_level** - уровень логирования (debug/info)
-- **temperature** - для обычных моделей
-- **reasoning_effort** - для reasoning моделей
-- **reasoning_summary** - формат резюме для reasoning моделей
-- **timeout** - таймаут запроса в секундах
-- **max_retries** - количество повторов при ошибках API
+Section `[itext2kg]` in config.toml:
+- **model** - LLM model (o4-mini-2025-04-16)
+- **tpm_limit** - tokens per minute limit
+- **tpm_safety_margin** - TPM safety margin (0.15)
+- **max_completion** - maximum tokens per generation
+- **log_level** - logging level (debug/info)
+- **temperature** - for regular models
+- **reasoning_effort** - for reasoning models
+- **reasoning_summary** - summary format for reasoning models
+- **timeout** - request timeout in seconds
+- **max_retries** - number of retries on API errors
 
 ## Error Handling & Exit Codes
 
 ### Recoverable Errors
-- **JSON validation errors** → repair-reprompt (1 попытка) → bad response сохраняется
-- **Incremental validation errors** → слайс помечается failed → временный дамп → продолжение
-- **API errors** → exponential backoff через llm_client (20s → 40s → 80s...)
-- **Rate limits** → автоматическое ожидание через TPMBucket с восстановлением
+- **JSON validation errors** → repair-reprompt (1 attempt) → bad response saved
+- **Incremental validation errors** → slice marked failed → temporary dump → continue
+- **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
+- **Rate limits** → automatic wait via TPMBucket with recovery
 
 ### Non-recoverable Errors
-- **All slices failed** → временные дампы → EXIT_RUNTIME_ERROR (3)
+- **All slices failed** → temporary dumps → EXIT_RUNTIME_ERROR (3)
 - **Configuration errors** → EXIT_CONFIG_ERROR (1)
-- **I/O errors** → временные дампы → EXIT_IO_ERROR (5)
+- **I/O errors** → temporary dumps → EXIT_IO_ERROR (5)
 
 ### Partial Failures
-- Процесс продолжается если хотя бы некоторые слайсы успешны
-- Предупреждение при failure rate > 50%
-- Статистика сохраняется в логах и временных дампах
+- Process continues if at least some slices successful
+- Warning on failure rate > 50%
+- Statistics saved in logs and temporary dumps
 
 ## Boundary Cases
 
-- **Пустой staging** → EXIT_INPUT_ERROR (2)
-- **Битый slice.json** → логирование, пропуск слайса, продолжение
-- **Невалидный LLM ответ после repair** → сохранение в logs/{slice_id}_bad.json
-- **Прерывание Ctrl+C** → сохранение временных дампов → EXIT_RUNTIME_ERROR
-- **Validation failed (финальная)** → временные дампы с префиксом validation_failed
-- **Validation failed (промежуточная)** → временный дамп для слайса → слайс failed
-- **Высокий failure rate** → предупреждение, но продолжение работы
-- **Дубликат ID концепта** → разрешен, семантическая дедупликация в dedup.py
-- **Дублированные рёбра от LLM** → автоматически фильтруются в _validate_edges → INFO логирование
-- **Некорректные HTML атрибуты в ответе LLM** → автоматическая очистка паттернов `='\"...\"'` → успешный парсинг
+- **Empty staging** → EXIT_INPUT_ERROR (2)
+- **Corrupted slice.json** → logging, skip slice, continue
+- **Invalid LLM response after repair** → save to logs/{slice_id}_bad.json
+- **Ctrl+C interruption** → save temporary dumps → EXIT_RUNTIME_ERROR
+- **Validation failed (final)** → temporary dumps with validation_failed prefix
+- **Validation failed (intermediate)** → temporary dump for slice → slice failed
+- **High failure rate** → warning, but continue work
+- **Concept ID duplicate** → allowed, semantic deduplication in dedup.py
+- **Duplicate edges from LLM** → automatically filtered in _validate_edges → INFO logging
+- **Incorrect HTML attributes in LLM response** → automatic cleanup of patterns `='\"...\"'` → successful parsing
 
 ## Output Validation
 
-Финальная валидация использует:
-- `validate_json()` - проверка по схемам ConceptDictionary и LearningChunkGraph
-- `validate_concept_dictionary_invariants()` - проверка инвариантов словаря
-- `validate_graph_invariants_intermediate()` - промежуточная валидация графа (разрешает дубликаты концептов)
+Final validation uses:
+- `validate_json()` - check against ConceptDictionary and LearningChunkGraph schemas
+- `validate_concept_dictionary_invariants()` - check dictionary invariants
+- `validate_graph_invariants_intermediate()` - intermediate graph validation (allows concept duplicates)
 
-**Важно:** Финальная валидация НЕ использует полную `validate_graph_invariants()`, так как на этом этапе могут существовать дубликаты концептов, которые будут обработаны в dedup.py.
+**Important:** Final validation does NOT use full `validate_graph_invariants()`, as concept duplicates may exist at this stage that will be processed in dedup.py.
 
 ## Output Format
 
@@ -359,8 +359,8 @@ python -m src.itext2kg
   "concepts": [
     {
       "concept_id": "slug:p:term",
-      "term": {"primary": "Термин", "aliases": ["term", "синоним"]},
-      "definition": "Определение концепта"
+      "term": {"primary": "Term", "aliases": ["term", "synonym"]},
+      "definition": "Concept definition"
     }
   ]
 }
@@ -373,10 +373,10 @@ python -m src.itext2kg
     {
       "id": "slug:c:token_start",
       "type": "Chunk|Concept|Assessment",
-      "text": "Текст узла",
+      "text": "Node text",
       "local_start": 0,
       "difficulty": 1,
-      "definition": "Для узлов типа Concept"
+      "definition": "For Concept type nodes"
     }
   ],
   "edges": [
@@ -395,81 +395,81 @@ python -m src.itext2kg
 {
   "slice_id": "slice_001",
   "timestamp": "2024-01-15T10:30:00Z",
-  "original_response": "невалидный ответ LLM",
-  "validation_error": "описание ошибки",
-  "repair_response": "ответ после repair (если был)"
+  "original_response": "invalid LLM response",
+  "validation_error": "error description",
+  "repair_response": "response after repair (if any)"
 }
 ```
 
 ## Test Coverage
 
-- **test_slice_processor**: 21 тестов
-  - Инициализация и загрузка промптов
-  - Форматирование входных данных
-  - Обновление концептов и узлов
-  - Валидация рёбер
-  - Обработка LLM ответов
-  - **Автоматическое добавление MENTIONS edges (5 тестов)**
+- **test_slice_processor**: 21 tests
+  - Initialization and prompt loading
+  - Input data formatting
+  - Concept and node updates
+  - Edge validation
+  - LLM response processing
+  - **Automatic MENTIONS edges addition (5 tests)**
   
-- **test_processing_flow**: 8 тестов
-  - Загрузка слайсов
-  - Применение патчей
-  - Сохранение bad responses
-  - Успешная обработка и repair
-  - Полный прогон pipeline
+- **test_processing_flow**: 8 tests
+  - Slice loading
+  - Patch application
+  - Bad responses saving
+  - Successful processing and repair
+  - Full pipeline run
 
-- **test_itext2kg_error_handling**: 9 тестов
-  - Сохранение bad responses
-  - Создание временных дампов
-  - Repair-reprompt механизм
+- **test_itext2kg_error_handling**: 9 tests
+  - Bad responses saving
+  - Temporary dumps creation
+  - Repair-reprompt mechanism
   - Graceful degradation
-  - Обработка прерываний
-  - Все виды сбоев
+  - Interrupt handling
+  - All failure types
 
-- **test_itext2kg_deduplication**: 11 тестов
-  - Дедупликация узлов (Chunk/Assessment)
-  - Обработка перекрывающихся текстов
-  - Инкрементальная валидация
-  - **Дедупликация рёбер (4 теста)**
-  - Фильтрация дублированных MENTIONS
-  - Сценарий с previous_response_id
+- **test_itext2kg_deduplication**: 11 tests
+  - Node deduplication (Chunk/Assessment)
+  - Overlapping text processing
+  - Incremental validation
+  - **Edge deduplication (4 tests)**
+  - Duplicate MENTIONS filtering
+  - Scenario with previous_response_id
 
 ## Dependencies
-- **Standard Library**: json, logging, sys, time, pathlib, datetime, typing, dataclasses, re
-- **External**: None (использует utils)
-- **Internal**: utils.config, utils.exit_codes, utils.llm_client, utils.validation (включая validate_graph_invariants_intermediate), utils.console_encoding
+- **Standard Library**: json, logging, re, sys, time, pathlib, datetime, typing, dataclasses
+- **External**: python-dotenv
+- **Internal**: utils.config, utils.exit_codes, utils.llm_client, utils.validation (including validate_graph_invariants_intermediate), utils.console_encoding
 
 ## Performance Notes
-- Последовательная обработка для сохранения контекста
-- TPM контроль через llm_client с safety margin
-- Детальное логирование в JSON Lines формате
-- Прогресс выводится в терминал в реальном времени
-- Checkpoint логирование каждые 10 слайсов
-- Минимальная задержка при repair благодаря сохранению previous_response_id
-- Промежуточная валидация добавляет минимальный overhead (< 50ms на слайс)
-- Проверка дубликатов рёбер добавляет минимальный overhead (< 10ms на патч)
-- Предварительная очистка HTML атрибутов добавляет минимальный overhead (< 1ms на ответ)
+- Sequential processing for context preservation
+- TPM control via llm_client with safety margin
+- Detailed logging in JSON Lines format
+- Real-time progress output to terminal
+- Checkpoint logging every 10 slices
+- Minimal delay on repair due to previous_response_id preservation
+- Intermediate validation adds minimal overhead (< 50ms per slice)
+- Duplicate edge checking adds minimal overhead (< 10ms per patch)
+- HTML attribute pre-cleaning adds minimal overhead (< 1ms per response)
 
 ## Usage Examples
 ```bash
-# Подготовка слайсов
+# Prepare slices
 python -m src.slicer
 
-# Запуск извлечения
+# Run extraction
 python -m src.itext2kg
 
-# Проверка результатов
+# Check results
 ls data/out/
 # ConceptDictionary.json
 # LearningChunkGraph_raw.json
 
-# Просмотр логов при ошибках
+# View error logs
 cat logs/itext2kg_*.log | grep ERROR
 
-# Анализ bad responses
+# Analyze bad responses
 ls logs/*_bad.json
 
-# Восстановление из временных дампов
+# Recover from temporary dumps
 ls logs/*_temp_*.json
 # ConceptDictionary_temp_interrupted_20240115_103045.json
 # LearningChunkGraph_temp_interrupted_20240115_103045.json

@@ -33,12 +33,28 @@ git clone https://github.com/yourusername/k2-18.git
 cd k2-18
 ```
 
-2. Install dependencies:
+2. Create and activate a virtual environment:
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+
+# Activate based on your shell:
+source .venv/bin/activate         # bash/zsh
+source .venv/bin/activate.fish    # fish
+source .venv/bin/activate.csh     # csh/tcsh
+.venv\Scripts\activate            # Windows (cmd)
+.venv\Scripts\Activate.ps1        # Windows (PowerShell)
 ```
 
-3. Set up environment variables:
+3. Install dependencies:
+```bash
+# For production use
+pip install -r requirements.txt
+
+# For development (includes testing and code quality tools)
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+4. Set up environment variables:
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 # Or create a .env file with:
@@ -180,12 +196,38 @@ k2-18/
 └── docs/                  # Documentation
 ```
 
+### Code Quality
+
+The project uses several tools to maintain code quality:
+
+```bash
+# Check code style
+flake8 src/
+
+# Auto-format code
+black src/
+
+# Sort imports
+isort src/
+
+# Type checking
+mypy src/
+
+# Run all checks with ruff
+ruff check src/
+```
+
+Configuration files:
+- `.flake8` - flake8 settings
+- `pyproject.toml` - settings for black, isort, mypy, and ruff
+
 ### Contributing
 
 1. Follow PEP 8 style guidelines
 2. Add type hints to all functions
 3. Write tests for new features
 4. Update documentation as needed
+5. Run code quality checks before committing
 
 ## License
 

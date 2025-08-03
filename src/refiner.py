@@ -26,11 +26,17 @@ import faiss
 import numpy as np
 
 from src.utils.config import load_config
+
 # Set up UTF-8 encoding for Windows console
 from src.utils.console_encoding import setup_console_encoding
-from src.utils.exit_codes import (EXIT_API_LIMIT_ERROR, EXIT_CONFIG_ERROR,
-                                  EXIT_INPUT_ERROR, EXIT_IO_ERROR,
-                                  EXIT_RUNTIME_ERROR, EXIT_SUCCESS)
+from src.utils.exit_codes import (
+    EXIT_API_LIMIT_ERROR,
+    EXIT_CONFIG_ERROR,
+    EXIT_INPUT_ERROR,
+    EXIT_IO_ERROR,
+    EXIT_RUNTIME_ERROR,
+    EXIT_SUCCESS,
+)
 from src.utils.llm_client import OpenAIClient
 from src.utils.llm_embeddings import get_embeddings
 from src.utils.validation import validate_graph_invariants, validate_json
@@ -120,9 +126,7 @@ def setup_json_logging(config: Dict) -> logging.Logger:
     # Create logger
     logger = logging.getLogger("refiner")
     logger.setLevel(
-        logging.DEBUG
-        if config.get("log_level", "info").lower() == "debug"
-        else logging.INFO
+        logging.DEBUG if config.get("log_level", "info").lower() == "debug" else logging.INFO
     )
 
     # Remove existing handlers
@@ -222,19 +226,13 @@ def validate_refiner_config(config: Dict) -> None:
 
     # Check ranges
     if not 0 <= config["sim_threshold"] <= 1:
-        raise ValueError(
-            f"sim_threshold must be in [0,1], got {config['sim_threshold']}"
-        )
+        raise ValueError(f"sim_threshold must be in [0,1], got {config['sim_threshold']}")
 
     if config["max_pairs_per_node"] <= 0:
-        raise ValueError(
-            f"max_pairs_per_node must be > 0, got {config['max_pairs_per_node']}"
-        )
+        raise ValueError(f"max_pairs_per_node must be > 0, got {config['max_pairs_per_node']}")
 
     # Check weights
-    if not (
-        0 <= config["weight_low"] < config["weight_mid"] < config["weight_high"] <= 1
-    ):
+    if not (0 <= config["weight_low"] < config["weight_mid"] < config["weight_high"] <= 1):
         raise ValueError(
             f"Weights must satisfy: 0 <= weight_low < weight_mid < weight_high <= 1, "
             f"got {config['weight_low']}, {config['weight_mid']}, {config['weight_high']}"
@@ -245,9 +243,7 @@ def validate_refiner_config(config: Dict) -> None:
         raise ValueError(f"faiss_M must be > 0, got {config['faiss_M']}")
 
     if config["faiss_metric"] not in ["INNER_PRODUCT", "L2"]:
-        raise ValueError(
-            f"faiss_metric must be INNER_PRODUCT or L2, got {config['faiss_metric']}"
-        )
+        raise ValueError(f"faiss_metric must be INNER_PRODUCT or L2, got {config['faiss_metric']}")
 
     # Check reasoning parameters for o-models
     if config.get("model", "").startswith("o"):
@@ -278,7 +274,7 @@ def load_and_validate_graph(input_path: Path) -> Dict:
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(input_path, encoding="utf-8") as f:
         graph = json.load(f)
 
     # Schema validation
@@ -368,9 +364,7 @@ def get_node_embeddings(
         for i, node_id in enumerate(node_ids):
             embeddings_dict[node_id] = embeddings[i]
 
-        logger.info(
-            f"Successfully obtained embeddings for {len(embeddings_dict)} nodes"
-        )
+        logger.info(f"Successfully obtained embeddings for {len(embeddings_dict)} nodes")
         return embeddings_dict
 
     except Exception as e:
@@ -473,9 +467,7 @@ def generate_candidate_pairs(
     candidate_pairs = []
     processed_pairs = set()  # To avoid duplicates (A,B) and (B,A)
 
-    logger.info(
-        f"Searching for candidates: k={k_neighbors-1}, threshold={sim_threshold}"
-    )
+    logger.info(f"Searching for candidates: k={k_neighbors-1}, threshold={sim_threshold}")
 
     # For each node, search for candidates
     for i, node_id_a in enumerate(node_ids_list):
@@ -576,7 +568,7 @@ def load_refiner_prompt(config: Dict) -> str:
         raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
     # Load prompt
-    with open(prompt_path, "r", encoding="utf-8") as f:
+    with open(prompt_path, encoding="utf-8") as f:
         prompt_template = f.read()
 
     # Substitute weights from config
@@ -676,8 +668,7 @@ def analyze_candidate_pairs(
                     "event": "llm_request",
                     "node_id": source_node["id"],
                     "prompt": prompt[:1000] + "..." if len(prompt) > 1000 else prompt,
-                    "input_data": json.dumps(input_data, ensure_ascii=False)[:1000]
-                    + "...",
+                    "input_data": json.dumps(input_data, ensure_ascii=False)[:1000] + "...",
                 },
             )
 
@@ -712,16 +703,12 @@ def analyze_candidate_pairs(
             try:
                 edges_response = json.loads(response_text)
             except json.JSONDecodeError as e:
-                logger.error(
-                    f"Failed to parse LLM response for node {source_node['id']}: {e}"
-                )
+                logger.error(f"Failed to parse LLM response for node {source_node['id']}: {e}")
                 logger.debug(f"Raw response: {response_text}")
 
                 # One repair-retry
                 logger.info("Attempting repair retry with clarification")
-                repair_prompt = (
-                    prompt + "\n\nPLEASE RETURN ONLY VALID JSON ARRAY, NO OTHER TEXT."
-                )
+                repair_prompt = prompt + "\n\nPLEASE RETURN ONLY VALID JSON ARRAY, NO OTHER TEXT."
 
                 # Update instructions in client for repair
                 llm_client.last_instructions = repair_prompt
@@ -785,13 +772,9 @@ def analyze_candidate_pairs(
             error_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
 
             if "RateLimitError" in str(e):
-                print(
-                    f"[{error_timestamp}] ERROR    | ⚠️ RateLimitError | will retry..."
-                )
+                print(f"[{error_timestamp}] ERROR    | ⚠️ RateLimitError | will retry...")
             else:
-                print(
-                    f"[{error_timestamp}] ERROR    | ⚠️ {type(e).__name__}: {str(e)[:50]}..."
-                )
+                print(f"[{error_timestamp}] ERROR    | ⚠️ {type(e).__name__}: {str(e)[:50]}...")
 
             logger.error(f"Error processing node {source_node['id']}: {e}")
             continue
@@ -962,9 +945,7 @@ def update_graph_with_new_edges(
             graph["edges"].append(new_edge)
             stats["added"] += 1
 
-            logger.debug(
-                f"Added new edge: {source} -> {target} ({edge_type}, w={weight:.2f})"
-            )
+            logger.debug(f"Added new edge: {source} -> {target} ({edge_type}, w={weight:.2f})")
             log_edge_operation(logger, "added", new_edge)
             # Update index
             if key not in edge_index:
@@ -996,9 +977,7 @@ def update_graph_with_new_edges(
                         f"Updated weight: {source} -> {target} ({edge_type}), "
                         f"old={old_weight:.2f}, new={weight:.2f}"
                     )
-                    log_edge_operation(
-                        logger, "updated", existing_edge, old_weight=old_weight
-                    )
+                    log_edge_operation(logger, "updated", existing_edge, old_weight=old_weight)
                 else:
                     logger.debug(
                         f"Kept existing weight: {source} -> {target} ({edge_type}), "
@@ -1092,6 +1071,20 @@ def main():
         config = load_config()
         refiner_config = config["refiner"]
 
+        # Validate max_context_tokens parameters if refiner is enabled
+        if refiner_config.get("run", True):
+            max_context = refiner_config.get("max_context_tokens", 128000)
+            if not isinstance(max_context, int) or max_context < 1000:
+                raise ValueError(
+                    f"Invalid max_context_tokens: {max_context}. Must be integer >= 1000"
+                )
+
+            max_context_test = refiner_config.get("max_context_tokens_test", 128000)
+            if not isinstance(max_context_test, int) or max_context_test < 1000:
+                raise ValueError(
+                    f"Invalid max_context_tokens_test: {max_context_test}. Must be integer >= 1000"
+                )
+
         # Check run flag BEFORE setting up logging
         if not refiner_config.get("run", True):
             # Simple logging for run=false case
@@ -1149,9 +1142,7 @@ def main():
         )
 
         if not target_nodes:
-            logger.warning(
-                "No Chunk/Assessment nodes found, saving graph without changes"
-            )
+            logger.warning("No Chunk/Assessment nodes found, saving graph without changes")
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(graph, f, ensure_ascii=False, indent=2)
             return EXIT_SUCCESS
@@ -1193,9 +1184,7 @@ def main():
             if not candidate_pairs:
                 logger.info("No candidate pairs found above similarity threshold")
             else:
-                logger.info(
-                    f"Found {len(candidate_pairs)} nodes with candidates for analysis"
-                )
+                logger.info(f"Found {len(candidate_pairs)} nodes with candidates for analysis")
 
                 # Analysis through LLM
                 try:
@@ -1205,12 +1194,8 @@ def main():
 
                     # Update graph with new edges
                     if new_edges:
-                        logger.info(
-                            f"LLM analysis returned {len(new_edges)} edges to process"
-                        )
-                        update_stats = update_graph_with_new_edges(
-                            graph, new_edges, logger
-                        )
+                        logger.info(f"LLM analysis returned {len(new_edges)} edges to process")
+                        update_stats = update_graph_with_new_edges(graph, new_edges, logger)
                         logger.info(
                             f"Graph updated: {update_stats['added']} added, "
                             f"{update_stats['updated']} updated, "
@@ -1260,9 +1245,7 @@ def main():
             "Refiner completed successfully",
             extra={
                 "event": "refiner_complete",
-                "edges_added": (
-                    update_stats.get("added", 0) if "update_stats" in locals() else 0
-                ),
+                "edges_added": (update_stats.get("added", 0) if "update_stats" in locals() else 0),
                 "edges_updated": (
                     update_stats.get("updated", 0) if "update_stats" in locals() else 0
                 ),
@@ -1274,6 +1257,10 @@ def main():
 
         return EXIT_SUCCESS
 
+    except ValueError as e:
+        # Configuration validation errors
+        print(f"Configuration error: {e}")
+        return EXIT_CONFIG_ERROR
     except Exception as e:
         if logger:
             logger.error(

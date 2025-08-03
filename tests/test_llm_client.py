@@ -1081,3 +1081,286 @@ class TestTPMBucketEnhanced:
             "TPM check passed: sufficient tokens available" in msg
             for msg in log_messages
         )
+
+
+class TestContextAccumulation:
+    """Tests for context token accumulation with previous_response_id"""
+
+    @patch("src.utils.llm_client.time.sleep")
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_context_accumulation_first_request(
+        self, mock_openai_class, mock_get_encoding, mock_probe, mock_sleep, test_config
+    ):
+        """Test first request without previous_response_id"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(1000))  # 1000 tokens
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Setup mock_probe to not actually call API
+        mock_probe.return_value = None
+        
+        client = OpenAIClient(test_config)
+        client.tpm_bucket.remaining_tokens = 100000
+        
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.id = "resp_123"
+        mock_response.status = "completed"
+        mock_response.output = [{"message": {"content": "Test response"}}]
+        mock_response.usage = {
+            "input_tokens": 1005,
+            "output_tokens": 50,
+            "total_tokens": 1055
+        }
+        
+        # Mock the create response
+        mock_create_response = MagicMock()
+        mock_create_response.id = "resp_123"
+        mock_client_instance.responses.create.return_value = mock_create_response
+        
+        # Mock the retrieve chain for status checks
+        mock_raw_response = MagicMock()
+        mock_parsed_response = MagicMock()
+        mock_parsed_response.status = "completed"
+        mock_parsed_response.id = "resp_123"
+        
+        # Create proper output structure
+        mock_message_output = MagicMock()
+        mock_message_output.type = "message"
+        mock_content_item = MagicMock()
+        mock_content_item.type = "output_text"
+        mock_content_item.text = "Test response"
+        mock_message_output.content = [mock_content_item]
+        
+        mock_parsed_response.output = [mock_message_output]
+        
+        # Create proper usage structure
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 1005
+        mock_usage.output_tokens = 50
+        mock_usage.total_tokens = 1055
+        mock_usage.output_tokens_details = None
+        mock_parsed_response.usage = mock_usage
+        mock_raw_response.parse.return_value = mock_parsed_response
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
+        
+        # Act
+        response, response_id, usage = client.create_response(
+            "You are helpful", 
+            "What is 2+2?"
+        )
+        
+        # Assert
+        assert client.last_usage is not None
+        assert client.last_usage.input_tokens == 1005
+        # Without previous_response_id, should encode full prompt
+        assert mock_encoder.encode.called
+        
+    @patch("src.utils.llm_client.time.sleep")
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_context_accumulation_with_previous_response(
+        self, mock_openai_class, mock_get_encoding, mock_probe, mock_sleep, test_config
+    ):
+        """Test request with previous_response_id accumulates context"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(500))  # 500 new tokens
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Setup mock_probe
+        mock_probe.return_value = None
+        
+        # Add max_context_tokens to config
+        test_config["max_context_tokens"] = 128000
+        
+        client = OpenAIClient(test_config)
+        client.tpm_bucket.remaining_tokens = 200000
+        
+        # Simulate previous usage
+        from src.utils.llm_client import ResponseUsage
+        client.last_usage = ResponseUsage(
+            input_tokens=50000,  # Previous context
+            output_tokens=1000,
+            total_tokens=51000,
+            reasoning_tokens=0
+        )
+        
+        # Mock response
+        mock_create_response = MagicMock()
+        mock_create_response.id = "resp_456"
+        mock_client_instance.responses.create.return_value = mock_create_response
+        
+        # Mock the retrieve chain
+        mock_raw_response = MagicMock()
+        mock_parsed_response = MagicMock()
+        mock_parsed_response.status = "completed"
+        mock_parsed_response.id = "resp_456"
+        
+        # Create proper output structure
+        mock_message_output = MagicMock()
+        mock_message_output.type = "message"
+        mock_content_item = MagicMock()
+        mock_content_item.type = "output_text"
+        mock_content_item.text = "Another response"
+        mock_message_output.content = [mock_content_item]
+        
+        mock_parsed_response.output = [mock_message_output]
+        
+        # Create proper usage structure
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 50500  # Old context + new
+        mock_usage.output_tokens = 100
+        mock_usage.total_tokens = 50600
+        mock_usage.output_tokens_details = None
+        mock_parsed_response.usage = mock_usage
+        mock_raw_response.parse.return_value = mock_parsed_response
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
+        
+        # Act
+        response, response_id, usage = client.create_response(
+            "Continue", 
+            "What about 3+3?",
+            previous_response_id="resp_123"
+        )
+        
+        # Assert
+        # Should use accumulated context (50000 + 500 = 50500)
+        assert usage.input_tokens == 50500
+        
+    @patch("src.utils.llm_client.time.sleep")
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_context_limit_warning(
+        self, mock_openai_class, mock_get_encoding, mock_probe, mock_sleep, test_config, caplog
+    ):
+        """Test warning when approaching context limit"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(10000))  # 10K new tokens
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Setup mock_probe
+        mock_probe.return_value = None
+        
+        # Set lower context limit
+        test_config["max_context_tokens"] = 130000
+        
+        client = OpenAIClient(test_config)
+        client.tpm_bucket.remaining_tokens = 200000
+        
+        # Simulate large previous context
+        from src.utils.llm_client import ResponseUsage
+        client.last_usage = ResponseUsage(
+            input_tokens=125000,  # Close to limit
+            output_tokens=1000,
+            total_tokens=126000,
+            reasoning_tokens=0
+        )
+        
+        # Mock response
+        mock_create_response = MagicMock()
+        mock_create_response.id = "resp_789"
+        mock_client_instance.responses.create.return_value = mock_create_response
+        
+        # Mock the retrieve chain
+        mock_raw_response = MagicMock()
+        mock_parsed_response = MagicMock()
+        mock_parsed_response.status = "completed"
+        mock_parsed_response.id = "resp_789"
+        
+        # Create proper output structure
+        mock_message_output = MagicMock()
+        mock_message_output.type = "message"
+        mock_content_item = MagicMock()
+        mock_content_item.type = "output_text"
+        mock_content_item.text = "Response"
+        mock_message_output.content = [mock_content_item]
+        
+        mock_parsed_response.output = [mock_message_output]
+        
+        # Create proper usage structure
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 130000  # Capped at limit
+        mock_usage.output_tokens = 100
+        mock_usage.total_tokens = 130100
+        mock_usage.output_tokens_details = None
+        mock_parsed_response.usage = mock_usage
+        mock_raw_response.parse.return_value = mock_parsed_response
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
+        
+        caplog.set_level(logging.WARNING)
+        
+        # Act
+        response, response_id, usage = client.create_response(
+            "Continue", 
+            "Long content here...",
+            previous_response_id="resp_456"
+        )
+        
+        # Assert
+        warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
+        assert any("Context approaching limit" in msg for msg in warning_messages)
+        assert any("135000 tokens" in msg for msg in warning_messages)  # 125K + 10K
+        assert any("max: 130000" in msg for msg in warning_messages)
+        
+    @patch("src.utils.llm_client.time.sleep")
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_different_max_context_tokens(
+        self, mock_openai_class, mock_get_encoding, mock_probe, mock_sleep
+    ):
+        """Test with different max_context_tokens values"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(1000))
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Setup mock_probe
+        mock_probe.return_value = None
+        
+        # Test with 200K limit for o1/o4 models
+        config_200k = {
+            "api_key": "test-key",
+            "model": "o4-mini",
+            "tpm_limit": 150000,
+            "max_completion": 90000,
+            "max_context_tokens": 200000,  # 200K for o1/o4
+            "timeout": 360,
+            "max_retries": 3,
+        }
+        
+        client = OpenAIClient(config_200k)
+        assert client.config["max_context_tokens"] == 200000
+        
+        # Test with 128K limit for gpt-4 models
+        config_128k = {
+            "api_key": "test-key",
+            "model": "gpt-4",
+            "tpm_limit": 100000,
+            "max_completion": 50000,
+            "max_context_tokens": 128000,  # 128K for gpt-4
+            "timeout": 300,
+            "max_retries": 3,
+        }
+        
+        client2 = OpenAIClient(config_128k)
+        assert client2.config["max_context_tokens"] == 128000

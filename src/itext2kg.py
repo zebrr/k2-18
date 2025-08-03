@@ -26,16 +26,24 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.config import load_config
+
 # Set UTF-8 encoding for Windows console
 from src.utils.console_encoding import setup_console_encoding
-from src.utils.exit_codes import (EXIT_CONFIG_ERROR, EXIT_INPUT_ERROR,
-                                  EXIT_IO_ERROR, EXIT_RUNTIME_ERROR,
-                                  EXIT_SUCCESS)
+from src.utils.exit_codes import (
+    EXIT_CONFIG_ERROR,
+    EXIT_INPUT_ERROR,
+    EXIT_IO_ERROR,
+    EXIT_RUNTIME_ERROR,
+    EXIT_SUCCESS,
+)
 from src.utils.llm_client import OpenAIClient
-from src.utils.validation import (GraphInvariantError, ValidationError,
-                                  validate_concept_dictionary_invariants,
-                                  validate_graph_invariants_intermediate,
-                                  validate_json)
+from src.utils.validation import (
+    GraphInvariantError,
+    ValidationError,
+    validate_concept_dictionary_invariants,
+    validate_graph_invariants_intermediate,
+    validate_json,
+)
 
 setup_console_encoding()
 
@@ -137,9 +145,7 @@ class SliceProcessor:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.WARNING)
         console_handler.setFormatter(
-            logging.Formatter(
-                "[%(asctime)s] %(levelname)-8s | %(message)s", datefmt="%H:%M:%S"
-            )
+            logging.Formatter("[%(asctime)s] %(levelname)-8s | %(message)s", datefmt="%H:%M:%S")
         )
         logger.addHandler(console_handler)
 
@@ -239,9 +245,7 @@ class SliceProcessor:
 
                 # Create dictionary of existing aliases (lowercase -> original)
                 existing_aliases = existing_concept["term"].get("aliases", [])
-                existing_lower_map = {
-                    alias.lower(): alias for alias in existing_aliases
-                }
+                existing_lower_map = {alias.lower(): alias for alias in existing_aliases}
 
                 # Check new aliases
                 new_aliases = new_concept["term"].get("aliases", [])
@@ -255,9 +259,7 @@ class SliceProcessor:
 
                 if added_aliases:
                     # Update aliases list (take values - original strings)
-                    existing_concept["term"]["aliases"] = sorted(
-                        existing_lower_map.values()
-                    )
+                    existing_concept["term"]["aliases"] = sorted(existing_lower_map.values())
 
                     # Log update
                     self.logger.debug(
@@ -289,9 +291,7 @@ class SliceProcessor:
 
                 # Add concept
                 self.concept_dictionary["concepts"].append(new_concept)
-                self.concept_id_map[concept_id] = (
-                    len(self.concept_dictionary["concepts"]) - 1
-                )
+                self.concept_id_map[concept_id] = len(self.concept_dictionary["concepts"]) - 1
                 self.stats.total_concepts += 1
 
                 # Log addition
@@ -335,9 +335,7 @@ class SliceProcessor:
                 if existing_node:
                     # For Chunk compare text length
                     if node_type == "Chunk":
-                        if len(node.get("text", "")) > len(
-                            existing_node.get("text", "")
-                        ):
+                        if len(node.get("text", "")) > len(existing_node.get("text", "")):
                             # Update existing node
                             self.learning_graph["nodes"][existing_idx] = node
 
@@ -348,9 +346,7 @@ class SliceProcessor:
                                         "level": "DEBUG",
                                         "event": "chunk_updated",
                                         "node_id": node_id,
-                                        "old_length": len(
-                                            existing_node.get("text", "")
-                                        ),
+                                        "old_length": len(existing_node.get("text", "")),
                                         "new_length": len(node.get("text", "")),
                                     }
                                 )
@@ -674,10 +670,7 @@ class SliceProcessor:
             response_data = json.loads(cleaned_text)
 
             # Check structure
-            if (
-                "concepts_added" not in response_data
-                or "chunk_graph_patch" not in response_data
-            ):
+            if "concepts_added" not in response_data or "chunk_graph_patch" not in response_data:
                 raise ValueError("Missing required fields in response")
 
             concepts_added = response_data["concepts_added"].get("concepts", [])
@@ -813,12 +806,8 @@ class SliceProcessor:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Paths for temporary files
-        temp_concept_path = (
-            LOGS_DIR / f"ConceptDictionary_temp_{reason}_{timestamp}.json"
-        )
-        temp_graph_path = (
-            LOGS_DIR / f"LearningChunkGraph_temp_{reason}_{timestamp}.json"
-        )
+        temp_concept_path = LOGS_DIR / f"ConceptDictionary_temp_{reason}_{timestamp}.json"
+        temp_graph_path = LOGS_DIR / f"LearningChunkGraph_temp_{reason}_{timestamp}.json"
 
         # Save ConceptDictionary
         if self.concept_dictionary and self.concept_dictionary.get("concepts"):
@@ -940,9 +929,7 @@ class SliceProcessor:
                     )
 
                 # Process response
-                success, parsed_data = self._process_llm_response(
-                    response_text, slice_data.id
-                )
+                success, parsed_data = self._process_llm_response(response_text, slice_data.id)
 
                 if not success:
                     # Repair attempt with clarifying prompt
@@ -975,22 +962,16 @@ class SliceProcessor:
                     )
 
                     # repair_response automatically uses saved previous_response_id
-                    repair_text, repair_id, repair_usage = (
-                        self.llm_client.repair_response(
-                            instructions=repair_instructions, input_data=input_data
-                        )
+                    repair_text, repair_id, repair_usage = self.llm_client.repair_response(
+                        instructions=repair_instructions, input_data=input_data
                     )
 
-                    success, parsed_data = self._process_llm_response(
-                        repair_text, slice_data.id
-                    )
+                    success, parsed_data = self._process_llm_response(repair_text, slice_data.id)
 
                     if success:
                         # Repair successful
                         current_time = datetime.now().strftime("%H:%M:%S")
-                        print(
-                            f"[{current_time}] REPAIR   | ✅ JSON validation fixed successfully!"
-                        )
+                        print(f"[{current_time}] REPAIR   | ✅ JSON validation fixed successfully!")
                     else:
                         # Save bad responses
                         self._save_bad_response(
@@ -1111,13 +1092,9 @@ class SliceProcessor:
                 # Special handling for rate limit
                 if "rate" in str(e).lower() or error_type == "RateLimitError":
                     # LLM client will already handle retry with backoff
-                    print(
-                        f"[{current_time}] ERROR    | ⚠️ {error_type} | waiting for retry..."
-                    )
+                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | waiting for retry...")
                 else:
-                    print(
-                        f"[{current_time}] ERROR    | ⚠️ {error_type} | slice {slice_data.id}"
-                    )
+                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | slice {slice_data.id}")
 
                 self.logger.error(
                     json.dumps(
@@ -1179,10 +1156,7 @@ class SliceProcessor:
                         self.stats.failed_slices += 1
 
                     # Log intermediate progress
-                    if (
-                        self.stats.processed_slices % 10 == 0
-                        and self.stats.processed_slices > 0
-                    ):
+                    if self.stats.processed_slices % 10 == 0 and self.stats.processed_slices > 0:
                         self.logger.info(
                             json.dumps(
                                 {
@@ -1226,9 +1200,7 @@ class SliceProcessor:
                 # Output error status
                 current_time = datetime.now().strftime("%H:%M:%S")
                 print(f"[{current_time}] FAILED   | ❌ All slices failed processing")
-                print(
-                    f"[{current_time}] SAVING   | 💾 Attempting to save empty structures..."
-                )
+                print(f"[{current_time}] SAVING   | 💾 Attempting to save empty structures...")
 
                 # Try to save at least empty structures
                 try:
@@ -1340,9 +1312,7 @@ class SliceProcessor:
             # Output error status
             current_time = datetime.now().strftime("%H:%M:%S")
             print(f"[{current_time}] FAILED   | ❌ Validation failed: {str(e)[:50]}...")
-            print(
-                f"[{current_time}] SAVING   | 💾 Attempting to save partial results..."
-            )
+            print(f"[{current_time}] SAVING   | 💾 Attempting to save partial results...")
 
             # Try to save temporary files
             try:
@@ -1392,11 +1362,25 @@ def main():
         # Load configuration
         config = load_config(CONFIG_PATH)
 
+        # Validate max_context_tokens parameters
+        max_context = config["itext2kg"].get("max_context_tokens", 128000)
+        if not isinstance(max_context, int) or max_context < 1000:
+            raise ValueError(f"Invalid max_context_tokens: {max_context}. Must be integer >= 1000")
+
+        max_context_test = config["itext2kg"].get("max_context_tokens_test", 128000)
+        if not isinstance(max_context_test, int) or max_context_test < 1000:
+            raise ValueError(
+                f"Invalid max_context_tokens_test: {max_context_test}. Must be integer >= 1000"
+            )
+
         # Create and run processor
         processor = SliceProcessor(config)
         return processor.run()
 
     except FileNotFoundError:
+        return EXIT_CONFIG_ERROR
+    except ValueError as e:
+        print(f"Configuration error: {e}")
         return EXIT_CONFIG_ERROR
     except Exception:
         return EXIT_CONFIG_ERROR

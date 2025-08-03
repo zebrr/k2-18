@@ -137,9 +137,7 @@ class TPMBucket:
                             f"({old_remaining} → {self.remaining_tokens})"
                         )
                 except (ValueError, TypeError) as e:
-                    self.logger.warning(
-                        f"Failed to parse remaining tokens '{remaining}': {e}"
-                    )
+                    self.logger.warning(f"Failed to parse remaining tokens '{remaining}': {e}")
 
         # Update reset time
         if "x-ratelimit-reset-tokens" in headers:
@@ -182,14 +180,10 @@ class TPMBucket:
                         # If already a number
                         self.reset_time = int(reset_value)
                         reset_datetime = datetime.fromtimestamp(self.reset_time)
-                        self.logger.debug(
-                            f"TPM reset time: {reset_datetime.strftime('%H:%M:%S')}"
-                        )
+                        self.logger.debug(f"TPM reset time: {reset_datetime.strftime('%H:%M:%S')}")
 
                 except (ValueError, TypeError) as e:
-                    self.logger.warning(
-                        f"Failed to parse reset time '{reset_value}': {e}"
-                    )
+                    self.logger.warning(f"Failed to parse reset time '{reset_value}': {e}")
                     self.reset_time = None
 
     def wait_if_needed(self, required_tokens: int, safety_margin: float = 0.15) -> None:
@@ -254,9 +248,7 @@ class TPMBucket:
                 print(f"[{current_time}] INFO     | ✅ TPM limit reset, continuing...")
             else:
                 # Reset time already passed, can assume limit is restored
-                self.logger.debug(
-                    "TPM reset time already passed, assuming limit restored"
-                )
+                self.logger.debug("TPM reset time already passed, assuming limit restored")
                 self.remaining_tokens = self.initial_limit
         else:
             # No reset time information available
@@ -334,14 +326,15 @@ class OpenAIClient:
                 - reasoning_summary (str, optional): Summary type for reasoning
         """
         self.config = config
-        self.client = OpenAI(
-            api_key=config["api_key"], timeout=config.get("timeout", 60.0)
-        )
+        self.client = OpenAI(api_key=config["api_key"], timeout=config.get("timeout", 60.0))
         self.tpm_bucket = TPMBucket(config["tpm_limit"])
         self.logger = logging.getLogger(__name__)
 
         # Last response_id for chain of responses
         self.last_response_id: Optional[str] = None
+
+        # Last usage info for context accumulation
+        self.last_usage: Optional[ResponseUsage] = None
 
         # Check if model is reasoning (o*)
         self.is_reasoning_model = config["model"].startswith("o")
@@ -439,20 +432,13 @@ class OpenAIClient:
             if hasattr(response, "status"):
                 # Allow both completed and incomplete statuses
                 if response.status not in ["completed", "incomplete"]:
-                    raise ValueError(
-                        f"Response has unexpected status: {response.status}"
-                    )
+                    raise ValueError(f"Response has unexpected status: {response.status}")
 
                 # Log warning for incomplete
                 if response.status == "incomplete":
                     reason = None
-                    if (
-                        hasattr(response, "incomplete_details")
-                        and response.incomplete_details
-                    ):
-                        reason = getattr(
-                            response.incomplete_details, "reason", "unknown"
-                        )
+                    if hasattr(response, "incomplete_details") and response.incomplete_details:
+                        reason = getattr(response.incomplete_details, "reason", "unknown")
                     self.logger.warning(
                         f"Response is incomplete (reason: {reason}). "
                         f"This may happen with low max_output_tokens limits."
@@ -532,9 +518,7 @@ class OpenAIClient:
 
             # Extract reasoning tokens if available
             if hasattr(usage, "output_tokens_details") and usage.output_tokens_details:
-                reasoning_tokens = getattr(
-                    usage.output_tokens_details, "reasoning_tokens", 0
-                )
+                reasoning_tokens = getattr(usage.output_tokens_details, "reasoning_tokens", 0)
 
             return ResponseUsage(
                 input_tokens=usage.input_tokens,
@@ -610,17 +594,47 @@ class OpenAIClient:
             ValueError: When status is failed or model refuses
         """
         # Prepare parameters as usual
-        params = self._prepare_request_params(
-            instructions, input_data, previous_response_id
-        )
+        params = self._prepare_request_params(instructions, input_data, previous_response_id)
 
         # IMPORTANT: enable background mode
         params["background"] = True
 
-        # Precise token count for limit checking
-        full_prompt = instructions + "\n\n" + input_data
-        estimated_input_tokens = len(self.encoder.encode(full_prompt))
+        # Get context limit from config (with default fallback)
+        max_context_tokens = self.config.get("max_context_tokens", 128000)
+
+        # Correct token estimation with accumulated context
+        if self.last_usage and previous_response_id:
+            # Use input_tokens from last request as base (includes all context)
+            base_context_tokens = self.last_usage.input_tokens
+
+            # Add only new content
+            new_content_tokens = len(self.encoder.encode(input_data))
+
+            # Estimate new context size
+            estimated_input_tokens = base_context_tokens + new_content_tokens
+
+            # Check context limit - OpenAI will truncate to this limit
+            if estimated_input_tokens > max_context_tokens:
+                self.logger.warning(
+                    f"Context approaching limit: {estimated_input_tokens} tokens "
+                    f"(max: {max_context_tokens}). Old content may be truncated by OpenAI."
+                )
+                # Cap at max for accurate TPM calculation
+                estimated_input_tokens = max_context_tokens
+        else:
+            # First request or no previous_response_id
+            full_prompt = instructions + "\n\n" + input_data
+            estimated_input_tokens = len(self.encoder.encode(full_prompt))
+
+        # Now correctly calculate required tokens
         required_tokens = estimated_input_tokens + self.config["max_completion"]
+
+        # Add debug logging
+        self.logger.debug(
+            f"Token estimation: estimated_input={estimated_input_tokens}, "
+            f"with_output={required_tokens}, previous_id={previous_response_id is not None}, "
+            f"max_context={max_context_tokens}"
+        )
 
         # Update TPM data via probe before main request
         # In async mode OpenAI doesn't return rate limit headers,
@@ -669,14 +683,10 @@ class OpenAIClient:
                         )
                         try:
                             self.client.responses.cancel(response_id)
-                            self.logger.info(
-                                f"Successfully cancelled response {response_id[:12]}"
-                            )
+                            self.logger.info(f"Successfully cancelled response {response_id[:12]}")
                         except Exception as e:
                             # Race condition: response may already be completed/failed
-                            self.logger.debug(
-                                f"Could not cancel {response_id[:12]}: {e}"
-                            )
+                            self.logger.debug(f"Could not cancel {response_id[:12]}: {e}")
 
                         raise TimeoutError(
                             f"Response generation exceeded {self.config['timeout']}s timeout"
@@ -684,9 +694,7 @@ class OpenAIClient:
 
                     # Get current status
                     try:
-                        raw_status = self.client.responses.with_raw_response.retrieve(
-                            response_id
-                        )
+                        raw_status = self.client.responses.with_raw_response.retrieve(response_id)
                         status_headers = raw_status.headers
                         response = raw_status.parse()
                     except Exception as e:
@@ -704,9 +712,7 @@ class OpenAIClient:
                     if status == "completed":
 
                         # Successful completion
-                        self.logger.info(
-                            f"Response {response_id[:12]} completed successfully"
-                        )
+                        self.logger.info(f"Response {response_id[:12]} completed successfully")
 
                         # Extract result
                         response_text = self._extract_response_content(response)
@@ -721,18 +727,16 @@ class OpenAIClient:
                             f"(reasoning: {usage_info.reasoning_tokens})"
                         )
 
+                        # Save usage for next request
+                        self.last_usage = usage_info
+
                         return response_text, response_id, usage_info
 
                     elif status == "incomplete":
                         # Critical error - response truncated
                         reason = "unknown"
-                        if (
-                            hasattr(response, "incomplete_details")
-                            and response.incomplete_details
-                        ):
-                            reason = getattr(
-                                response.incomplete_details, "reason", "unknown"
-                            )
+                        if hasattr(response, "incomplete_details") and response.incomplete_details:
+                            reason = getattr(response.incomplete_details, "reason", "unknown")
 
                         # Try to get partial result for logging
                         partial_tokens = 0
@@ -746,9 +750,7 @@ class OpenAIClient:
 
                         # Output to terminal
                         current_time = datetime.now().strftime("%H:%M:%S")
-                        print(
-                            f"[{current_time}] ERROR    | ❌ Response incomplete: {reason}"
-                        )
+                        print(f"[{current_time}] ERROR    | ❌ Response incomplete: {reason}")
                         print(
                             f"[{current_time}] ERROR    |    Generated only {partial_tokens} tokens"
                         )
@@ -771,21 +773,15 @@ class OpenAIClient:
                         # Generation error
                         error_msg = "Unknown error"
                         if hasattr(response, "error") and response.error:
-                            error_msg = getattr(
-                                response.error, "message", str(response.error)
-                            )
+                            error_msg = getattr(response.error, "message", str(response.error))
 
-                        self.logger.error(
-                            f"Response {response_id[:12]} failed: {error_msg}"
-                        )
+                        self.logger.error(f"Response {response_id[:12]} failed: {error_msg}")
 
                         raise ValueError(f"Response generation failed: {error_msg}")
 
                     elif status == "cancelled":
                         # Should not happen unless we cancelled ourselves
-                        self.logger.error(
-                            f"Response {response_id[:12]} was cancelled unexpectedly"
-                        )
+                        self.logger.error(f"Response {response_id[:12]} was cancelled unexpectedly")
                         raise ValueError("Response was cancelled")
 
                     elif status == "queued":
@@ -815,9 +811,7 @@ class OpenAIClient:
                         if poll_count < 3:
                             time.sleep(2)  # First 3 times check quickly
                         else:
-                            time.sleep(
-                                poll_interval
-                            )  # Then use configured interval
+                            time.sleep(poll_interval)  # Then use configured interval
 
                         poll_count += 1
                         continue
@@ -831,17 +825,13 @@ class OpenAIClient:
                 # These errors can be retried
                 retry_count += 1
                 if retry_count > self.config["max_retries"]:
-                    self.logger.error(
-                        f"Error after all retries: {type(e).__name__}: {e}"
-                    )
+                    self.logger.error(f"Error after all retries: {type(e).__name__}: {e}")
                     raise e
 
                 # For IncompleteResponseError increase token limit
                 if isinstance(e, IncompleteResponseError):
                     # Save current limit before changing
-                    old_limit = params.get(
-                        "max_output_tokens", self.config["max_completion"]
-                    )
+                    old_limit = params.get("max_output_tokens", self.config["max_completion"])
                     if retry_count == 1:
                         params["max_output_tokens"] = int(old_limit * 1.5)
                     elif retry_count == 2:
@@ -880,9 +870,7 @@ class OpenAIClient:
                 # Other errors can also be retried
                 retry_count += 1
                 if retry_count > self.config["max_retries"]:
-                    self.logger.error(
-                        f"Error after all retries: {type(e).__name__}: {e}"
-                    )
+                    self.logger.error(f"Error after all retries: {type(e).__name__}: {e}")
                     raise e
 
                 wait_time = 20 * (2 ** (retry_count - 1))
@@ -949,13 +937,9 @@ class OpenAIClient:
             previous_response_id = self.last_response_id
 
         # Call new asynchronous method
-        return self._create_response_async(
-            instructions, input_data, previous_response_id
-        )
+        return self._create_response_async(instructions, input_data, previous_response_id)
 
-    def repair_response(
-        self, instructions: str, input_data: str
-    ) -> Tuple[str, str, ResponseUsage]:
+    def repair_response(self, instructions: str, input_data: str) -> Tuple[str, str, ResponseUsage]:
         """
         Repair request with same previous_response_id.
 
@@ -989,6 +973,4 @@ class OpenAIClient:
         )
 
         # Use same previous_response_id as in previous request
-        return self.create_response(
-            repair_instructions, input_data, self.last_response_id
-        )
+        return self.create_response(repair_instructions, input_data, self.last_response_id)

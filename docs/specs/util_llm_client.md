@@ -50,12 +50,15 @@ Initialize client with configuration.
   - tpm_limit (int) - tokens per minute limit
   - tpm_safety_margin (float) - safety margin (default 0.15)
   - max_completion (int) - maximum tokens for generation
+  - max_context_tokens (int) - maximum context window size (default 128000)
   - timeout (int) - request timeout in seconds
   - max_retries (int) - number of retry attempts
   - temperature (float, optional) - for regular models
   - reasoning_effort (str, optional) - for reasoning models
   - reasoning_summary (str, optional) - summary type for reasoning
   - poll_interval (int) - polling interval in seconds (default 5)
+- **Attributes**:
+  - last_usage (ResponseUsage) - usage info from last response for context accumulation
 
 #### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
 Create response via OpenAI Responses API (public interface).
@@ -193,6 +196,15 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 - **Internal**: None
 
 ## Performance Notes
+
+### Context Accumulation
+- When using previous_response_id, the client tracks accumulated context size
+- Context includes all previous messages in the chain up to max_context_tokens limit
+- OpenAI automatically truncates oldest content when exceeding the limit
+- TPM calculations now account for full context size, not just new content
+- Context limits by model:
+  - **o1/o4 models**: 200K tokens context window
+  - **gpt-4 models**: 128K tokens context window
 
 ### Asynchronous Mode
 - All requests executed in background mode for timeout control

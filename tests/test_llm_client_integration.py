@@ -56,6 +56,7 @@ def integration_config(api_key):
         "max_retries": 2,
         "temperature": config["itext2kg"].get("temperature", 1.0),
         "poll_interval": config["itext2kg"].get("poll_interval", 5),
+        "max_context_tokens": config["itext2kg"].get("max_context_tokens_test", 128000),
     }
 
     # Для reasoning моделей
@@ -449,6 +450,51 @@ class TestOpenAIClientIntegration:
         print(f"  Probe logs found: {len(probe_logs)}")
         print(f"  Initial tokens: {initial_remaining}")
         print(f"  Current tokens: {client.tpm_bucket.remaining_tokens}")
+
+    def test_context_accumulation_integration(self, integration_config):
+        """Test that context accumulation works correctly in real API calls"""
+        client = OpenAIClient(integration_config)
+        
+        # First request - baseline
+        text1, id1, usage1 = client.create_response(
+            instructions="You are a helpful assistant. Answer briefly.",
+            input_data="Hi, my favorite color is blue. What is 2+2?"
+        )
+        
+        assert "4" in text1
+        assert client.last_usage.input_tokens == usage1.input_tokens
+        
+        # Second request with previous_response_id
+        text2, id2, usage2 = client.create_response(
+            instructions="Continue helping.",
+            input_data="What was my favorite color?",
+            previous_response_id=id1
+        )
+        
+        assert "blue" in text2.lower()
+        
+        # Verify context accumulation
+        # Second request should have more input tokens than just the new prompt
+        assert usage2.input_tokens > usage1.input_tokens
+        assert client.last_usage.input_tokens == usage2.input_tokens
+        
+        # Third request to further verify accumulation
+        text3, id3, usage3 = client.create_response(
+            instructions="Continue helping.",
+            input_data="Tell me both: my color and the math answer from before.",
+            previous_response_id=id2
+        )
+        
+        assert "blue" in text3.lower()
+        assert "4" in text3
+        
+        # Each subsequent request should have more context
+        assert usage3.input_tokens > usage2.input_tokens
+        
+        print(f"\n✓ Context accumulation verified:")
+        print(f"  Request 1 input tokens: {usage1.input_tokens}")
+        print(f"  Request 2 input tokens: {usage2.input_tokens} (accumulated)")
+        print(f"  Request 3 input tokens: {usage3.input_tokens} (further accumulated)")
 
 
 if __name__ == "__main__":

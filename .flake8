@@ -14,6 +14,7 @@ per-file-ignores =
     # E402: module level import not at top of file (due to sys.path manipulation)
     src/slicer.py:E402
     src/itext2kg.py:E402
+    src/itext2kg_concepts.py:E402
     src/dedup.py:E402
     src/refiner.py:E402
     tests/*.py:E402

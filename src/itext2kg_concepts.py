@@ -901,12 +901,16 @@ def main():
         processor = SliceProcessor(config)
         return processor.run()
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        print(f"Configuration file not found: {e}")
         return EXIT_CONFIG_ERROR
     except ValueError as e:
         print(f"Configuration error: {e}")
         return EXIT_CONFIG_ERROR
-    except Exception:
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return EXIT_CONFIG_ERROR
 
 

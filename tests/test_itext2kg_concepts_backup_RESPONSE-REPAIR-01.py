@@ -312,9 +312,6 @@ class TestSliceProcessor:
         }
         slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
 
-        # Set previous successful response ID before the test
-        processor.previous_response_id = "previous_success_id"
-
         # Mock LLM client to return invalid then valid response
         mock_client = processor.llm_client
         mock_client.create_response.return_value = (
@@ -333,67 +330,7 @@ class TestSliceProcessor:
 
         assert result is True
         assert mock_client.repair_response.called
-        # Check that repair was called with rollback to previous successful ID
-        repair_call_args = mock_client.repair_response.call_args
-        assert repair_call_args[1]["previous_response_id"] == "previous_success_id"
         assert processor.stats.total_tokens_used == 180  # Uses repair usage
-
-    def test_repair_uses_previous_successful_response_id(self, processor, tmp_path):
-        """Test that repair uses rollback to last successful response ID."""
-        slice_file = tmp_path / "test.slice.json"
-        slice_data = {
-            "id": "slice_001",
-            "order": 1,
-            "source_file": "test.md",
-            "slug": "test",
-            "text": "Test content",
-            "slice_token_start": 0,
-            "slice_token_end": 100,
-        }
-        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
-
-        # Simulate successful previous slice
-        processor.previous_response_id = "last_good_response_id"
-
-        # Mock LLM client
-        mock_client = processor.llm_client
-        
-        # First attempt returns invalid JSON (failed response)
-        mock_client.create_response.return_value = (
-            "not valid json at all",
-            "failed_response_id",
-            ResponseUsage(input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0),
-        )
-        
-        # Repair attempt returns valid JSON
-        mock_client.repair_response.return_value = (
-            json.dumps({"concepts_added": {"concepts": [
-                {
-                    "concept_id": "test:p:concept",
-                    "term": {"primary": "Concept", "aliases": []},
-                    "definition": "Test concept"
-                }
-            ]}}),
-            "repair_response_id",
-            ResponseUsage(input_tokens=120, output_tokens=60, total_tokens=180, reasoning_tokens=0),
-        )
-
-        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
-            result = processor._process_single_slice(slice_file)
-
-        # Verify successful processing
-        assert result is True
-        
-        # Verify repair was called
-        assert mock_client.repair_response.called
-        
-        # CRITICAL: Verify repair used rollback to last successful ID, not the failed one
-        repair_call = mock_client.repair_response.call_args
-        assert repair_call[1]["previous_response_id"] == "last_good_response_id"
-        assert repair_call[1]["previous_response_id"] != "failed_response_id"
-        
-        # Verify previous_response_id was updated after successful repair
-        assert processor.previous_response_id == "repair_response_id"
 
     def test_context_preservation(self, processor, tmp_path):
         """Test that previous_response_id is preserved through processing."""

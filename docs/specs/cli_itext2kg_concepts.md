@@ -203,7 +203,8 @@ Process and validate LLM response.
 
 ### Error Recovery
 - **Repair-reprompt**: on invalid JSON makes repeat request with clarification
-  - Method `repair_response()` automatically uses saved previous_response_id
+  - Repair uses rollback to last successful response_id (not the failed one)
+  - Prevents "anchoring" on broken JSON structure
   - Repair prompt adds explicit error indication and valid JSON requirement
 - **Graceful degradation**: process continues on partial failures
 - **Temporary dumps**: state saving on critical errors

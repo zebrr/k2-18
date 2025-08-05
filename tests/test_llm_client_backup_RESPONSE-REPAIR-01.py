@@ -659,63 +659,16 @@ class TestOpenAIClient:
             # Первый запрос
             client.create_response("Original prompt", "Input")
 
-            # Repair запрос без explicit previous_response_id (backward compatibility)
+            # Repair запрос
             response_text, _, _ = client.repair_response("Original prompt", "Input")
 
-        # Проверка repair вызова - должен использовать last_response_id
+        # Проверка repair вызова
         repair_call_args = (
             mock_client_instance.responses.with_raw_response.create.call_args_list[1][1]
         )
-        assert repair_call_args["instructions"] == "Original prompt"  # No JSON instructions added
+        assert "Return **valid JSON** only" in repair_call_args["instructions"]
         assert repair_call_args["previous_response_id"] == "resp_001"
         assert response_text == "Repaired response"
-
-    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
-    @patch("src.utils.llm_client.tiktoken.get_encoding")
-    @patch("src.utils.llm_client.OpenAI")
-    def test_repair_response_with_explicit_id(
-        self, mock_openai_class, mock_get_encoding, mock_probe, test_config
-    ):
-        """Проверка repair response с явно заданным previous_response_id"""
-        # Setup
-        mock_encoder = MagicMock()
-        mock_encoder.encode.return_value = list(range(100))
-        mock_get_encoding.return_value = mock_encoder
-
-        mock_client_instance = MagicMock()
-        mock_openai_class.return_value = mock_client_instance
-
-        # Настройка ответа для repair
-        initial_response = Mock(id="resp_repair", status="queued")
-        mock_raw_initial = MagicMock()
-        mock_raw_initial.headers = {}
-        mock_raw_initial.parse.return_value = initial_response
-
-        final_response = MockResponse("Repaired with explicit ID")
-        final_response.id = "resp_repair"
-        mock_raw_final = MagicMock()
-        mock_raw_final.headers = {}
-        mock_raw_final.parse.return_value = final_response
-
-        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
-
-        client = OpenAIClient(test_config)
-        client.last_response_id = "resp_last"  # Set different last_response_id
-
-        with patch("src.utils.llm_client.time.sleep"):
-            # Repair с явным previous_response_id
-            response_text, _, _ = client.repair_response(
-                "Instructions with JSON requirement",
-                "Input data",
-                previous_response_id="resp_explicit"
-            )
-
-        # Проверка: должен использовать явно переданный ID, а не last_response_id
-        repair_call_args = mock_client_instance.responses.with_raw_response.create.call_args[1]
-        assert repair_call_args["instructions"] == "Instructions with JSON requirement"
-        assert repair_call_args["previous_response_id"] == "resp_explicit"  # Not "resp_last"!
-        assert response_text == "Repaired with explicit ID"
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")

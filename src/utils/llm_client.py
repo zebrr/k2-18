@@ -657,7 +657,7 @@ class OpenAIClient:
 
                 # Step 1: Create background request
                 raw_initial = self.client.responses.with_raw_response.create(**params)
-                initial_headers = raw_initial.headers
+                # initial_headers = raw_initial.headers  # Currently unused
                 initial_response = raw_initial.parse()
                 response_id = initial_response.id
 
@@ -695,7 +695,7 @@ class OpenAIClient:
                     # Get current status
                     try:
                         raw_status = self.client.responses.with_raw_response.retrieve(response_id)
-                        status_headers = raw_status.headers
+                        # status_headers = raw_status.headers  # Currently unused
                         response = raw_status.parse()
                     except Exception as e:
                         self.logger.error(f"Failed to retrieve response status: {e}")
@@ -841,7 +841,7 @@ class OpenAIClient:
                         raise ValueError(
                             f"Response still incomplete after {retry_count} retries. "
                             f"Max tokens tried: {params['max_output_tokens']}"
-                        )
+                        ) from None
 
                     self.logger.info(
                         f"Retrying with increased token limit: {old_limit} → {params['max_output_tokens']}"
@@ -939,38 +939,39 @@ class OpenAIClient:
         # Call new asynchronous method
         return self._create_response_async(instructions, input_data, previous_response_id)
 
-    def repair_response(self, instructions: str, input_data: str) -> Tuple[str, str, ResponseUsage]:
+    def repair_response(
+        self, instructions: str, input_data: str, previous_response_id: Optional[str] = None
+    ) -> Tuple[str, str, ResponseUsage]:
         """
-        Repair request with same previous_response_id.
+        Repair request with specified previous_response_id.
 
-        Used when LLM returned incorrect response (e.g.,
-        invalid JSON). Adds requirement to instructions
-        to return only valid JSON and repeats request with same
-        context.
+        Pure transport layer method that delegates to create_response.
+        The caller is responsible for any special instructions needed
+        for repair (e.g., JSON formatting requirements).
 
         Args:
-            instructions: Original system prompt
-            input_data: Original user data
+            instructions: System prompt (caller should include repair instructions)
+            input_data: User data
+            previous_response_id: ID of previous response to use as context.
+                If None, uses self.last_response_id for backward compatibility.
 
         Returns:
             tuple: (response_text, response_id, usage_info)
                 See create_response() for details
 
         Example:
-            >>> try:
-            ...     text, resp_id, usage = client.create_response(prompt, data)
-            ...     result = json.loads(text)  # May fail
-            ... except json.JSONDecodeError:
-            ...     # Try repair
-            ...     text, resp_id, usage = client.repair_response(prompt, data)
-            ...     result = json.loads(text)  # Should be valid JSON
+            >>> # Rollback to last successful response
+            >>> repair_text, repair_id, usage = client.repair_response(
+            ...     instructions="Return valid JSON\n" + original_prompt,
+            ...     input_data=data,
+            ...     previous_response_id=last_successful_id
+            ... )
         """
-        repair_instructions = (
-            instructions + "\n\nIMPORTANT: Return **valid JSON** only. "
-            "Do NOT use markdown formatting like ```json```. "
-            "Do NOT include any explanatory text. "
-            "Return ONLY the raw JSON object."
-        )
+        # Use provided previous_response_id or fall back to last_response_id
+        if previous_response_id is not None:
+            response_id_to_use = previous_response_id
+        else:
+            response_id_to_use = self.last_response_id
 
-        # Use same previous_response_id as in previous request
-        return self.create_response(repair_instructions, input_data, self.last_response_id)
+        # Simply delegate to create_response
+        return self.create_response(instructions, input_data, response_id_to_use)

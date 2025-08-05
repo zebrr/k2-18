@@ -523,16 +523,16 @@ class SliceProcessor:
                     # Form repair prompt with clarification
                     repair_instructions = (
                         f"{self.extraction_prompt}\n\n"
-                        "IMPORTANT: Your previous response was not valid JSON or "
-                        "did not match the required schema. Please ensure your "
-                        "response is EXACTLY one valid JSON object with the "
-                        "structure shown above. Do not include any text before "
-                        "or after the JSON object."
+                        "CRITICAL: Return ONLY a valid JSON object. "
+                        "No markdown formatting, no explanations, no text outside the JSON structure."
                     )
 
-                    # repair_response automatically uses saved previous_response_id
+                    # Rollback to last successful response ID to avoid anchoring on broken JSON
+                    # This ensures clean context without the failed response
                     repair_text, repair_id, repair_usage = self.llm_client.repair_response(
-                        instructions=repair_instructions, input_data=input_data
+                        instructions=repair_instructions,
+                        input_data=input_data,
+                        previous_response_id=self.previous_response_id,  # Rollback!
                     )
 
                     success, parsed_data = self._process_llm_response(repair_text, slice_data.id)
@@ -616,8 +616,14 @@ class SliceProcessor:
                     )
                 )
 
-                # Update previous_response_id for next slice
-                self.previous_response_id = response_id
+                # Update previous_response_id only after successful processing
+                # This ensures we rollback to last successful state on repair
+                if "repair_id" in locals() and repair_id:
+                    # If repair was successful, use repair_id
+                    self.previous_response_id = repair_id
+                else:
+                    # Otherwise use the original response_id
+                    self.previous_response_id = response_id
 
                 return True
 
@@ -638,10 +644,7 @@ class SliceProcessor:
                     # LLM client will already handle retry with backoff
                     print(f"[{current_time}] ERROR    | ⚠️ {error_type} | " "waiting for retry...")
                 else:
-                    print(
-                        f"[{current_time}] ERROR    | ⚠️ {error_type} | "
-                        f"slice {slice_data.id}"
-                    )
+                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | " f"slice {slice_data.id}")
 
                 self.logger.error(
                     json.dumps(
@@ -910,6 +913,7 @@ def main():
     except Exception as e:
         print(f"Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         return EXIT_CONFIG_ERROR
 

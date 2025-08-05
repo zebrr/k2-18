@@ -73,11 +73,14 @@ Create response via OpenAI Responses API (public interface).
   - ValueError - for failed status or model refusal
   - openai.RateLimitError - when rate limit exceeded
 
-#### OpenAIClient.repair_response(instructions: str, input_data: str) -> Tuple[str, str, ResponseUsage]
-Repair request with same previous_response_id to fix invalid JSON.
-- **Input**: instructions - original prompt, input_data - original data
+#### OpenAIClient.repair_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
+Repair request with specified previous_response_id.
+- **Input**: 
+  - instructions - system prompt (caller should include repair instructions)
+  - input_data - user data
+  - previous_response_id - ID of previous response to use as context (optional)
 - **Returns**: (response_text, response_id, usage_info)
-- **Logic**: Adds requirement to return only valid JSON
+- **Logic**: Pure transport layer - simply delegates to create_response with provided previous_response_id. If previous_response_id is None, uses self.last_response_id for backward compatibility
 
 ## Internal Methods
 
@@ -310,19 +313,31 @@ print(f"Reasoning tokens: {usage.reasoning_tokens}")
 ```python
 import json
 
+# Track successful response for potential rollback
+last_successful_id = None
+
 try:
-    response_text, _, _ = client.create_response(
+    response_text, response_id, _ = client.create_response(
         "Return a JSON object",
-        "Create user object with name and age"
+        "Create user object with name and age",
+        previous_response_id=last_successful_id
     )
     data = json.loads(response_text)
+    last_successful_id = response_id  # Update on success
 except json.JSONDecodeError:
-    # Try repair with same context
-    response_text, _, _ = client.repair_response(
-        "Return a JSON object",
-        "Create user object with name and age"
+    # Repair with rollback to last successful context
+    repair_instructions = (
+        "Return a JSON object\n\n"
+        "CRITICAL: Return ONLY valid JSON. "
+        "No markdown formatting, no explanations."
+    )
+    response_text, response_id, _ = client.repair_response(
+        instructions=repair_instructions,
+        input_data="Create user object with name and age",
+        previous_response_id=last_successful_id  # Rollback!
     )
     data = json.loads(response_text)
+    last_successful_id = response_id  # Update on success
 ```
 
 ### Error Handling

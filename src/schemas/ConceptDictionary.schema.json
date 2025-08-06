@@ -41,5 +41,6 @@
       }
     }
   },
-  "required": ["concepts"]
+  "required": ["concepts"],
+  "additionalProperties": true
 }

@@ -8,18 +8,67 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "type", "text", "local_start"],
+        "required": ["id", "type", "text"],
         "properties": {
-          "id":          { "type": "string", "pattern": "^[A-Za-z0-9:_-]+$" },
-          "type":        { "type": "string", "enum": ["Chunk", "Concept", "Assessment"] },
-          "text":        { "type": "string" },
-          "local_start": { "type": "integer", "minimum": 0, "description": "Offset (in tokens) from the start of the slice; needed to calculate token_start" },
-          "definition":  { "type": "string" },
-          "concepts":    { "type": "array", "items": { "type": "string" }, "description": "Reserved for future use. Do not populate in current version - use MENTIONS edges instead" },
-          "difficulty":  { "type": "integer", "minimum": 1, "maximum": 5 },
-          "tags":        { "type": "array", "items": { "type": "string" } },
-          "language":    { "type": "string", "minLength": 2, "maxLength": 2 },
-          "metadata":    { "type": "object", "additionalProperties": true }
+          "id": { 
+            "type": "string", 
+            "pattern": "^[A-Za-z0-9:_-]+$",
+            "description": "Unique identifier. For Chunk use pattern: {slug}:c:{node_position}. For Assessment: {slug}:q:{node_position}:{index}. For Concept: use concept_id from dictionary"
+          },
+          "type": { 
+            "type": "string", 
+            "enum": ["Chunk", "Concept", "Assessment"],
+            "description": "Node type determining its role in the knowledge graph"
+          },
+          "text": { 
+            "type": "string",
+            "description": "Main content of the node"
+          },
+          "node_offset": { 
+            "type": "integer", 
+            "minimum": 0, 
+            "description": "Offset in tokens from the beginning of the slice. REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
+          },
+          "node_position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Global position in document. MUST equal (slice_token_start + node_offset). REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
+          },
+          "_calculation": {
+            "type": "string",
+            "description": "Show your math! Format: 'slice_token_start(X) + node_offset(Y) = node_position(Z)'. REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
+          },
+          "definition": { 
+            "type": "string",
+            "description": "Definition or description of the node content"
+          },
+          "concepts": { 
+            "type": "array", 
+            "items": { "type": "string" }, 
+            "description": "Reserved for future use. Do not populate in current version - use MENTIONS edges instead"
+          },
+          "difficulty": { 
+            "type": "integer", 
+            "minimum": 1, 
+            "maximum": 5,
+            "description": "Difficulty level: 1=basic, 5=advanced"
+          },
+          "tags": { 
+            "type": "array", 
+            "items": { "type": "string" },
+            "description": "Optional tags for categorization"
+          },
+          "language": { 
+            "type": "string", 
+            "minLength": 2, 
+            "maxLength": 2,
+            "description": "ISO 639-1 language code"
+          },
+          "metadata": { 
+            "type": "object", 
+            "additionalProperties": true,
+            "description": "Additional custom metadata"
+          }
         }
       }
     },
@@ -29,21 +78,37 @@
         "type": "object",
         "required": ["source", "target", "type"],
         "properties": {
-          "source": { "type": "string" },
-          "target": { "type": "string" },
+          "source": { 
+            "type": "string",
+            "description": "ID of the source node"
+          },
+          "target": { 
+            "type": "string",
+            "description": "ID of the target node"
+          },
           "type": {
             "type": "string",
             "enum": [
               "PREREQUISITE", "ELABORATES", "EXAMPLE_OF",
               "HINT_FORWARD", "REFER_BACK", "PARALLEL",
               "TESTS", "REVISION_OF", "MENTIONS"
-            ]
+            ],
+            "description": "Type of semantic relationship"
           },
-          "weight":     { "type": "number", "minimum": 0, "maximum": 1 },
-          "conditions": { "type": "string" }
+          "weight": { 
+            "type": "number", 
+            "minimum": 0, 
+            "maximum": 1,
+            "description": "Confidence or strength of the relationship (0-1)"
+          },
+          "conditions": { 
+            "type": "string",
+            "description": "Optional conditions or context for this edge"
+          }
         }
       }
     }
   },
-  "required": ["nodes", "edges"]
+  "required": ["nodes", "edges"],
+  "additionalProperties": true
 }

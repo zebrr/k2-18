@@ -1,4 +1,4 @@
-# Graph Extraction v2.1
+# Graph Extraction v2.2
 
 ## Role
 
@@ -54,7 +54,7 @@ Return **exactly one JSON object**, nothing else:
     "nodes": [
       // 1..M objects valid per LearningChunkGraph.schema.json
       // Concept, Chunk and Assessment types
-      // CRITICAL: Chunk and Assessment nodes MUST have correct `local_start` field
+      // CRITICAL: Chunk/Assessment nodes MUST have: node_offset, node_position, _calculation
     ],
     "edges": [
       // 0..K objects valid per LearningChunkGraph.schema.json
@@ -65,65 +65,91 @@ Return **exactly one JSON object**, nothing else:
 ```
 
 
-## CRITICAL: Token Position Calculation
+## CRITICAL: Node IDs and Required Fields
 
-### Correct Formula
-**`token_start = slice_token_start + local_start`**
+### Formula for position calculation
+**`node_position = slice_token_start + node_offset`**
 
-Where:
-- `slice_token_start` = global position where this slice begins in document
-- `local_start` = offset IN TOKENS from beginning of slice text to node text
-- `token_start` = global position of node in document (used for ID)
+- `slice_token_start` - where this slice begins in document (given in input)
+- `node_offset` - offset IN TOKENS from slice beginning to where node text starts
+- `node_position` - global position in document, used for ID generation
 
-### Example Calculation
-```
-Given:
-- slice_token_start = 10000
-- Chunk text begins 200 tokens into the slice
+### Required fields by node type
 
-CORRECT:
-- local_start = 200
-- token_start = 10000 + 200 = 10200
-- ID = algo101:c:10200
-
-WRONG:
-- local_start = 10000 (❌ using slice_token_start instead of offset)
-- ID = algo101:c:200 (❌ using only local offset, forgot to add slice_token_start)
+#### Chunk nodes
+```json
+{
+  "id": "algo101:c:5238",           // Pattern: {slug}:c:{node_position}
+  "type": "Chunk",
+  "text": "actual text content...",
+  "node_offset": 245,                // ✅ REQUIRED: tokens from slice start
+  "node_position": 5238,             // ✅ REQUIRED: = slice_token_start + node_offset
+  "_calculation": "slice_token_start(4993) + node_offset(245) = node_position(5238)",  // ✅ REQUIRED: show math
+  "difficulty": 2                    // ✅ REQUIRED: 1-5
+}
 ```
 
-### Common Mistakes to Avoid
-1. **Using absolute position as local_start** → IDs will be wrong
-2. **Forgetting to add slice_token_start** → IDs will collide across slices
-3. **Using character offset instead of token offset** → IDs will be inconsistent
-
-
-## ID Conventions
-
-### Per-type patterns:
-* **Chunk** → `${slug}:c:${token_start}`
-  (token_start is globally unique → no collisions)
-* **Assessment** → `${slug}:q:${token_start}:${index}`  
-  (index is zero-based, counting Assessment nodes in current slice only)
-* **Concept** → use exact `concept_id` from ConceptDictionary
-
-### Complete Example
+#### Assessment nodes  
+```json
+{
+  "id": "algo101:q:5420:0",         // Pattern: {slug}:q:{node_position}:{index}
+  "type": "Assessment",
+  "text": "exercise or question...",
+  "node_offset": 427,                // ✅ REQUIRED
+  "node_position": 5420,             // ✅ REQUIRED  
+  "_calculation": "slice_token_start(4993) + node_offset(427) = node_position(5420)",  // ✅ REQUIRED
+  "difficulty": 3                    // Optional but recommended
+}
 ```
-slice_token_start = 50000, slug = "algo101"
+Note: Assessment index (0,1,2...) restarts at 0 for each slice.
 
-// Chunks (with correct calculation)
-local_start = 0    → token_start = 50000 + 0 = 50000     → ID = algo101:c:50000
-local_start = 245  → token_start = 50000 + 245 = 50245   → ID = algo101:c:50245
-local_start = 580  → token_start = 50000 + 580 = 50580   → ID = algo101:c:50580
-
-// Assessments (index restarts each slice)
-local_start = 420  → token_start = 50000 + 420 = 50420   → ID = algo101:q:50420:0
-local_start = 890  → token_start = 50000 + 890 = 50890   → ID = algo101:q:50890:1
-
-// Concepts (from dictionary, if mentioned in slice)
-algo101:p:stack
-algo101:p:rekursiya
-algo101:p:binary-search
+#### Concept nodes
+```json
+{
+  "id": "algo101:p:stack",           // Use exact concept_id from ConceptDictionary
+  "type": "Concept",
+  "text": "Стек",                    // Term from dictionary
+  "definition": "LIFO-структура..."  // Copy from dictionary, do not modify
+  // ❌ NO node_offset, node_position, or _calculation for Concepts!
+}
 ```
+
+### Common mistakes to avoid
+
+❌ **WRONG**: Using slice_token_start as node_offset
+```json
+{
+  "node_offset": 4993,    // ❌ This is slice_token_start, not offset!
+  "node_position": 4993,  // ❌ Missing addition
+  "id": "algo101:c:0"     // ❌ ID doesn't match position
+}
+```
+
+❌ **WRONG**: Using node_offset in ID
+```json
+{
+  "node_offset": 245,
+  "node_position": 5238,
+  "id": "algo101:c:245"   // ❌ Should be :c:5238 (using node_position)
+}
+```
+
+✅ **CORRECT**: Proper calculation
+```json
+{
+  "node_offset": 245,               // Offset from slice start
+  "node_position": 5238,            // 4993 + 245
+  "_calculation": "slice_token_start(4993) + node_offset(245) = node_position(5238)",
+  "id": "algo101:c:5238"            // Uses node_position
+}
+```
+
+### Quick reference
+- **Chunk ID**: `{slug}:c:{node_position}`
+- **Assessment ID**: `{slug}:q:{node_position}:{index}`  
+- **Concept ID**: use from ConceptDictionary
+- **Always verify**: `node_position = slice_token_start + node_offset`
+- **Always show math**: in `_calculation` field for Chunk/Assessment
 
 
 ## Rules
@@ -166,11 +192,11 @@ algo101:p:binary-search
    * 4: Formal proof, heavy code
    * 5: Research-level discussion
 
-7. You **may** link to nodes from previous slices if you remember them from context.
+7. You **may** link to nodes from previous slices if you remember them from context
 
-8. **Every Chunk and Assessment node MUST contain** the field `local_start` - the offset in tokens from slice beginning.
+8. **Every Chunk and Assessment node MUST contain fields:** `node_offset`, `node_position`, `_calculation`
 
-9. Include `weight` ∈ [0,1] for edges (confidence level).
+9. Include `weight` ∈ [0,1] for edges (confidence level)
 
 
 ## Example MENTIONS Detection
@@ -206,7 +232,7 @@ Result in edges:
 
 * The response **must** be valid UTF‑8 JSON (no markdown fences, comments, trailing commas, or duplicated keys).
 * Any malformed response will be rejected and the caller will ask you to regenerate.
-* **Before returning, verify all Chunk/Assessment IDs use the correct formula**: `slice_token_start + local_start`
+* **Before returning, verify all Chunk/Assessment IDs use the correct formula**: `node_position = slice_token_start + node_offset`
 
 
 ## LearningChunkGraph.schema.json

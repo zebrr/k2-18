@@ -357,23 +357,29 @@ class TestSliceProcessor:
 
         # Mock LLM client
         mock_client = processor.llm_client
-        
+
         # First attempt returns invalid JSON (failed response)
         mock_client.create_response.return_value = (
             "not valid json at all",
             "failed_response_id",
             ResponseUsage(input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0),
         )
-        
+
         # Repair attempt returns valid JSON
         mock_client.repair_response.return_value = (
-            json.dumps({"concepts_added": {"concepts": [
+            json.dumps(
                 {
-                    "concept_id": "test:p:concept",
-                    "term": {"primary": "Concept", "aliases": []},
-                    "definition": "Test concept"
+                    "concepts_added": {
+                        "concepts": [
+                            {
+                                "concept_id": "test:p:concept",
+                                "term": {"primary": "Concept", "aliases": []},
+                                "definition": "Test concept",
+                            }
+                        ]
+                    }
                 }
-            ]}}),
+            ),
             "repair_response_id",
             ResponseUsage(input_tokens=120, output_tokens=60, total_tokens=180, reasoning_tokens=0),
         )
@@ -383,15 +389,15 @@ class TestSliceProcessor:
 
         # Verify successful processing
         assert result is True
-        
+
         # Verify repair was called
         assert mock_client.repair_response.called
-        
+
         # CRITICAL: Verify repair used rollback to last successful ID, not the failed one
         repair_call = mock_client.repair_response.call_args
         assert repair_call[1]["previous_response_id"] == "last_good_response_id"
         assert repair_call[1]["previous_response_id"] != "failed_response_id"
-        
+
         # Verify previous_response_id was updated after successful repair
         assert processor.previous_response_id == "repair_response_id"
 
@@ -514,3 +520,77 @@ class TestSliceProcessor:
                 mock_client.create_response.call_args[1]["previous_response_id"] == "response_id_2"
             )
             assert processor.previous_response_id == "response_id_3"
+
+    def test_primary_not_duplicated_in_aliases_new_concept(self, processor):
+        """Test that primary term is not included in aliases for new concepts."""
+        # Simulate LLM returning concept with primary in aliases
+        response_data = {
+            "concepts_added": {
+                "concepts": [
+                    {
+                        "concept_id": "test:p:multislovar",
+                        "term": {
+                            "primary": "Мультисловарь",
+                            "aliases": [
+                                "multimap",
+                                "мультисловарь",
+                                "Мультисловарь",
+                                "МУЛЬТИСЛОВАРЬ",
+                            ],
+                        },
+                        "definition": "Test definition",
+                    }
+                ]
+            }
+        }
+
+        processor._apply_concepts(response_data)
+
+        # Check that primary variants are filtered out
+        concept = processor.concept_dictionary["concepts"][0]
+        aliases_lower = [a.lower() for a in concept["term"]["aliases"]]
+
+        # Primary should NOT be in aliases (case-insensitive)
+        assert "мультисловарь" not in aliases_lower
+        # But other aliases should remain
+        assert "multimap" in concept["term"]["aliases"]
+
+    def test_primary_not_duplicated_when_updating_existing(self, processor):
+        """Test that primary is filtered when updating existing concept."""
+        # Add initial concept
+        processor.concept_dictionary["concepts"] = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Стек", "aliases": ["stack"]},
+                "definition": "LIFO structure",
+            }
+        ]
+        processor.concept_id_map["test:p:stack"] = 0
+
+        # Simulate LLM adding aliases including primary
+        response_data = {
+            "concepts_added": {
+                "concepts": [
+                    {
+                        "concept_id": "test:p:stack",
+                        "term": {
+                            "primary": "Стек",
+                            "aliases": ["stack", "стек", "LIFO", "Стек"],
+                        },
+                        "definition": "LIFO structure",
+                    }
+                ]
+            }
+        }
+
+        processor._apply_concepts(response_data)
+
+        # Check result
+        concept = processor.concept_dictionary["concepts"][0]
+        aliases_lower = [a.lower() for a in concept["term"]["aliases"]]
+
+        # Primary should NOT be in aliases
+        assert "стек" not in aliases_lower
+        # Other aliases should be there
+        assert "lifo" in aliases_lower
+        assert "stack" in aliases_lower

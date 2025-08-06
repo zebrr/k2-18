@@ -232,18 +232,28 @@ class SliceProcessor:
                 idx = self.concept_id_map[concept_id]
                 existing_concept = self.concept_dictionary["concepts"][idx]
 
+                # Get primary term for filtering
+                primary = existing_concept["term"].get("primary", "")
+                primary_lower = primary.lower() if primary else None
+
                 # Create dictionary of existing aliases (lowercase -> original)
                 existing_aliases = existing_concept["term"].get("aliases", [])
-                existing_lower_map = {alias.lower(): alias for alias in existing_aliases}
+                # Filter out any existing alias that duplicates primary
+                existing_lower_map = {}
+                for alias in existing_aliases:
+                    alias_lower = alias.lower()
+                    if alias_lower != primary_lower:  # Skip if matches primary
+                        existing_lower_map[alias_lower] = alias
 
                 # Check new aliases
                 new_aliases = new_concept["term"].get("aliases", [])
                 added_aliases = []
 
                 for new_alias in new_aliases:
-                    # Check case-insensitive
-                    if new_alias.lower() not in existing_lower_map:
-                        existing_lower_map[new_alias.lower()] = new_alias
+                    alias_lower = new_alias.lower()
+                    # Check against both existing aliases AND primary term
+                    if alias_lower not in existing_lower_map and alias_lower != primary_lower:
+                        existing_lower_map[alias_lower] = new_alias
                         added_aliases.append(new_alias)
 
                 if added_aliases:
@@ -264,10 +274,21 @@ class SliceProcessor:
                         )
                     )
             else:
-                # New concept - clean aliases from case-insensitive duplicates
+                # New concept - clean aliases from case-insensitive duplicates AND primary term
+                primary = new_concept.get("term", {}).get("primary", "")
                 aliases = new_concept.get("term", {}).get("aliases", [])
-                if aliases:
-                    # Remove duplicates, keeping first occurrence
+                if aliases and primary:
+                    # Start with primary in seen_lower to exclude it from aliases
+                    primary_lower = primary.lower()
+                    seen_lower = {primary_lower: True}
+                    unique_aliases = []
+                    for alias in aliases:
+                        alias_lower = alias.lower()
+                        if alias_lower not in seen_lower:
+                            seen_lower[alias_lower] = True
+                            unique_aliases.append(alias)
+                    new_concept["term"]["aliases"] = unique_aliases
+                elif aliases:  # No primary? Just dedupe aliases
                     seen_lower = {}
                     unique_aliases = []
                     for alias in aliases:
@@ -275,7 +296,6 @@ class SliceProcessor:
                         if alias_lower not in seen_lower:
                             seen_lower[alias_lower] = True
                             unique_aliases.append(alias)
-
                     new_concept["term"]["aliases"] = unique_aliases
 
                 # Add concept
@@ -524,7 +544,8 @@ class SliceProcessor:
                     repair_instructions = (
                         f"{self.extraction_prompt}\n\n"
                         "CRITICAL: Return ONLY a valid JSON object. "
-                        "No markdown formatting, no explanations, no text outside the JSON structure."
+                        "No markdown formatting, no explanations, "
+                        "no text outside the JSON structure."
                     )
 
                     # Rollback to last successful response ID to avoid anchoring on broken JSON
@@ -642,9 +663,9 @@ class SliceProcessor:
                 # Special handling for rate limit
                 if "rate" in str(e).lower() or error_type == "RateLimitError":
                     # LLM client will already handle retry with backoff
-                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | " "waiting for retry...")
+                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | waiting for retry...")
                 else:
-                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | " f"slice {slice_data.id}")
+                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | slice {slice_data.id}")
 
                 self.logger.error(
                     json.dumps(

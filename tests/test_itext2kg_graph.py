@@ -175,20 +175,86 @@ class TestSliceProcessor:
         assert processor._format_tokens(45678) == "45.68k"
         assert processor._format_tokens(1234567) == "1.23M"
 
-    def test_find_invalid_ids(self, processor_with_mocks):
-        """Test ID validation."""
+    def test_validate_node_positions(self, processor_with_mocks):
+        """Test node position validation logic."""
         processor, _ = processor_with_mocks
 
-        nodes = [
-            {"id": "test:c:5000", "type": "Chunk"},  # Valid (5000 >= 1000)
-            {"id": "test:c:100", "type": "Chunk"},  # Invalid (100 < 1000)
-            {"id": "test:q:2000:0", "type": "Assessment"},  # Valid
-            {"id": "test:q:50:0", "type": "Assessment"},  # Invalid
-            {"id": "test:p:concept", "type": "Concept"},  # Ignored
+        # Test correct calculation
+        valid_nodes = [
+            {
+                "id": "test:c:5238",
+                "type": "Chunk",
+                "text": "test",
+                "node_offset": 245,
+                "node_position": 5238,
+                "_calculation": "slice_token_start(4993) + node_offset(245) = node_position(5238)",
+            },
+            {
+                "id": "test:q:5420:0",
+                "type": "Assessment",
+                "text": "question",
+                "node_offset": 427,
+                "node_position": 5420,
+                "_calculation": "slice_token_start(4993) + node_offset(427) = node_position(5420)",
+            },
+            {"id": "test:p:concept", "type": "Concept", "definition": "test"},  # Ignored
         ]
+        result = processor.validate_node_positions(valid_nodes, 4993)
+        assert result == valid_nodes  # Now always returns nodes
 
-        invalid = processor._find_invalid_ids(nodes, slice_token_start=1000)
-        assert invalid == ["test:c:100", "test:q:50:0"]
+        # Test math error - after refactor, validation is skipped
+        invalid_nodes = [
+            {
+                "id": "test:c:5238",
+                "type": "Chunk",
+                "text": "test",
+                "node_offset": 245,
+                "node_position": 5000,  # Wrong, but validation is now skipped
+                "_calculation": "incorrect",
+            }
+        ]
+        result = processor.validate_node_positions(invalid_nodes, 4993)
+        assert result == invalid_nodes  # Now always returns nodes (validation skipped)
+
+        # Test position before slice start
+        invalid_nodes2 = [
+            {
+                "id": "test:c:100",
+                "type": "Chunk",
+                "text": "test",
+                "node_offset": 100,
+                "node_position": 100,  # Less than slice_token_start!
+                "_calculation": "wrong",
+            }
+        ]
+        result = processor.validate_node_positions(invalid_nodes2, 4993)
+        assert result == invalid_nodes2  # Now always returns nodes (validation skipped)
+
+        # Test ID mismatch - after refactor, validation is skipped
+        invalid_nodes3 = [
+            {
+                "id": "test:c:5000",  # ID says 5000
+                "type": "Chunk",
+                "text": "test",
+                "node_offset": 245,
+                "node_position": 5238,  # But position is 5238, validation is now skipped
+                "_calculation": "slice_token_start(4993) + node_offset(245) = node_position(5238)",
+            }
+        ]
+        result = processor.validate_node_positions(invalid_nodes3, 4993)
+        assert result == invalid_nodes3  # Now always returns nodes (validation skipped)
+
+        # Test missing fields - after refactor, validation is skipped
+        invalid_nodes4 = [
+            {
+                "id": "test:c:5238",
+                "type": "Chunk",
+                "text": "test",
+                # Missing node_offset and node_position, but validation is now skipped
+            }
+        ]
+        result = processor.validate_node_positions(invalid_nodes4, 4993)
+        assert result == invalid_nodes4  # Now always returns nodes (validation skipped)
 
     def test_process_llm_response_valid_json(self, processor_with_mocks):
         """Test processing valid JSON response."""
@@ -450,7 +516,9 @@ class TestSliceProcessor:
                                 "id": "test:c:1100",
                                 "type": "Chunk",
                                 "text": "Test",
-                                "local_start": 100,
+                                "node_offset": 100,
+                                "node_position": 1100,
+                                "_calculation": "slice_token_start(1000) + node_offset(100) = node_position(1100)",
                                 "difficulty": 2,
                             }
                         ],
@@ -493,7 +561,9 @@ class TestSliceProcessor:
                                 "id": "test:c:1100",
                                 "type": "Chunk",
                                 "text": "Test",
-                                "local_start": 100,
+                                "node_offset": 100,
+                                "node_position": 1100,
+                                "_calculation": "slice_token_start(1000) + node_offset(100) = node_position(1100)",
                             }
                         ],
                         "edges": [],
@@ -510,7 +580,7 @@ class TestSliceProcessor:
         assert processor.previous_response_id == "resp_2"  # Uses repair_id
 
     def test_process_single_slice_id_repair(self, processor_with_mocks, sample_slice, tmp_path):
-        """Test repair for invalid IDs."""
+        """Test that IDs are automatically fixed via post-processing (no repair needed)."""
         processor, mock_client = processor_with_mocks
 
         # Create slice file
@@ -518,18 +588,19 @@ class TestSliceProcessor:
         with open(slice_file, "w", encoding="utf-8") as f:
             json.dump(sample_slice, f)
 
-        # First response - valid JSON but wrong IDs
+        # Response with temporary IDs (as per new convention)
         mock_client.create_response.return_value = (
             json.dumps(
                 {
                     "chunk_graph_patch": {
                         "nodes": [
                             {
-                                "id": "test:c:100",
+                                "id": "chunk_1",  # Temporary ID
                                 "type": "Chunk",
                                 "text": "Test",
-                                "local_start": 100,
-                            }  # Wrong ID
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
                         ],
                         "edges": [],
                     }
@@ -539,35 +610,17 @@ class TestSliceProcessor:
             Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
         )
 
-        # Repair response - fixed IDs
-        mock_client.repair_response.return_value = (
-            json.dumps(
-                {
-                    "chunk_graph_patch": {
-                        "nodes": [
-                            {
-                                "id": "test:c:1100",
-                                "type": "Chunk",
-                                "text": "Test",
-                                "local_start": 100,
-                            }  # Fixed
-                        ],
-                        "edges": [],
-                    }
-                }
-            ),
-            "resp_2",
-            Mock(total_tokens=50, input_tokens=25, output_tokens=20, reasoning_tokens=5),
-        )
-
         success = processor._process_single_slice(slice_file)
         assert success is True
-        assert mock_client.repair_response.called
+        # Repair should NOT be called - IDs are fixed automatically
+        assert not mock_client.repair_response.called
 
-        # Check that repair was called with ID-specific instructions
-        repair_call = mock_client.repair_response.call_args
-        assert "Calculate chunk and assessment IDs correctly" in repair_call[1]["instructions"]
-        assert processor.previous_response_id == "resp_2"
+        # Check that the ID was properly assigned
+        assert len(processor.graph_nodes) == 1
+        # The ID should be fixed to test:c:1100 (slice_token_start=1000 + node_offset=100)
+        assert processor.graph_nodes[0]["id"] == "test:c:1100"
+        # No repair was called, so should use the original response_id
+        assert processor.previous_response_id == "resp_1"
 
     def test_process_single_slice_repair_failure(
         self, processor_with_mocks, sample_slice, tmp_path
@@ -624,7 +677,9 @@ class TestSliceProcessor:
                                 "id": "test:c:1100",
                                 "type": "Chunk",
                                 "text": "Test",
-                                "local_start": 100,
+                                "node_offset": 100,
+                                "node_position": 1100,
+                                "_calculation": "slice_token_start(1000) + node_offset(100) = node_position(1100)",
                             }
                         ],
                         "edges": [

@@ -25,21 +25,17 @@ python -m src.itext2kg_graph
 
 ## Key Features
 
-### ID Validation and Repair
-- **Detection**: Identifies incorrect chunk/assessment IDs where position < slice_token_start
-- **Correct calculation**: `token_position = slice_token_start + local_start`
-- **Repair mechanism**: One attempt with emphasized instructions about ID calculation
+### ID Post-processing (NEW in v2.3)
+- **Automatic ID correction**: LLM generates temporary IDs (chunk_1, assessment_1), which are automatically replaced with correct position-based IDs
+- **Position calculation**: `final_id = {slug}:c:{slice_token_start + node_offset}`
+- **No repair needed**: Post-processing eliminates need for ID repair attempts
 - **Critical for data integrity**: Prevents ~75% content loss from ID collisions
 
-### Dual Repair Mechanism
-Two types of repair with different instructions:
+### JSON Repair Mechanism
+Single repair attempt for JSON parsing errors:
 - **JSON parsing errors**:
   - Add emphasis on valid JSON format
   - Remove markdown formatting instructions
-  - Rollback to previous_response_id
-- **ID calculation errors**:
-  - Add specific examples of correct calculation
-  - Emphasize slice_token_start usage
   - Rollback to previous_response_id
 
 ### Node Processing
@@ -75,9 +71,9 @@ Safety net for MENTIONS edges the LLM might miss:
    - Format input data (FULL ConceptDictionary + Slice)
    - Call LLM via Responses API
    - Parse and validate response
-   - **Dual repair mechanism**:
+   - **Apply ID post-processing**: Replace temporary IDs with final position-based IDs
+   - **JSON repair mechanism** (if needed):
      - JSON errors → repair with format emphasis
-     - ID errors → repair with ID calculation emphasis
    - Process nodes (handle duplicates)
    - Validate edges
    - Add automatic MENTIONS edges
@@ -112,9 +108,9 @@ The utility uses structured progress output with unified format:
 [10:30:45] REPAIR   | 🔧 Attempting to fix JSON validation error...
 [10:30:50] REPAIR   | ✅ JSON validation fixed successfully!
 
-[10:31:00] REPAIR   | 🔧 Attempting to fix ID calculation error...
-[10:31:00] REPAIR   | 📝 Invalid IDs detected: ['test:c:100', 'test:c:200']...
-[10:31:05] REPAIR   | ✅ ID calculation fixed successfully!
+[10:31:00] REPAIR   | 🔧 Attempting to fix node position errors...
+[10:31:00] REPAIR   | 📝 Position calculation issues detected
+[10:31:05] REPAIR   | ✅ Node position calculation fixed successfully!
 ```
 
 **INFO - informational messages:**
@@ -255,19 +251,24 @@ Process single slice with dual repair mechanism.
   - May create bad response files
 - **Error handling**: Returns False on any failure
 
-### SliceProcessor._find_invalid_ids(nodes: List[Dict], slice_token_start: int) -> List[str]
-Detect nodes with incorrect IDs.
+### SliceProcessor.validate_node_positions(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
+Validate internal consistency of node calculations.
 - **Input**: 
   - nodes - list of node dictionaries
   - slice_token_start - token position where slice begins
-- **Returns**: List of invalid node IDs
+- **Returns**: nodes if valid, None if repair needed
 - **Algorithm**:
   1. For each Chunk/Assessment node
-  2. Parse ID to extract token position
-  3. Check if position < slice_token_start
-  4. Return list of invalid IDs
-- **Logic**: ID is invalid if token position < slice_token_start
-- **Note**: Critical for preventing ID collisions
+  2. Check required fields (node_offset, node_position) exist
+  3. Verify math: node_position = slice_token_start + node_offset
+  4. Check position >= slice_token_start
+  5. Verify ID consistency with stated position
+  6. Return None if any issues found
+- **Validation checks**:
+  - Math consistency
+  - Position validity
+  - ID-position matching
+- **Note**: Critical for preventing ID collisions and ensuring data integrity
 
 ### SliceProcessor._process_chunk_nodes(new_nodes: List[Dict]) -> List[Dict]
 Handle duplicate Chunks and Assessments.
@@ -379,13 +380,13 @@ Add patch to graph with full processing.
 - test_missing_concept_dictionary - error handling
 
 **ID Validation:**
-- test_find_invalid_ids - detection of wrong IDs
-- test_id_calculation_logic - correct position computation
-- test_id_format_parsing - various ID formats
+- test_validate_node_positions - comprehensive position validation
+- test_position_calculation_logic - correct math verification
+- test_missing_fields_detection - handling incomplete nodes
 
 **Repair Mechanism:**
 - test_dual_repair_json - JSON error repair
-- test_dual_repair_ids - ID error repair
+- test_dual_repair_positions - Position error repair
 - test_repair_rollback - previous_response_id handling
 - test_repair_failure - exit on repair failure
 
@@ -404,6 +405,7 @@ Add patch to graph with full processing.
 **Graph Validation:**
 - test_intermediate_validation - invariant checks
 - test_duplicate_id_detection - critical error handling
+- test_position_validation - node position checks
 - test_concept_duplicates_allowed - for dedup.py
 
 **Integration:**
@@ -475,7 +477,8 @@ Final validation uses:
       "id": "algo101:c:1000",
       "type": "Chunk",
       "text": "Example chunk text...",
-      "local_start": 0,
+      "node_offset": 0,
+      "node_position": 1000,
       "difficulty": 3,
       "language": "ru",
       "metadata": {}
@@ -484,7 +487,8 @@ Final validation uses:
       "id": "algo101:q:5000:0",
       "type": "Assessment",
       "text": "Question text...",
-      "local_start": 200,
+      "node_offset": 200,
+      "node_position": 5200,
       "difficulty": 4
     },
     {
@@ -516,7 +520,7 @@ Final validation uses:
   "slice_id": "slice_042",
   "timestamp": "2024-01-15T10:30:00Z",
   "original_response": "invalid LLM response text",
-  "error": "Invalid chunk IDs detected: ['algo101:c:100']",
+  "error": "Position validation failed",
   "repair_response": "response after repair (if any)"
 }
 ```

@@ -260,48 +260,119 @@ class SliceProcessor:
 
         return json.dumps(input_obj, ensure_ascii=False)
 
-    def _find_invalid_ids(self, nodes: List[Dict], slice_token_start: int) -> List[str]:
+    def validate_node_positions(
+        self, nodes: List[Dict], slice_token_start: int
+    ) -> Optional[List[Dict]]:
         """
-        Find all nodes with invalid IDs (position < slice_token_start).
+        DEPRECATED: Position validation is no longer needed after ID post-processing.
+        Kept for backward compatibility but always returns nodes as valid.
 
         Args:
-            nodes: List of nodes to check
+            nodes: List of nodes to validate
             slice_token_start: Start token position of current slice
 
         Returns:
-            List of invalid node IDs
+            Always returns nodes (validation is skipped)
         """
-        invalid = []
+        # Position validation is no longer needed since we fix IDs in post-processing
+        return nodes
+
+    def _validate_node_positions_legacy(
+        self, nodes: List[Dict], slice_token_start: int
+    ) -> Optional[List[Dict]]:
+        """
+        Legacy validation method - kept for reference but not used.
+        The original validation logic that checked node_position calculations.
+        """
+        issues = []
 
         for node in nodes:
             if node.get("type") in ["Chunk", "Assessment"]:
+                # Check required fields exist
+                if "node_offset" not in node or "node_position" not in node:
+                    issues.append(
+                        {
+                            "type": "missing_fields",
+                            "node_id": node.get("id", "unknown"),
+                            "error": "Missing node_offset or node_position",
+                        }
+                    )
+                    continue
+
+                node_offset = node.get("node_offset", 0)
+                node_position = node.get("node_position", 0)
                 node_id = node.get("id", "")
+
+                # Check 1: Math consistency
+                expected_position = slice_token_start + node_offset
+                if node_position != expected_position:
+                    issues.append(
+                        {
+                            "type": "math_error",
+                            "node_id": node_id,
+                            "stated_offset": node_offset,
+                            "stated_position": node_position,
+                            "expected_position": expected_position,
+                            "error": f"Math error: {slice_token_start} + {node_offset} should be {expected_position}, not {node_position}",
+                        }
+                    )
+
+                # Check 2: Position must be >= slice start
+                if node_position < slice_token_start:
+                    issues.append(
+                        {
+                            "type": "invalid_position",
+                            "node_id": node_id,
+                            "node_position": node_position,
+                            "error": f"Position {node_position} is before slice start {slice_token_start}",
+                        }
+                    )
+
+                # Check 3: ID consistency with stated position
                 id_parts = node_id.split(":")
+                if node["type"] == "Chunk" and len(id_parts) >= 3:
+                    try:
+                        id_position = int(id_parts[-1])
+                        if id_position != node_position:
+                            issues.append(
+                                {
+                                    "type": "id_mismatch",
+                                    "node_id": node_id,
+                                    "id_position": id_position,
+                                    "stated_position": node_position,
+                                    "error": f"ID contains {id_position} but node_position is {node_position}",
+                                }
+                            )
+                    except ValueError:
+                        pass  # ID format issue, handled elsewhere
+                elif node["type"] == "Assessment" and len(id_parts) >= 4:
+                    try:
+                        id_position = int(id_parts[-2])
+                        if id_position != node_position:
+                            issues.append(
+                                {
+                                    "type": "id_mismatch",
+                                    "node_id": node_id,
+                                    "id_position": id_position,
+                                    "stated_position": node_position,
+                                    "error": f"ID contains {id_position} but node_position is {node_position}",
+                                }
+                            )
+                    except ValueError:
+                        pass
 
-                try:
-                    if node["type"] == "Chunk" and len(id_parts) >= 3 and id_parts[-2] == "c":
-                        # Chunk ID format: slug:c:token_position
-                        token_pos = int(id_parts[-1])
-                    elif (
-                        node["type"] == "Assessment" and len(id_parts) >= 4 and id_parts[-3] == "q"
-                    ):
-                        # Assessment ID format: slug:q:token_position:index
-                        token_pos = int(id_parts[-2])
-                    else:
-                        self.logger.warning(f"Unknown ID format for {node['type']}: {node_id}")
-                        continue
+        if issues:
+            self.logger.error(f"Found {len(issues)} node position validation issues:")
+            for issue in issues:
+                self.logger.error(f"  [{issue['type']}] {issue['error']}")
+            return None  # Signal need for repair
 
-                    if token_pos < slice_token_start:
-                        invalid.append(node_id)
-                        self.logger.debug(
-                            f"Invalid {node['type']} ID {node_id}: "
-                            f"position {token_pos} < slice_token_start {slice_token_start}"
-                        )
+        # Log successful validation at DEBUG level
+        validated_count = len([n for n in nodes if n.get("type") in ["Chunk", "Assessment"]])
+        if validated_count > 0:
+            self.logger.debug(f"Validated {validated_count} nodes successfully")
 
-                except (ValueError, IndexError) as e:
-                    self.logger.warning(f"Cannot parse ID for validation: {node_id} - {e}")
-
-        return invalid
+        return nodes  # All good
 
     def _process_llm_response(
         self, response_text: str, slice_id: str
@@ -441,7 +512,7 @@ class SliceProcessor:
                         "type": "Concept",
                         "definition": concept_from_dict["definition"],
                     }
-                    # Note: Concept nodes don't require local_start
+                    # Note: Concept nodes don't require node_offset
                     nodes_to_add.append(concept_node)
                     self.logger.debug(
                         f"Added Concept node {concept_id} with definition from dictionary"
@@ -579,6 +650,76 @@ class SliceProcessor:
                     self.logger.debug(f"Added automatic MENTIONS: {chunk_id} -> {concept_id}")
 
         return added_count
+
+    def _assign_final_ids(self, patch: Dict, slice_data: SliceData) -> None:
+        """
+        Replace temporary IDs with final position-based IDs.
+        Must be called BEFORE any validation or processing.
+
+        Args:
+            patch: Graph patch from LLM with temporary IDs
+            slice_data: Current slice data with slice_token_start
+        """
+        # Build ID mapping for updates
+        id_mapping = {}
+
+        # Process nodes
+        for node in patch.get("nodes", []):
+            old_id = node.get("id", "")
+            node_type = node.get("type", "")
+
+            # Check for required node_offset field
+            if "node_offset" not in node:
+                self.logger.warning(f"Node {old_id} missing required node_offset field")
+                continue
+
+            node_offset = node["node_offset"]
+
+            if node_type == "Chunk" and old_id.startswith("chunk_"):
+                # Calculate final position
+                final_position = slice_data.slice_token_start + node_offset
+                new_id = f"{slice_data.slug}:c:{final_position}"
+
+                # Update node ID
+                node["id"] = new_id
+                id_mapping[old_id] = new_id
+                self.logger.debug(f"Replaced chunk ID: {old_id} -> {new_id}")
+
+            elif node_type == "Assessment" and old_id.startswith("assessment_"):
+                # Calculate final position
+                final_position = slice_data.slice_token_start + node_offset
+
+                # Extract index from temporary ID (assessment_1 → 1)
+                try:
+                    index = old_id.split("_")[-1] if "_" in old_id else "0"
+                except Exception:
+                    index = "0"
+                    self.logger.warning(f"Could not extract index from {old_id}, using 0")
+
+                new_id = f"{slice_data.slug}:q:{final_position}:{index}"
+
+                # Update node ID
+                node["id"] = new_id
+                id_mapping[old_id] = new_id
+                self.logger.debug(f"Replaced assessment ID: {old_id} -> {new_id}")
+
+            # Note: Concept nodes keep their IDs from ConceptDictionary (no change needed)
+
+        # Update edges to use new IDs
+        for edge in patch.get("edges", []):
+            if edge.get("source") in id_mapping:
+                old_source = edge["source"]
+                edge["source"] = id_mapping[old_source]
+                self.logger.debug(f"Updated edge source: {old_source} -> {edge['source']}")
+
+            if edge.get("target") in id_mapping:
+                old_target = edge["target"]
+                edge["target"] = id_mapping[old_target]
+                self.logger.debug(f"Updated edge target: {old_target} -> {edge['target']}")
+
+        self.logger.info(
+            f"Post-processing: replaced {len(id_mapping)} temporary IDs with final position-based IDs"
+        )
 
     def _add_to_graph(self, patch: Dict, slice_data: SliceData) -> None:
         """
@@ -829,79 +970,14 @@ class SliceProcessor:
                 self._save_bad_response(slice_id, response_text, f"Repair error: {e}")
                 return False
 
-        # JSON is valid, check IDs
+        # JSON is valid, apply post-processing to fix IDs
         if parsed and "chunk_graph_patch" in parsed:
             patch = parsed["chunk_graph_patch"]
 
-            # Validate all chunk/assessment IDs
-            invalid_ids = self._find_invalid_ids(patch.get("nodes", []), slice_token_start)
+            # NEW: Replace temporary IDs with final position-based IDs
+            self._assign_final_ids(patch, slice_data)
 
-            if invalid_ids:
-                self.logger.warning(f"Invalid IDs found in {slice_id}: {invalid_ids}")
-                self.logger.warning("Attempting repair with ID calculation emphasis...")
-
-                # Add console output
-                current_time = datetime.now().strftime("%H:%M:%S")
-                print(f"[{current_time}] REPAIR   | 🔧 Attempting to fix ID calculation error...")
-                print(f"[{current_time}] REPAIR   | 📝 Invalid IDs detected: {invalid_ids[:3]}...")
-
-                # Repair with ID calculation emphasis
-                repair_instructions = (
-                    f"{self.extraction_prompt}\n\n"
-                    f"CRITICAL: Calculate chunk and assessment IDs correctly!\n"
-                    f"- Current slice starts at token position {slice_token_start}\n"
-                    f"- For EVERY Chunk/Assessment: ID position = {slice_token_start} + local_start\n"
-                    f"- Example: if local_start=200, then ID must use position {slice_token_start + 200}\n"
-                    f"- NEVER use local_start alone as the position!\n"
-                    "Return ONLY a valid JSON object."
-                )
-
-                try:
-                    repair_text, repair_id, repair_usage = self.llm_client.repair_response(
-                        instructions=repair_instructions,
-                        input_data=input_data,
-                        previous_response_id=self.previous_response_id,  # Rollback!
-                    )
-                    self.stats.total_tokens_used += repair_usage.total_tokens
-                    success, parsed = self._process_llm_response(repair_text, slice_id)
-
-                    if success and parsed and "chunk_graph_patch" in parsed:
-                        patch = parsed["chunk_graph_patch"]
-                        invalid_ids = self._find_invalid_ids(
-                            patch.get("nodes", []), slice_token_start
-                        )
-
-                        if invalid_ids:
-                            self.logger.error(
-                                f"ID repair failed for {slice_id}, still invalid: {invalid_ids}"
-                            )
-                            self._save_bad_response(
-                                slice_id, response_text, f"Invalid IDs: {invalid_ids}", repair_text
-                            )
-                            return False
-                        else:
-                            # Repair successful
-                            current_time = datetime.now().strftime("%H:%M:%S")
-                            print(
-                                f"[{current_time}] REPAIR   | ✅ ID calculation fixed successfully!"
-                            )
-                            # Update response_id to repair_id for successful repair
-                            response_id = repair_id
-                    else:
-                        self.logger.error(f"ID repair failed for {slice_id}")
-                        self._save_bad_response(
-                            slice_id, response_text, "ID repair failed", repair_text
-                        )
-                        return False
-
-                except Exception as e:
-                    self.logger.error(f"ID repair failed for {slice_id}: {e}")
-                    self._save_bad_response(slice_id, response_text, f"ID repair error: {e}")
-                    return False
-
-        # Process valid patch
-        if parsed and "chunk_graph_patch" in parsed:
-            patch = parsed["chunk_graph_patch"]
+            # Position validation and repair are no longer needed - IDs are now correct
             self._add_to_graph(patch, slice_data)
 
             # Intermediate validation

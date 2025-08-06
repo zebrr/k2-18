@@ -8,12 +8,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "type", "text"],
+        "required": ["id", "type", "text", "node_offset"],
         "properties": {
           "id": { 
             "type": "string", 
             "pattern": "^[A-Za-z0-9:_-]+$",
-            "description": "Unique identifier. For Chunk use pattern: {slug}:c:{node_position}. For Assessment: {slug}:q:{node_position}:{index}. For Concept: use concept_id from dictionary"
+            "description": "Unique identifier. For Chunk use: chunk_1, chunk_2, etc. For Assessment: assessment_1, assessment_2, etc. For Concept: use concept_id from ConceptDictionary"
           },
           "type": { 
             "type": "string", 
@@ -27,16 +27,7 @@
           "node_offset": { 
             "type": "integer", 
             "minimum": 0, 
-            "description": "Offset in tokens from the beginning of the slice. REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
-          },
-          "node_position": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Global position in document. MUST equal (slice_token_start + node_offset). REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
-          },
-          "_calculation": {
-            "type": "string",
-            "description": "Show your math! Format: 'slice_token_start(X) + node_offset(Y) = node_position(Z)'. REQUIRED for Chunk and Assessment nodes. Not applicable for Concept nodes"
+            "description": "Offset in tokens from the beginning of the slice where the node content starts"
           },
           "definition": { 
             "type": "string",

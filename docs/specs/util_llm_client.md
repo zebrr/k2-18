@@ -58,7 +58,9 @@ Initialize client with configuration.
   - reasoning_summary (str, optional) - summary type for reasoning
   - poll_interval (int) - polling interval in seconds (default 5)
 - **Attributes**:
+  - last_response_id (str) - ID of last successful response for chains
   - last_usage (ResponseUsage) - usage info from last response for context accumulation
+  - encoder - tokenizer (tiktoken with o200k_base) for precise token counting
 
 #### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
 Create response via OpenAI Responses API (public interface).
@@ -74,13 +76,13 @@ Create response via OpenAI Responses API (public interface).
   - openai.RateLimitError - when rate limit exceeded
 
 #### OpenAIClient.repair_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
-Repair request with specified previous_response_id.
+Repair request with specified previous_response_id (transport layer).
 - **Input**: 
   - instructions - system prompt (caller should include repair instructions)
   - input_data - user data
-  - previous_response_id - ID of previous response to use as context (optional)
+  - previous_response_id - ID of previous response (optional, uses last_response_id if None)
 - **Returns**: (response_text, response_id, usage_info)
-- **Logic**: Pure transport layer - simply delegates to create_response with provided previous_response_id. If previous_response_id is None, uses self.last_response_id for backward compatibility
+- **Logic**: Pure transport layer - simply delegates to create_response with provided previous_response_id
 
 ## Internal Methods
 
@@ -91,6 +93,12 @@ Get current rate limit data via probe request.
 
 ### OpenAIClient._create_response_async(instructions, input_data, previous_response_id) -> Tuple[str, str, ResponseUsage]
 Main logic for creating response in asynchronous mode.
+- **Token Calculation**:
+  1. If previous_response_id exists and last_usage available:
+     - Use last_usage.input_tokens as base (includes all accumulated context)
+     - Add only new content tokens
+     - Check against max_context_tokens limit
+  2. Otherwise: count tokens in full prompt (instructions + input_data)
 - **Steps**:
   1. TPM probe to update limits
   2. Create background request (background=true)
@@ -202,7 +210,10 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 
 ### Context Accumulation
 - When using previous_response_id, the client tracks accumulated context size
-- Context includes all previous messages in the chain up to max_context_tokens limit
+- **Smart token calculation**: 
+  - Uses last_usage.input_tokens as base (includes all previous context)
+  - Adds only new content tokens to estimate total
+  - Warns when approaching max_context_tokens limit
 - OpenAI automatically truncates oldest content when exceeding the limit
 - TPM calculations now account for full context size, not just new content
 - Context limits by model:
@@ -255,6 +266,7 @@ config = {
     'tpm_limit': 120000,
     'tpm_safety_margin': 0.15,
     'max_completion': 4096,
+    'max_context_tokens': 128000,  # Optional, default 128000
     'timeout': 45,
     'max_retries': 6,
     'temperature': 0.7,
@@ -287,6 +299,9 @@ text2, id2, usage2 = client.create_response(
     previous_response_id=id1  # Explicit context passing
 )
 # Response will contain "Alice"
+
+# Check accumulated context
+print(f"Context tokens accumulated: {usage2.input_tokens}")
 ```
 
 ### Working with Reasoning Models
@@ -296,6 +311,7 @@ config = {
     'model': 'o4-mini-2025-04-16',  # Reasoning model
     'tpm_limit': 100000,
     'max_completion': 25000,  # More tokens for reasoning
+    'max_context_tokens': 200000,  # o4 models have larger context
     'reasoning_effort': 'medium',
     'reasoning_summary': 'auto',
     # don't specify temperature for reasoning models!
@@ -356,14 +372,19 @@ except openai.RateLimitError as e:
     print(f"Rate limit exceeded: {e}")
 ```
 
-### TPM Monitoring
+### TPM and Context Monitoring
 ```python
 # Check current TPM state
 print(f"TPM remaining: {client.tpm_bucket.remaining_tokens}")
 print(f"TPM reset at: {client.tpm_bucket.reset_time}")
 
-# After request
+# Monitor context accumulation
 response_text, _, usage = client.create_response(...)
-print(f"Tokens used: {usage.total_tokens}")
-print(f"TPM remaining after: {client.tpm_bucket.remaining_tokens}")
+print(f"Input tokens (with context): {usage.input_tokens}")
+print(f"Output tokens: {usage.output_tokens}")
+print(f"Total tokens: {usage.total_tokens}")
+
+# Check if approaching context limit
+if client.last_usage and client.last_usage.input_tokens > 100000:
+    print("Warning: Context size is large, may be truncated soon")
 ```

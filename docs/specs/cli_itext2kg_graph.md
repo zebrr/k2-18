@@ -15,6 +15,7 @@ python -m src.itext2kg_graph
 - **Source**: `/data/staging/*.slice.json` - slices from slicer.py
 - **Required**: `/data/out/ConceptDictionary.json` - pre-extracted concepts (MUST EXIST)
 - **Formats**: JSON files with slice and concept dictionary structures
+- **Note**: Only `text` field from slice is used for processing
 
 ### Output Directory/Files
 - **Target**: `/data/out/LearningChunkGraph_raw.json` - knowledge graph with nodes and edges
@@ -25,11 +26,13 @@ python -m src.itext2kg_graph
 
 ## Key Features
 
-### ID Post-processing (NEW in v2.3)
+### ID Post-processing
 - **Automatic ID correction**: LLM generates temporary IDs (chunk_1, assessment_1), which are automatically replaced with correct position-based IDs
-- **Position calculation**: `final_id = {slug}:c:{slice_token_start + node_offset}`
-- **No repair needed**: Post-processing eliminates need for ID repair attempts
+- **Position calculation**: `final_id = {slug}:c:{slice_token_start + node_offset}` for Chunks
+- **Assessment IDs**: `final_id = {slug}:q:{slice_token_start + node_offset}:{index}` for Assessments
+- **Post-processing eliminates repair needs**: No more ID calculation errors from LLM
 - **Critical for data integrity**: Prevents ~75% content loss from ID collisions
+- **Implementation**: See `_assign_final_ids()` method
 
 ### JSON Repair Mechanism
 Single repair attempt for JSON parsing errors:
@@ -71,7 +74,7 @@ Safety net for MENTIONS edges the LLM might miss:
    - Format input data (FULL ConceptDictionary + Slice)
    - Call LLM via Responses API
    - Parse and validate response
-   - **Apply ID post-processing**: Replace temporary IDs with final position-based IDs
+   - **Apply ID post-processing**: Replace temporary IDs with final position-based IDs using `_assign_final_ids()`
    - **JSON repair mechanism** (if needed):
      - JSON errors → repair with format emphasis
    - Process nodes (handle duplicates)
@@ -107,10 +110,6 @@ The utility uses structured progress output with unified format:
 ```
 [10:30:45] REPAIR   | 🔧 Attempting to fix JSON validation error...
 [10:30:50] REPAIR   | ✅ JSON validation fixed successfully!
-
-[10:31:00] REPAIR   | 🔧 Attempting to fix node position errors...
-[10:31:00] REPAIR   | 📝 Position calculation issues detected
-[10:31:05] REPAIR   | ✅ Node position calculation fixed successfully!
 ```
 
 **INFO - informational messages:**
@@ -174,7 +173,7 @@ Section `[itext2kg]` in config.toml:
 ### Recovery Strategy
 1. Try to parse response
 2. If JSON error → repair with format emphasis
-3. If ID error → repair with ID calculation emphasis
+3. Post-process IDs with `_assign_final_ids()` (no repair needed)
 4. If repair fails → save dumps and exit with RUNTIME_ERROR
 
 ### Graceful Degradation
@@ -229,8 +228,49 @@ Format token count to readable form.
 - **Side effects**: None
 - **Note**: Used for terminal output formatting
 
+### SliceProcessor._assign_final_ids(patch: Dict, slice_data: SliceData) -> None
+Replace temporary IDs with final position-based IDs.
+- **Input**: 
+  - patch - graph patch from LLM with temporary IDs (chunk_1, assessment_1)
+  - slice_data - current slice data with slice_token_start
+- **Algorithm**:
+  1. Build ID mapping dictionary
+  2. For each Chunk node with temporary ID:
+     - Calculate final_position = slice_token_start + node_offset
+     - Generate new_id = "{slug}:c:{final_position}"
+     - Update node ID and store mapping
+  3. For each Assessment node with temporary ID:
+     - Calculate final_position = slice_token_start + node_offset
+     - Extract index from temporary ID (assessment_1 → 1)
+     - Generate new_id = "{slug}:q:{final_position}:{index}"
+     - Update node ID and store mapping
+  4. Update all edges to use new IDs from mapping
+  5. Log ID replacements for debugging
+- **Side effects**: Modifies patch nodes and edges in-place
+- **Note**: Must be called BEFORE any validation or processing
+
+### SliceProcessor.validate_node_positions(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
+**DEPRECATED**: Position validation no longer needed after ID post-processing.
+- **Input**: 
+  - nodes - list of nodes to validate
+  - slice_token_start - start token position of current slice
+- **Returns**: Always returns nodes (validation is skipped)
+- **Note**: Kept for backward compatibility but performs no validation
+
+### SliceProcessor._validate_node_positions_legacy(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
+Legacy validation method - kept for reference but not used.
+- **Purpose**: Original validation logic that checked node_position calculations
+- **Algorithm**:
+  1. For each Chunk/Assessment node
+  2. Check required fields (node_offset, node_position) exist
+  3. Verify math: node_position = slice_token_start + node_offset
+  4. Check position >= slice_token_start
+  5. Verify ID consistency with stated position
+  6. Return None if any issues found
+- **Note**: Replaced by _assign_final_ids() which fixes IDs automatically
+
 ### SliceProcessor._process_single_slice(slice_file: Path) -> bool
-Process single slice with dual repair mechanism.
+Process single slice with repair mechanism.
 - **Input**: slice_file - Path to slice JSON file
 - **Returns**: True on success, False on failure
 - **Algorithm**:
@@ -239,36 +279,16 @@ Process single slice with dual repair mechanism.
   3. Call LLM with previous_response_id
   4. Parse response and check for JSON errors
   5. If JSON error: repair with format emphasis and rollback
-  6. Check for ID calculation errors
-  7. If ID error: repair with calculation emphasis and rollback
-  8. Process nodes and edges
-  9. Add automatic MENTIONS edges
-  10. Validate graph intermediate state
-  11. Update previous_response_id on success
+  6. Apply ID post-processing with `_assign_final_ids()`
+  7. Process nodes and edges
+  8. Add automatic MENTIONS edges
+  9. Validate graph intermediate state
+  10. Update previous_response_id on success
 - **Side effects**: 
   - Updates graph_nodes and graph_edges
   - Updates previous_response_id
   - May create bad response files
 - **Error handling**: Returns False on any failure
-
-### SliceProcessor.validate_node_positions(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
-Validate internal consistency of node calculations.
-- **Input**: 
-  - nodes - list of node dictionaries
-  - slice_token_start - token position where slice begins
-- **Returns**: nodes if valid, None if repair needed
-- **Algorithm**:
-  1. For each Chunk/Assessment node
-  2. Check required fields (node_offset, node_position) exist
-  3. Verify math: node_position = slice_token_start + node_offset
-  4. Check position >= slice_token_start
-  5. Verify ID consistency with stated position
-  6. Return None if any issues found
-- **Validation checks**:
-  - Math consistency
-  - Position validity
-  - ID-position matching
-- **Note**: Critical for preventing ID collisions and ensuring data integrity
 
 ### SliceProcessor._process_chunk_nodes(new_nodes: List[Dict]) -> List[Dict]
 Handle duplicate Chunks and Assessments.
@@ -379,14 +399,17 @@ Add patch to graph with full processing.
 - test_initialization - processor setup with ConceptDictionary loading
 - test_missing_concept_dictionary - error handling
 
-**ID Validation:**
-- test_validate_node_positions - comprehensive position validation
-- test_position_calculation_logic - correct math verification
-- test_missing_fields_detection - handling incomplete nodes
+**ID Post-processing:**
+- test_assign_final_ids - ID replacement logic
+- test_temporary_id_patterns - chunk_1, assessment_1 detection
+- test_position_calculation - correct final ID generation
+
+**Deprecated Validation:**
+- test_validate_node_positions_deprecated - always returns nodes
+- test_legacy_validation_preserved - legacy method exists
 
 **Repair Mechanism:**
 - test_dual_repair_json - JSON error repair
-- test_dual_repair_positions - Position error repair
 - test_repair_rollback - previous_response_id handling
 - test_repair_failure - exit on repair failure
 
@@ -405,7 +428,6 @@ Add patch to graph with full processing.
 **Graph Validation:**
 - test_intermediate_validation - invariant checks
 - test_duplicate_id_detection - critical error handling
-- test_position_validation - node position checks
 - test_concept_duplicates_allowed - for dedup.py
 
 **Integration:**
@@ -450,7 +472,7 @@ Add patch to graph with full processing.
 - **Empty staging** → EXIT_INPUT_ERROR (2)
 - **Missing ConceptDictionary.json** → EXIT_INPUT_ERROR (2)
 - **Corrupted slice.json** → log error, attempt to continue → EXIT_RUNTIME_ERROR (3)
-- **Invalid chunk IDs after repair** → save dumps → EXIT_RUNTIME_ERROR (3)
+- **Invalid temporary IDs** → handled by _assign_final_ids() post-processing
 - **Duplicate Chunk/Assessment in intermediate validation** → EXIT_RUNTIME_ERROR (3)
 - **Ctrl+C interruption** → save temporary dumps → EXIT_RUNTIME_ERROR
 - **All slices failed** → save dumps → EXIT_RUNTIME_ERROR (3)
@@ -520,7 +542,7 @@ Final validation uses:
   "slice_id": "slice_042",
   "timestamp": "2024-01-15T10:30:00Z",
   "original_response": "invalid LLM response text",
-  "error": "Position validation failed",
+  "error": "JSON parse failed",
   "repair_response": "response after repair (if any)"
 }
 ```
@@ -559,9 +581,10 @@ Final validation uses:
 - **Speed**: ~10-15 slices/minute with o4-mini model
 - **TPM control** via llm_client with safety margin
 - **Bottleneck**: LLM API calls (limited by TPM)
+- **ID post-processing**: eliminates repair overhead, faster than validation
 - **Optimization**: automatic MENTIONS reduces need for LLM to find all mentions
 - **Logging**: JSON Lines format for efficient parsing
-- **Critical path**: ID validation adds overhead but prevents data loss
+- **Critical path**: Post-processing IDs is deterministic and fast
 
 ## Usage Examples
 
@@ -591,8 +614,8 @@ cat logs/itext2kg_graph_*.log | grep ERROR
 ls logs/*_bad.json
 cat logs/slice_042_bad.json | jq .error
 
-# Check for invalid IDs
-cat logs/itext2kg_graph_*.log | grep "Invalid chunk ID"
+# Check for temporary ID replacements
+cat logs/itext2kg_graph_*.log | grep "Replaced"
 
 # Recover from temporary dumps
 ls logs/LearningChunkGraph_temp_*.json
@@ -613,6 +636,9 @@ cat logs/itext2kg_graph_*.log | grep "duplicate"
 
 # Monitor repair attempts
 cat logs/itext2kg_graph_*.log | grep REPAIR
+
+# Check ID post-processing
+cat logs/itext2kg_graph_*.log | grep "Post-processing"
 
 # Validate final graph structure
 python -c "

@@ -32,17 +32,20 @@ python -m src.itext2kg_concepts
   - `self.previous_response_id` initialized as None in `__init__()`
   - Each `create_response()` call passes `previous_response_id=self.previous_response_id`
   - After successful slice processing, updated with new response_id
+  - On successful repair, updated with repair_id instead of original response_id
   - On repair, uses rollback to last successful response_id
 
 ### Incremental ConceptDictionary Update
 - New concepts added with automatic case-insensitive duplicate cleanup in aliases
+- Primary term excluded from aliases during deduplication
 - For existing concepts:
   - Only aliases updated with case-insensitive uniqueness check
+  - Aliases matching primary term (case-insensitive) are filtered out
   - Primary term and definition preserved from first appearance
   - New aliases added only if lowercase versions not already in list
 - **Case-insensitive logic**:
-  - When adding new concept: removes duplicate aliases (e.g., ["Stack", "stack"] → ["Stack"])
-  - When updating existing: new aliases checked case-insensitive against existing
+  - When adding new concept: removes duplicate aliases AND those matching primary (e.g., ["Stack", "stack", "Стек"] with primary="Стек" → ["Stack", "stack"])
+  - When updating existing: new aliases checked case-insensitive against existing AND primary
   - First occurrence of each unique alias preserved with original case
 
 ### Error Recovery
@@ -53,6 +56,13 @@ python -m src.itext2kg_concepts
 - **Graceful degradation**: process continues on partial failures
 - **Temporary dumps**: state saving on critical errors
 - **Interrupt handling**: correct Ctrl+C handling with result saving
+
+### Debug Mode
+- When `log_level = "debug"` in config:
+  - Logs complete LLM prompts with formatted input data
+  - Logs complete LLM responses with usage statistics
+  - Enables detailed tracing of concept dictionary updates
+  - Useful for debugging extraction issues and prompt optimization
 
 ## Core Algorithm
 
@@ -150,8 +160,14 @@ Section `[itext2kg]` in config.toml:
 - **reasoning_summary** (str) - summary format for reasoning models
 - **timeout** (int, >0, default=360) - request timeout in seconds
 - **max_retries** (int, >0, default=3) - number of retries on API errors
-- **max_context_tokens** (int, >0, default=128000) - maximum context size
+- **max_context_tokens** (int, >=1000, default=128000) - maximum context size
+- **max_context_tokens_test** (int, >=1000, default=128000) - max context for testing
 - **poll_interval** (int, >0, default=5) - polling interval for async requests
+
+### Validation
+- Configuration parameters are validated at startup
+- `max_context_tokens` and `max_context_tokens_test` must be integers >= 1000
+- Invalid configuration causes EXIT_CONFIG_ERROR
 
 ## Error Handling & Exit Codes
 
@@ -248,7 +264,7 @@ Process single slice with full error handling.
   4. Parse and validate response
   5. On JSON error: attempt repair with rollback
   6. Update concept dictionary on success
-  7. Update previous_response_id
+  7. Update previous_response_id (with repair_id if repair was successful)
 - **Side effects**: 
   - Updates self.concept_dict
   - Updates self.previous_response_id
@@ -275,9 +291,11 @@ Update concept dictionary with new concepts and aliases.
 - **Algorithm**:
   1. For each new concept:
      - If concept_id exists: update only aliases (case-insensitive check)
+     - Filter out aliases matching primary term
      - If new: add entire concept with alias deduplication
   2. Case-insensitive duplicate removal within aliases
-  3. Preserve first occurrence of each unique alias
+  3. Primary term excluded from aliases list
+  4. Preserve first occurrence of each unique alias
 - **Side effects**: Modifies self.concept_dict
 - **Note**: Critical for incremental processing consistency
 
@@ -311,10 +329,12 @@ Output final processing status to terminal.
 **Initialization & Configuration:**
 - test_initialization - processor setup with config
 - test_configuration_loading - config.toml parsing
+- test_configuration_validation - validation of max_context_tokens parameters
 
 **Concept Processing:**
 - test_concept_dictionary_updates - adding new concepts
 - test_case_insensitive_deduplication - alias uniqueness
+- test_primary_term_exclusion - primary not in aliases
 - test_updating_existing_concepts - alias merging
 - test_empty_response_handling - graceful empty handling
 
@@ -324,6 +344,7 @@ Output final processing status to terminal.
 - test_repair_reprompt_mechanism - JSON error recovery
 - test_context_preservation - previous_response_id usage
 - test_response_id_chaining - multi-slice context
+- test_repair_id_update - correct ID after successful repair
 
 **Pipeline:**
 - test_full_pipeline_run - end-to-end processing
@@ -366,6 +387,7 @@ Output final processing status to terminal.
 - **All slices have no concepts** → save empty ConceptDictionary.json → SUCCESS
 - **Duplicate concept_id from LLM** → merge aliases, log warning
 - **API timeout** → retry via llm_client, eventual fail after max_retries
+- **Invalid configuration parameters** → EXIT_CONFIG_ERROR at startup
 
 ## Output Validation
 
@@ -376,6 +398,7 @@ Final validation uses:
   - Required fields present (concept_id, term, definition)
   - Primary term is non-empty string
   - Case-insensitive alias uniqueness within each concept
+  - Primary term not in aliases list
 
 ## Output Format
 
@@ -494,6 +517,10 @@ d = json.load(open('data/out/ConceptDictionary.json'))
 ids = [c['concept_id'] for c in d['concepts']]
 print(f'Total: {len(ids)}, Unique: {len(set(ids))}')
 "
+
+# View debug logs for prompt/response analysis
+cat logs/itext2kg_concepts_*.log | jq 'select(.level == "DEBUG" and .event == "llm_request")'
+cat logs/itext2kg_concepts_*.log | jq 'select(.level == "DEBUG" and .event == "llm_response")'
 ```
 
 ## See Also

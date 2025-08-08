@@ -1,4 +1,4 @@
-# Graph Extraction v2.3
+# Graph Extraction v3.2
 
 ## Role
 
@@ -81,79 +81,74 @@ EVERY node MUST have a `node_offset` field:
 - For Concepts: use position of first or most significant mention
 
 
-## Rules
+## Output Rules
 
-1. Split the Slice into **nodes** of approximately 150-400 words, preserving paragraph integrity and coherent contextual units.
-   * If a fragment contains code or formulas, retain them unchanged within the `text` field.
-   * Preserve hyperlinks exactly as they appear. Inline URLs like `https://example.com/path?x=1`, <a>...</a> tags, or Markdown links **must not** be truncated, altered, or split across Chunk nodes.
-   * Always output **at least one** `Chunk` node representing the current slice.
+### Phase 1: **NODES GENERATION**
 
-2. Create **Assessment** nodes for questions, exercises, or self-check materials found in the text.
+Generate nodes first using **exactly** these types and criteria:
 
-3. Create **Concept nodes** for concepts from ConceptDictionary that are relevant to this slice:
-   * Only for concepts mentioned or discussed in the slice text
-   * Use exact `concept_id` from dictionary
-   * Copy `definition` from dictionary as is (do not modify)
-   * Create each Concept node only once per slice, even if mentioned multiple times
+1. **Chunk Nodes**: Create `Chunk` nodes by splitting the Slice text into coherent contextual units (Chunks):
+    * Aim for approximately 150-400 words per Chunk, preserving paragraph and semantic integrity
+    * If a fragment contains code or formulas, retain them unchanged within the `text` field and do not split them across multiple Chunks
+    * Preserve hyperlinks exactly as they appear. Inline URLs, `<a>...</a>` tags, or Markdown links **must not** be truncated, altered, or split across Chunk nodes
+    * Always output **at least one** `Chunk` node representing the current slice
+    * Every `Chunk` **must contain** the `difficulty` field ∈ [1-5]:
+        1: Short definition, ≤2 concepts, no formulas/code
+        2: Simple example, ≤1 formula, tiny code
+        3: Algorithm description, 3-5 concepts
+        4: Formal proof, heavy code
+        5: Research-level discussion
 
-4. **Automatically add MENTIONS edges** from every Chunk to concepts mentioned in its text:
-   * Search for all `term.primary` and `term.aliases` from ConceptDictionary
-   * **Full word matches only** (not substrings): "стек" matches but "стековый" does not
-   * **Case-insensitive**: "Стек", "стек", "СТЕК" all match
-   * **Exact forms only**: ignore morphology ("стеки" ≠ "стек")
-   * Create one MENTIONS edge per unique concept found in chunk
+2. **Concept Nodes**: Create `Concept` nodes for concepts from `ConceptDictionary` that are relevant to this slice:
+    * Only for concepts explicitly mentioned or discussed in the slice text
+    * Use the exact `concept_id` from `ConceptDictionary`
+    * Copy `definition` from `ConceptDictionary` as is (do not modify)
+    * Create each Concept node only once per slice, even if mentioned multiple times
 
-5. When linking nodes, use **exactly** these edge types:
-   * **PREREQUISITE** - "A must be understood before B"
-   * **ELABORATES** - B deepens or details A
-   * **EXAMPLE_OF** - A is an example illustrating B
-   * **HINT_FORWARD** - A gives a teaser of future topic B
-   * **REFER_BACK** - B recalls earlier topic A
-   * **PARALLEL** - A and B are alternative explanations
-   * **TESTS** - Assessment tests knowledge of Chunk/Concept
-   * **REVISION_OF** - B is a revision of A
-   * **MENTIONS** - Chunk mentions a Concept (auto-generated)
+3. **Assessment Nodes**: Create `Assessment` nodes for questions, exercises, or self-check materials found in the text
 
-6. Every `Chunk` **must contain** the field `difficulty` ∈ [1-5]:
-   * 1: Short definition, ≤2 concepts, no formulas/code
-   * 2: Simple example, ≤1 formula, tiny code
-   * 3: Algorithm description, 3-5 concepts
-   * 4: Formal proof, heavy code
-   * 5: Research-level discussion
+4. **`node_offset`**: EVERY node (Chunk, Concept, Assessment) MUST have a `node_offset` field:
+    * Token offset where the node content begins or is first mentioned in the slice
+    * Count tokens from the beginning of the slice (starting at 0)
+    * For Concepts: use the position of the first or most significant mention
 
-7. Every node **MUST** contain `node_offset` field
+### Phase 2: **EDGE GENERATION**
 
-8. Include `weight` ∈ [0,1] for edges (confidence level)
+Generate edges **between nodes created from the current slice**. Focus on capturing the logical flow and relationships *within this specific text segment*.
 
+**CRITICAL: Follow this strict priority algorithm when creating edges between Chunks. You MUST evaluate edge types in this exact order.**
 
-## Example MENTIONS Detection
+1. First, check for `PREREQUISITE` ("A is a prerequisite for B"):
+    * **Key Question (Answer YES/NO):** Is understanding `Chunk B` **completely blocked** without first understanding `Chunk A`? If YES, the edge type is **`PREREQUISITE`**
+    * Use this when `Chunk A` introduces a fundamental concept that `Chunk B` is built upon (e.g., `A` defines a "Graph," and `B` describes an algorithm that operates on a graph)
+    * Also applies to `Concept A` -> `Chunk B`
 
-```
-ConceptDictionary has:
-{
-  "concept_id": "algo101:p:stack",
-  "term": {"primary": "Стек", "aliases": ["stack", "LIFO"]},
-  "definition": "LIFO‑структура данных для хранения элементов"
-}
+2. If not a `PREREQUISITE`, check for `ELABORATES` ("B elaborates on A"):
+    * **Key Question:** Is `Chunk B` a **deep dive** (e.g., a formal proof, detailed breakdown, complex example) into a topic that was only **introduced or briefly mentioned** in `Chunk A`? If YES, the edge type is **`ELABORATES`**
+    * Use this when `Chunk B` expands on `Chunk A` (e.g., `A` describes an algorithm, and `B` provides a proof of its correctness)
+    * Also applies to `Concept A` -> `Chunk B`
 
-Chunk text: "Используем стек для хранения. Stack - это LIFO структура."
+3. Next, check for other semantic relationships:
+    * **`EXAMPLE_OF`**: `Chunk A` is a specific, concrete example of a general principle from `Chunk B` or `Concept B`
+    * **`PARALLEL`**: `Chunk A` and `Chunk B` present alternative approaches or explanations for the same problem
+    * **`TESTS`**: An `Assessment` node evaluates knowledge from a `Chunk` or `Concept` node
 
-Result in nodes:
-{
-  "id": "algo101:p:stack",
-  "type": "Concept",
-  "definition": "LIFO‑структура данных для хранения элементов",
-  "node_offset": 123
-}
+4. Only if NO other semantic link applies, use navigational edges:
+    * **`HINT_FORWARD`**: `Chunk A` briefly mentions a topic that a later `Chunk B` will fully develop. **Use this edge type cautiously!** It is not for simply linking consecutive chunks
+    * **`REFER_BACK`**: `Chunk B` explicitly refers back to a concept that was fully explained in an earlier `Chunk A`
 
-Result in edges:
-{
-  "source": "chunk_1",
-  "target": "algo101:p:stack",
-  "type": "MENTIONS",
-  "weight": 1.0
-}
-```
+5. **ALWAYS** include `weight` ∈ [0,1] for edges (confidence level). Default to `1.0`.
+
+#### Edge Types Heuristics Guide
+
+Refer to these concrete examples to guide your choice of edge type:
+
+* **PREREQUISITE** when `Chunk A` (defines what a Graph is) -> `Chunk B` (describes the BFS algorithm, which operates on a graph)
+* **ELABORATES** when `Chunk A` (describes the BFS algorithm) -> `Chunk B` (provides a formal proof of BFS correctness or analyzes its time complexity)
+* **ELABORATES** when `Chunk A` (describes the MergeSort algorithm) -> `Chunk B` (gives a detailed, line-by-line explanation of the `Merge` helper function used within MergeSort)
+* **EXAMPLE_OF** when `Chunk A` (describes the MergeSort algorithm) -> `Concept B` ("Divide and Conquer"). MergeSort is a concrete application of the general strategy
+* **HINT_FORWARD** when an earlier `Chunk A` briefly mentions a topic that a later `Chunk B` will explain in full. The arrow follows the reading order: `A -> B`
+* **REFER_BACK** when a later `Chunk B` explicitly recalls a concept that was fully explained in an earlier `Chunk A`. The arrow points against the reading order: `B -> A`
 
 
 ## Formatting constraints

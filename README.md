@@ -259,9 +259,20 @@ mypy src/
 - **API-dependent**: Requires stable OpenAI API access
 - **Token limits**: Constrained by LLM context windows
 
-## License
+## License — Non-Commercial Educational & Research Use
 
-[License information pending]
+Copyright (c) 2025 @zebrr. All rights reserved.
+
+Permission is granted to use, copy, modify, and distribute this project **solely for non-commercial educational or academic research purposes**, subject to the following conditions:
+
+1) You must retain this license notice and a link to the original repository.  
+2) You may not charge users, sell access, or integrate this project into paid products or services.  
+3) **Corporate/for-profit use is prohibited**, including CSR/PR/brand initiatives, recruiting/lead-gen, or internal employee training—even if the training itself is free.
+
+Any **commercial or corporate use (including CSR)** requires a separate commercial license.  
+To discuss terms, please open an Issue in this repository addressed to **@zebrr**.
+
+This software is provided **“AS IS”**, without warranty of any kind. Use may require third-party API keys; all related costs are the user’s responsibility.
 
 ## Support
 

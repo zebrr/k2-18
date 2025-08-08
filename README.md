@@ -1,240 +1,270 @@
-# K2-18 - Semantic Knowledge Graph Converter
+# K2-18 - Educational Knowledge Graph Converter
 
-K2-18 is a semantic knowledge graph converter that processes educational content into structured knowledge representations. It extracts concepts, builds relationships, and creates a semantic graph suitable for educational applications.
+## Why K2-18?
 
-## Overview
+Traditional educational content is linear text, but learning is a network of interconnected concepts. K2-18 bridges this gap by automatically extracting the hidden knowledge structure from textbooks and educational materials.
 
-The project transforms raw educational text into:
-- **ConceptDictionary** - structured vocabulary of concepts with definitions
-- **LearningChunkGraph** - semantic graph with relationships between content chunks, concepts, and assessments
+**The Problem**: Educational platforms need structured content for adaptive learning, prerequisite tracking, and personalized paths, but manually creating this structure is prohibitively expensive.
+
+**The Solution**: K2-18 automatically converts any educational text into a semantic knowledge graph with:
+- Extracted concepts with definitions and relationships
+- Learning dependencies (what to learn first)
+- Difficulty levels and assessment points
+- Semantic connections between distant but related topics
+
+## What You Get
+
+The pipeline produces two main outputs:
+
+- **ConceptDictionary** - comprehensive vocabulary of all concepts with definitions, aliases, and cross-references
+- **LearningChunkGraph** - semantic graph connecting content chunks, concepts, and assessments with typed relationships
 
 ## Architecture
 
-The processing pipeline consists of four main stages:
+K2-18 implements the **iText2KG (Incremental Text to Knowledge Graph)** approach - incremental knowledge graph construction from text, designed to work within LLM context window limitations.
 
-1. **Slicer** - Splits raw content into manageable chunks with soft boundaries
-2. **iText2KG** - Extracts concepts and builds initial knowledge graph using LLM
-3. **Dedup** - Removes duplicate nodes using semantic similarity (embeddings + FAISS)
-4. **Refiner** - Discovers and adds long-range semantic connections
+### Processing Pipeline
+
+```
+Raw Content (.md, .txt, .html)
+    ↓
+1. Slicer → Semantic chunks (respecting paragraph boundaries)
+    ↓
+2. iText2KG Concepts → ConceptDictionary (all concepts extracted)
+    ↓
+3. iText2KG Graph → Raw knowledge graph (using ConceptDictionary)
+    ↓
+4. Dedup → Clean graph (semantic duplicates removed)
+    ↓
+5. Refiner → Final graph (long-range connections added)
+```
+
+### Key Features
+
+- **Incremental Processing**: Handles books of 100-1000 pages by processing in chunks
+- **Context Preservation**: Maintains semantic continuity across chunk boundaries
+- **Smart Deduplication**: Uses embeddings to identify and merge semantically identical content
+- **Long-range Connections**: Discovers relationships between concepts separated by many pages
+- **Language Support**: Russian and English content
+
+## Requirements
+
+- Python 3.11+
+- OpenAI API access (Responses API)
+- Memory: ~2GB per 100 pages of text
+- OS: Windows, macOS
 
 ## Installation
 
-### Requirements
+### For Users
 
-- Python 3.8+
-- OpenAI API key
-- Dependencies: `numpy`, `faiss-cpu`, `openai`, `jsonschema`, `python-dotenv`
-
-### Setup
-
-1. Clone the repository:
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/k2-18.git
 cd k2-18
-```
 
-2. Create and activate a virtual environment:
-```bash
+# Create virtual environment
 python -m venv .venv
 
-# Activate based on your shell:
-source .venv/bin/activate         # bash/zsh
-source .venv/bin/activate.fish    # fish
-source .venv/bin/activate.csh     # csh/tcsh
-.venv\Scripts\activate            # Windows (cmd)
-.venv\Scripts\Activate.ps1        # Windows (PowerShell)
-```
+# Activate it (choose your platform):
+source .venv/bin/activate         # Linux/macOS
+.venv\Scripts\activate            # Windows
 
-3. Install dependencies:
-```bash
-# For production use
+# Install dependencies
 pip install -r requirements.txt
 
-# For development (includes testing and code quality tools)
-pip install -r requirements.txt -r requirements-dev.txt
+# Set your OpenAI API key
+export OPENAI_API_KEY="your-api-key"  # Linux/macOS
+set OPENAI_API_KEY=your-api-key       # Windows
 ```
 
-4. Set up environment variables:
+### For Developers
+
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
-# Or create a .env file with:
-# OPENAI_API_KEY=your-api-key-here
+# Same initial setup as above, then:
+
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest tests/
+
+# Check code quality
+ruff check src/
+black src/ --check
 ```
 
-## Usage
-
-### Basic Workflow
-
-All tools are configured via `src/config.toml` and work with predefined directory structure:
+## Quick Start
 
 1. **Prepare your content**:
-   - Place raw text files in `data/raw/` directory
-   - Supported formats: `.txt`, `.md`, `.html`
+   ```bash
+   # Place your educational materials in:
+   data/raw/
+   ```
+   Supported formats: `.md`, `.txt`, `.html`
 
-2. **Run the pipeline**:
-```bash
-# Step 1: Slice raw content into chunks
-python -m src.slicer
+2. **Configure processing** (optional):
+   Edit `src/config.toml` to adjust parameters like chunk size, overlap, and model selection.
 
-# Step 2: Extract knowledge graph from slices
-python -m src.itext2kg
+3. **Run the pipeline**:
+   ```bash
+   # Step-by-step processing
+   python -m src.slicer               # Split into chunks
+   python -m src.itext2kg_concepts    # Extract concepts
+   python -m src.itext2kg_graph       # Build knowledge graph
+   python -m src.dedup                # Remove duplicates
+   python -m src.refiner              # Add distant connections
+   ```
 
-# Step 3: Remove semantic duplicates
-python -m src.dedup
-
-# Step 4: Add long-range connections (optional)
-python -m src.refiner
-```
-
-### Directory Structure
-
-The tools automatically work with these directories:
-- **Input**: `data/raw/` - place your source files here
-- **Staging**: `data/staging/` - intermediate slice files (*.slice.json)
-- **Output**: `data/out/` - final knowledge graphs
-- **Logs**: `logs/` - processing logs and temporary files
+4. **Find your results**:
+   ```bash
+   data/out/
+   ├── ConceptDictionary.json       # All extracted concepts
+   ├── LearningChunkGraph_raw.json  # Initial graph
+   ├── LearningChunkGraph_dedup.json # After deduplication
+   └── LearningChunkGraph.json      # Final graph
+   ```
 
 ## Configuration
 
-Edit `src/config.toml` to adjust processing parameters:
+Main settings in `src/config.toml`:
 
 ```toml
 [slicer]
-max_tokens = 5000           # Maximum tokens per chunk
-overlap = 0                 # Token overlap between chunks
-soft_boundary = true        # Enable semantic boundary detection
+max_tokens = 5000        # Chunk size in tokens
+overlap = 0              # Token overlap between chunks
+soft_boundary = true     # Respect semantic boundaries
 
 [itext2kg]
-model = "o4-mini-2025-04-16"  # LLM model for extraction
-tpm_limit = 150000            # Tokens per minute limit
+model = "..."           # OpenAI model selection
+tpm_limit = 150000      # API rate limit (tokens/minute)
+max_output_tokens = 25000  # Max response size
 
 [dedup]
-sim_threshold = 0.97        # Similarity threshold for duplicates
-embedding_model = "text-embedding-3-small"
+sim_threshold = 0.97    # Similarity threshold for duplicates
 
 [refiner]
-run = true                  # Enable/disable refiner
-sim_threshold = 0.7         # Threshold for new connections
+run = true              # Enable/disable refiner stage
+sim_threshold = 0.7     # Threshold for new connections
 ```
 
-## Output Formats
+## Data Formats
 
-### ConceptDictionary Schema
+All data formats are defined by JSON schemas in `/src/schemas/`:
+- `ConceptDictionary.schema.json` - concept vocabulary structure
+- `LearningChunkGraph.schema.json` - knowledge graph structure
 
-```json
-{
-  "concepts": [
-    {
-      "concept_id": "unique-id",
-      "term": {
-        "primary": "Main Term",
-        "aliases": ["synonym1", "synonym2"]
-      },
-      "definition": "Clear definition of the concept"
-    }
-  ]
-}
-```
+## Error Handling
 
-### LearningChunkGraph Schema
+The pipeline uses consistent exit codes:
+- `0` - Success
+- `1` - Configuration error
+- `2` - Input data error
+- `3` - Runtime error
+- `4` - API rate limit exceeded
+- `5` - I/O error
 
-```json
-{
-  "nodes": [
-    {
-      "id": "node-id",
-      "type": "Chunk|Concept|Assessment",
-      "text": "Node content",
-      "local_start": 0,
-      "difficulty": 3
-    }
-  ],
-  "edges": [
-    {
-      "source": "node-id-1",
-      "target": "node-id-2", 
-      "type": "MENTIONS|PREREQUISITE|TESTS|RELATES_TO",
-      "weight": 0.85
-    }
-  ]
-}
-```
+See `/docs/specs/util_exit_codes.md` for details.
 
-## Testing
-
-Run the test suite:
-
-```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Run specific module tests
-python -m pytest tests/test_slicer.py -v
-
-# Run with coverage
-python -m pytest tests/ --cov=src
-```
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 k2-18/
 ├── src/
-│   ├── slicer.py          # Text chunking
-│   ├── itext2kg.py        # Knowledge extraction
-│   ├── dedup.py           # Deduplication
-│   ├── refiner.py         # Relationship refinement
-│   ├── config.toml        # Configuration
-│   └── utils/             # Shared utilities
+│   ├── slicer.py              # Text chunking
+│   ├── itext2kg_concepts.py   # Concept extraction
+│   ├── itext2kg_graph.py      # Graph construction
+│   ├── dedup.py               # Deduplication
+│   ├── refiner.py             # Connection refinement
+│   ├── config.toml            # Configuration
+│   ├── prompts/               # LLM prompts
+│   ├── schemas/               # JSON schemas
+│   └── utils/                 # Shared utilities
 ├── data/
-│   ├── raw/               # Input files
-│   ├── staging/           # Intermediate files
-│   └── out/               # Final outputs
-├── tests/                 # Test suite
-└── docs/                  # Documentation
+│   ├── raw/                   # Input files
+│   ├── staging/               # Intermediate files
+│   └── out/                   # Results
+├── docs/
+│   └── specs/                 # Module specifications
+├── tests/                     # Test suite
+└── logs/                      # Processing logs
+```
+
+## Documentation
+
+Detailed specifications for each component are in `/docs/specs/`:
+- CLI utilities: `cli_*.md`
+- Utility modules: `util_*.md`
+- Architecture overview: see main Technical Specification
+
+## Troubleshooting
+
+### Common Issues
+
+**Out of Memory**
+- The pipeline processes everything in memory
+- Estimate: ~2GB RAM per 100 pages
+- Solution: Process smaller batches or increase available memory
+
+**API Rate Limits**
+- Check your OpenAI tier limits
+- Adjust `tpm_limit` in config
+- Pipeline will auto-retry with backoff
+
+**Incomplete Processing**
+- Check exit codes and logs in `/logs/`
+- Most utilities support resuming from last successful slice
+- Use `previous_response_id` for context continuity
+
+## Development
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/ -v
+
+# Specific module
+pytest tests/test_slicer.py -v
+
+# With coverage
+pytest tests/ --cov=src --cov-report=html
 ```
 
 ### Code Quality
 
-The project uses several tools to maintain code quality:
-
 ```bash
-# Check code style
-flake8 src/
-
-# Auto-format code
+# Format code
 black src/
-
-# Sort imports
 isort src/
 
-# Type checking
-mypy src/
-
-# Run all checks with ruff
+# Check quality
 ruff check src/
+flake8 src/
+mypy src/
 ```
-
-Configuration files:
-- `.flake8` - flake8 settings
-- `pyproject.toml` - settings for black, isort, mypy, and ruff
 
 ### Contributing
 
-1. Follow PEP 8 style guidelines
-2. Add type hints to all functions
-3. Write tests for new features
-4. Update documentation as needed
-5. Run code quality checks before committing
+1. Follow TDD approach - write tests first
+2. All functions must have type hints
+3. Update relevant specifications in `/docs/specs/`
+4. Run quality checks before commits
+5. Keep specifications in sync with code
+
+## Limitations
+
+- **Memory-bound**: Entire corpus processed in memory
+- **Sequential**: No parallel processing (to maintain context)
+- **API-dependent**: Requires stable OpenAI API access
+- **Token limits**: Constrained by LLM context windows
 
 ## License
 
-[License information here]
+[License information pending]
 
 ## Support
 
-For issues and questions:
-- Create an issue on GitHub
-- Check existing documentation in `/docs`
+- Check `/docs/specs/` for detailed component documentation
+- Review logs in `/logs/` for debugging
+- See Technical Specification for architecture details

@@ -45,29 +45,30 @@ def integration_config(api_key):
 
     config = load_config()
 
-    # Базовая конфигурация
+    # Используем TEST параметры для тестов
     test_config = {
         "api_key": api_key,
         "model": config["itext2kg"]["model_test"],
-        "tpm_limit": config["itext2kg"]["tpm_limit"],
+        "is_reasoning": config["itext2kg"]["is_reasoning"],
+        "tpm_limit": config["itext2kg"]["tpm_limit_test"],  # Используем test версию!
         "tpm_safety_margin": config["itext2kg"].get("tpm_safety_margin", 0.15),
-        "max_completion": 500,
+        "max_completion": config["itext2kg"]["max_completion_test"],  # И тут test версию!
         "timeout": config["itext2kg"]["timeout"],
         "max_retries": 2,
-        "temperature": config["itext2kg"].get("temperature", 1.0),
         "poll_interval": config["itext2kg"].get("poll_interval", 5),
         "max_context_tokens": config["itext2kg"].get("max_context_tokens_test", 128000),
     }
 
-    # Для reasoning моделей
-    if config["itext2kg"].get("model_test", "").startswith("o"):
-        test_config["reasoning_effort"] = config["itext2kg"].get(
-            "reasoning_effort", "medium"
-        )
-        test_config["reasoning_summary"] = config["itext2kg"].get(
-            "reasoning_summary", "auto"
-        )
-        test_config.pop("temperature", None)
+    # Добавляем temperature всегда (может быть None)
+    test_config["temperature"] = config["itext2kg"].get("temperature")
+
+    # Добавляем reasoning параметры ТОЛЬКО для reasoning моделей
+    if test_config["is_reasoning"]:
+        test_config["reasoning_effort"] = config["itext2kg"].get("reasoning_effort")
+        test_config["reasoning_summary"] = config["itext2kg"].get("reasoning_summary")
+    
+    # Verbosity может быть для любых моделей
+    test_config["verbosity"] = config["itext2kg"].get("verbosity")
 
     return test_config
 
@@ -93,7 +94,8 @@ class TestOpenAIClientIntegration:
         assert usage.total_tokens == usage.input_tokens + usage.output_tokens
 
         # Проверка что bucket обновился
-        # Если OpenAI вернул больший лимит чем в конфиге, remaining_tokens может быть больше initial_limit
+        # Если OpenAI вернул больший лимит чем в конфиге,
+        # remaining_tokens может быть больше initial_limit
         assert client.tpm_bucket.remaining_tokens is not None
         # В async режиме reset_time обновляется через probe
         # assert client.tpm_bucket.reset_time is not None
@@ -172,7 +174,6 @@ class TestOpenAIClientIntegration:
         print(f"TPM remaining after 1st: {client.tpm_bucket.remaining_tokens}")
 
         # Эмулируем низкий остаток токенов для теста ожидания
-        original_remaining = client.tpm_bucket.remaining_tokens
         client.tpm_bucket.remaining_tokens = 100  # Очень мало
         client.tpm_bucket.reset_time = int(time.time() + 2)  # Reset через 2 секунды
 
@@ -216,10 +217,10 @@ class TestOpenAIClientIntegration:
     def test_reasoning_model(self, integration_config):
         """Тест reasoning модели"""
         # Проверяем что используется reasoning модель
-        if not integration_config["model"].startswith("o"):
+        if not integration_config.get("is_reasoning", False):
             pytest.skip("Test requires reasoning model")
 
-        integration_config["max_completion"] = 2000  # Больше токенов для reasoning
+        # Используем max_completion из конфига (уже установлен в fixture)
         client = OpenAIClient(integration_config)
 
         response_text, response_id, usage = client.create_response(
@@ -236,14 +237,12 @@ class TestOpenAIClientIntegration:
         print(f"Reasoning tokens: {usage.reasoning_tokens}")
         print(f"Total tokens: {usage.total_tokens}")
 
-    @pytest.mark.skip(reason="Test hangs - may be API rate limiting issue")
     def test_headers_update(self, integration_config):
         """Test that TPM is updated via probe mechanism."""
         client = OpenAIClient(integration_config)
 
         # Initial state
         initial_remaining = client.tpm_bucket.remaining_tokens
-        initial_reset = client.tpm_bucket.reset_time
 
         # Make a request (will trigger probe internally)
         response_text, response_id, usage = client.create_response(
@@ -277,9 +276,7 @@ class TestOpenAIClientIntegration:
 
         # Проверяем что был вывод прогресса (может быть QUEUE или PROGRESS)
         assert "] QUEUE" in captured.out or "] PROGRESS" in captured.out
-        assert (
-            response_id[:8] in captured.out
-        )  # Первые 8 символов ID должны быть в выводе
+        assert response_id[:8] in captured.out  # Первые 8 символов ID должны быть в выводе
 
         print("\nBackground mode verified")
         print(f"Console output captured: {len(captured.out)} chars")
@@ -293,7 +290,7 @@ class TestOpenAIClientIntegration:
             pytest.skip("Skipping for reasoning models - requires too many tokens")
 
         # Устанавливаем маленький лимит токенов
-        integration_config["max_completion"] = 35
+        integration_config["max_completion"] = 35  # Intentionally small to trigger incomplete
         integration_config["max_retries"] = 2  # Разрешаем retry
 
         client = OpenAIClient(integration_config)
@@ -346,8 +343,8 @@ class TestOpenAIClientIntegration:
     @pytest.mark.timeout(45)
     def test_console_progress_output(self, integration_config, capsys):
         """Тест вывода прогресса в консоль"""
-        # Средний размер для баланса между скоростью и видимостью прогресса
-        integration_config["max_completion"] = 400
+        # Используем max_completion из конфига (уже установлен в fixture)
+        # integration_config уже содержит max_completion_test из конфига
         integration_config["poll_interval"] = 1
 
         client = OpenAIClient(integration_config)
@@ -396,7 +393,7 @@ class TestOpenAIClientIntegration:
     @pytest.mark.skip(reason="Test hangs due to insufficient token limit for reasoning models")
     def test_incomplete_with_reasoning_model(self, integration_config):
         """Тест incomplete для reasoning модели (нужно больше токенов)"""
-        if not integration_config["model"].startswith("o"):
+        if not integration_config.get("is_reasoning", False):
             pytest.skip("Test requires reasoning model")
 
         # Очень маленький лимит для reasoning модели
@@ -432,9 +429,7 @@ class TestOpenAIClientIntegration:
         initial_remaining = client.tpm_bucket.remaining_tokens
 
         # Делаем запрос (внутри будет probe)
-        response_text, response_id, usage = client.create_response(
-            "Reply with one word", "Hello"
-        )
+        response_text, response_id, usage = client.create_response("Reply with one word", "Hello")
 
         # Проверяем что probe был выполнен
         probe_logs = [r for r in caplog.records if "TPM probe" in r.message]
@@ -453,48 +448,47 @@ class TestOpenAIClientIntegration:
         print(f"  Initial tokens: {initial_remaining}")
         print(f"  Current tokens: {client.tpm_bucket.remaining_tokens}")
 
-    @pytest.mark.skip(reason="Test takes too long with multiple sequential API calls")
     def test_context_accumulation_integration(self, integration_config):
         """Test that context accumulation works correctly in real API calls"""
         client = OpenAIClient(integration_config)
-        
+
         # First request - baseline
         text1, id1, usage1 = client.create_response(
             instructions="You are a helpful assistant. Answer briefly.",
-            input_data="Hi, my favorite color is blue. What is 2+2?"
+            input_data="Hi, my favorite color is blue. What is 2+2?",
         )
-        
+
         assert "4" in text1
         assert client.last_usage.input_tokens == usage1.input_tokens
-        
+
         # Second request with previous_response_id
         text2, id2, usage2 = client.create_response(
             instructions="Continue helping.",
             input_data="What was my favorite color?",
-            previous_response_id=id1
+            previous_response_id=id1,
         )
-        
+
         assert "blue" in text2.lower()
-        
+
         # Verify context accumulation
         # Second request should have more input tokens than just the new prompt
         assert usage2.input_tokens > usage1.input_tokens
         assert client.last_usage.input_tokens == usage2.input_tokens
-        
+
         # Third request to further verify accumulation
         text3, id3, usage3 = client.create_response(
             instructions="Continue helping.",
             input_data="Tell me both: my color and the math answer from before.",
-            previous_response_id=id2
+            previous_response_id=id2,
         )
-        
+
         assert "blue" in text3.lower()
         assert "4" in text3
-        
+
         # Each subsequent request should have more context
         assert usage3.input_tokens > usage2.input_tokens
-        
-        print(f"\n✓ Context accumulation verified:")
+
+        print("\n✓ Context accumulation verified:")
         print(f"  Request 1 input tokens: {usage1.input_tokens}")
         print(f"  Request 2 input tokens: {usage2.input_tokens} (accumulated)")
         print(f"  Request 3 input tokens: {usage3.input_tokens} (further accumulated)")

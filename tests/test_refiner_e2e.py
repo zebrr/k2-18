@@ -396,24 +396,28 @@ class TestRefinerFullPipeline(unittest.TestCase):
                     "id": "n1",
                     "type": "Chunk",
                     "text": "Python variables",
+                    "node_offset": 0,
                     "local_start": 0,
                 },
                 {
                     "id": "n2",
                     "type": "Chunk",
                     "text": "Python functions",
+                    "node_offset": 0,
                     "local_start": 1000,
                 },
                 {
                     "id": "n3",
                     "type": "Chunk",
                     "text": "Python classes",
+                    "node_offset": 0,
                     "local_start": 2000,
                 },
                 {
                     "id": "concept1",
                     "type": "Concept",
                     "text": "Variables",
+                    "node_offset": 0,
                     "local_start": 3000,
                 },
             ],
@@ -453,8 +457,10 @@ class TestRefinerFullPipeline(unittest.TestCase):
         mock_llm_instance = MagicMock()
         mock_openai_client.return_value = mock_llm_instance
 
-        with patch("utils.validation.validate_json"):
-            with patch("utils.validation.validate_graph_invariants"):
+        with patch("refiner.validate_json") as mock_val_json:
+            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+                mock_val_json.return_value = None
+                mock_val_inv.return_value = None
                 result = main()
 
         self.assertEqual(result, EXIT_SUCCESS)
@@ -545,8 +551,10 @@ class TestRefinerFullPipeline(unittest.TestCase):
 
         mock_file.return_value.write.side_effect = track_write
 
-        with patch("utils.validation.validate_json"):
-            with patch("utils.validation.validate_graph_invariants"):
+        with patch("refiner.validate_json") as mock_val_json:
+            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+                mock_val_json.return_value = None
+                mock_val_inv.return_value = None
                 result = main()
 
         self.assertEqual(result, EXIT_SUCCESS)
@@ -614,8 +622,10 @@ class TestRefinerFullPipeline(unittest.TestCase):
 
         mock_openai_client.return_value = mock_llm_instance
 
-        with patch("utils.validation.validate_json"):
-            with patch("utils.validation.validate_graph_invariants"):
+        with patch("refiner.validate_json") as mock_val_json:
+            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+                mock_val_json.return_value = None
+                mock_val_inv.return_value = None
                 with patch("pathlib.Path.mkdir"):  # Для создания logs/
                     result = main()
 
@@ -709,8 +719,10 @@ class TestLoggingIntegration(unittest.TestCase):
 
                 mock_handler.side_effect = track_handler
 
-                with patch("utils.validation.validate_json"):
-                    with patch("utils.validation.validate_graph_invariants"):
+                with patch("refiner.validate_json") as mock_val_json:
+                    with patch("refiner.validate_graph_invariants") as mock_val_inv:
+                        mock_val_json.return_value = None
+                        mock_val_inv.return_value = None
                         # Вызываем setup_json_logging напрямую
                         logger = setup_json_logging(mock_config.return_value["refiner"])
 

@@ -64,6 +64,7 @@ def test_basic_functionality():
                     "id": "test_chunk_1",
                     "type": "Chunk",
                     "text": "Это тестовый текст чанка",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 3,
                 }
@@ -86,6 +87,7 @@ def test_basic_functionality():
                     "id": "test_chunk_1",
                     "type": "Chunk",
                     "text": "Тест",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 1,
                 }

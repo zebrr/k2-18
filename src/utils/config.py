@@ -111,6 +111,38 @@ def load_config(config_path: Union[str, Path] = None) -> Dict[str, Any]:
     except Exception as e:
         raise ConfigValidationError(f"Configuration validation failed: {e}")
 
+    # Validate is_reasoning parameter is present
+    if "itext2kg" in config:
+        if "is_reasoning" not in config["itext2kg"]:
+            raise ConfigValidationError(
+                "Parameter 'is_reasoning' is required in [itext2kg] section"
+            )
+
+    if "refiner" in config:
+        if "is_reasoning" not in config["refiner"]:
+            raise ConfigValidationError("Parameter 'is_reasoning' is required in [refiner] section")
+
+    # Optional consistency check (warning, not error)
+    import logging
+
+    logger = logging.getLogger(__name__)
+    for section in ["itext2kg", "refiner"]:
+        if section in config:
+            is_reasoning = config[section].get("is_reasoning", False)
+            has_temperature = config[section].get("temperature") is not None
+            has_reasoning_effort = config[section].get("reasoning_effort") is not None
+
+            if is_reasoning and has_temperature:
+                logger.warning(
+                    f"[{section}] Reasoning model with temperature parameter - "
+                    f"might be ignored by API"
+                )
+            if not is_reasoning and has_reasoning_effort:
+                logger.warning(
+                    f"[{section}] Non-reasoning model with reasoning_effort - "
+                    f"will be ignored by API"
+                )
+
     return config
 
 
@@ -150,9 +182,7 @@ def _validate_slicer_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("slicer.overlap must be non-negative")
 
     if section["soft_boundary_max_shift"] < 0:
-        raise ConfigValidationError(
-            "slicer.soft_boundary_max_shift must be non-negative"
-        )
+        raise ConfigValidationError("slicer.soft_boundary_max_shift must be non-negative")
 
     # Валидация зависимости overlap и soft_boundary_max_shift
     if section["overlap"] > 0:
@@ -191,9 +221,7 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("itext2kg.tpm_limit must be positive")
 
     if not (1 <= section["max_completion"] <= 100000):
-        raise ConfigValidationError(
-            "itext2kg.max_completion must be between 1 and 100000"
-        )
+        raise ConfigValidationError("itext2kg.max_completion must be between 1 and 100000")
 
     if section["log_level"] not in ["debug", "info", "warning", "error"]:
         raise ConfigValidationError(
@@ -244,9 +272,7 @@ def _validate_dedup_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("dedup.faiss_efC must be positive")
 
     if section["faiss_metric"] not in ["INNER_PRODUCT", "L2"]:
-        raise ConfigValidationError(
-            "dedup.faiss_metric must be 'INNER_PRODUCT' or 'L2'"
-        )
+        raise ConfigValidationError("dedup.faiss_metric must be 'INNER_PRODUCT' or 'L2'")
 
     if section["k_neighbors"] <= 0:
         raise ConfigValidationError("dedup.k_neighbors must be positive")
@@ -304,9 +330,7 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("refiner.tpm_limit must be positive")
 
     if not (1 <= section["max_completion"] <= 100000):
-        raise ConfigValidationError(
-            "refiner.max_completion must be between 1 and 100000"
-        )
+        raise ConfigValidationError("refiner.max_completion must be between 1 and 100000")
 
     if section["timeout"] <= 0:
         raise ConfigValidationError("refiner.timeout must be positive")
@@ -320,9 +344,7 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
     for i, weight in enumerate(weights):
         if not (0.0 <= weight <= 1.0):
             weight_names = ["weight_low", "weight_mid", "weight_high"]
-            raise ConfigValidationError(
-                f"refiner.{weight_names[i]} must be between 0.0 and 1.0"
-            )
+            raise ConfigValidationError(f"refiner.{weight_names[i]} must be between 0.0 and 1.0")
 
     if not (section["weight_low"] < section["weight_mid"] < section["weight_high"]):
         raise ConfigValidationError(
@@ -336,9 +358,7 @@ def _validate_required_fields(
     """Проверяет наличие и типы обязательных полей в секции."""
     for field_name, expected_type in required_fields.items():
         if field_name not in section:
-            raise ConfigValidationError(
-                f"Missing required field: {section_name}.{field_name}"
-            )
+            raise ConfigValidationError(f"Missing required field: {section_name}.{field_name}")
 
         actual_value = section[field_name]
         if not isinstance(actual_value, expected_type):

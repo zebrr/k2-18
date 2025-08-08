@@ -7,23 +7,34 @@ tokenizer               = "o200k_base"
 allowed_extensions      = ["json", "txt", "md", "html"]
 
 [itext2kg]
-model               = "gpt-4.1-2025-04-14"         # РИЗОНЕР o4-mini-2025-04-16 НЕ РИЗОНЕР gpt-4.1-nano-2025-04-14
-# model               = "gpt-4.1-mini-2025-04-14"  # o3-2025-04-16 / gpt-4.1-2025-04-14
-model_test          = "o4-mini-2025-04-16"
-# model_test          = "gpt-4.1-mini-2025-04-14" 
-max_context_tokens  = 1000000                       # for o1/o4 models (200K), for gpt-4 use 128000
-max_context_tokens_test = 200000                   # for test model
-tpm_limit           = 450000                       # минутный бюджет токенов
-tpm_safety_margin   = 0.15                         # запас безопасности для TPM (15%)
-max_completion      = 32000                        # максимум генерируемых токенов на вызов
-log_level           = "info"                       # уровень подробности логов
+is_reasoning        = false        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой
+
+# Основная модель
+model               = "gpt-4.1-2025-04-14" # Это не ризонер
+max_context_tokens  = 1000000
+tpm_limit           = 450000
+max_completion      = 32000
+
+# Тестовая модель (только эти 4 параметра уникальные)
+# Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
+model_test              = "gpt-4.1-mini-2025-04-14" # Это не ризонер  
+max_context_tokens_test = 200000
+tpm_limit_test          = 100000      # НОВЫЙ параметр
+max_completion_test     = 15000       # НОВЫЙ параметр
+
+# Общие параметры настройки для ОБЕИХ моделей
+temperature         = 0.6          # Текущее значение
+reasoning_effort    = "medium"     # Текущее значение
+reasoning_summary   = "auto"       # Текущее значение
+# verbosity         = "high"      # НОВЫЙ параметр только для GPT-5 моделей (закомментирован = null)
+
+# Остальные параметры утилиты (НЕ УДАЛЯТЬ! Копировать текущие значения)
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
-temperature         = 0.6                          # для обычных моделей (не reasoning)
-reasoning_effort    = "medium"                     # для o-моделей: low/medium/high
-reasoning_summary   = "auto"                       # auto/concise/detailed
-timeout             = 360                          # таймаут запроса в секундах
-max_retries         = 3                            # сколько раз повторять при ошибке
-poll_interval       = 7                            # интервал проверки статуса (секунды)
+tpm_safety_margin   = 0.15
+log_level           = "info"
+timeout             = 360
+max_retries         = 3
+poll_interval       = 7
 
 [dedup]
 embedding_model     = "text-embedding-3-small"
@@ -37,31 +48,44 @@ faiss_metric        = "INNER_PRODUCT"
 k_neighbors         = 5
 
 [refiner]
+is_reasoning        = true         # ОБЯЗАТЕЛЬНЫЙ! (сейчас там o4-mini)
+
+# Основная модель
+model               = "o4-mini-2025-04-16" # Это ризонер
+max_context_tokens  = 200000
+tpm_limit           = 200000
+max_completion      = 90000
+
+# Тестовая модель (только эти 4 параметра уникальные)
+# Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
+model_test              = "o4-mini-2025-04-16" # Это тоже ризонер
+max_context_tokens_test = 200000
+tpm_limit_test          = 100000      # НОВЫЙ параметр
+max_completion_test     = 45000       # НОВЫЙ параметр
+
+# Общие параметры настройки для ОБЕИХ моделей
+temperature         = 0.6
+reasoning_effort    = "medium"
+reasoning_summary   = "auto"
+# verbosity         = "high"      # Закомментирован = null
+
+# Параметры для embeddings и поиска пар (НЕ УДАЛЯТЬ!)
 run                 = true
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
-embedding_tpm_limit = 350000                    # лимит для embedding моделей
+embedding_tpm_limit = 350000
 sim_threshold       = 0.80
 max_pairs_per_node  = 20
 faiss_M             = 32
 faiss_metric        = "INNER_PRODUCT"
-model               = "o4-mini-2025-04-16"         # РИЗОНЕР o4-mini-2025-04-16 НЕ РИЗОНЕР gpt-4.1-nano-2025-04-14
-# model               = "gpt-4.1-mini-2025-04-14"
-model_test          = "o4-mini-2025-04-16"
-# model_test          = "gpt-4.1-mini-2025-04-14"     
-max_context_tokens  = 200000                       # for o1/o4 models (200K), for gpt-4 use 128000
-max_context_tokens_test = 200000                   # for test model
+
+# Остальные параметры утилиты (НЕ УДАЛЯТЬ!)
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
-tpm_limit           = 200000
-tpm_safety_margin   = 0.15                      # запас безопасности для TPM (15%)
-max_completion      = 90000
-temperature         = 0.6      # для обычных моделей (не reasoning)
-reasoning_effort    = "medium" # для o-моделей: low/medium/high
-reasoning_summary   = "auto"   # auto/concise/detailed
-log_level           = "info"   # info/debug
+tpm_safety_margin   = 0.15
+log_level           = "info"
 timeout             = 360
 max_retries         = 3
-poll_interval       = 7                            # интервал проверки статуса (секунды)
+poll_interval       = 7
 weight_low          = 0.3
 weight_mid          = 0.6
 weight_high         = 0.9

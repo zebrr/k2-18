@@ -336,10 +336,14 @@ class OpenAIClient:
         # Last usage info for context accumulation
         self.last_usage: Optional[ResponseUsage] = None
 
-        # Check if model is reasoning (o*)
-        self.is_reasoning_model = config["model"].startswith("o")
+        # ИЗМЕНЕНИЕ: Используем явный параметр is_reasoning
+        if "is_reasoning" not in config:
+            raise ValueError("Parameter 'is_reasoning' is required in config")
+
+        self.is_reasoning_model = config["is_reasoning"]
         self.logger.info(
-            f"Initialized OpenAI client: model={config['model']}, reasoning={self.is_reasoning_model}"
+            f"Initialized OpenAI client: model={config['model']}, "
+            f"reasoning={self.is_reasoning_model} (explicit config)"
         )
 
         # Initialize tokenizer for precise counting
@@ -374,16 +378,25 @@ class OpenAIClient:
         if previous_response_id:
             params["previous_response_id"] = previous_response_id
 
-        # Parameters for reasoning models (o*)
-        if self.is_reasoning_model:
-            params["reasoning"] = {
-                "effort": self.config.get("reasoning_effort", "medium"),
-                "summary": self.config.get("reasoning_summary", "auto"),
-            }
-            # For reasoning models do NOT specify temperature
-        else:
-            # For regular models specify temperature
-            params["temperature"] = self.config.get("temperature", 1.0)
+        # ИЗМЕНЕНИЕ: Добавляем только не-null параметры
+
+        # Temperature (для любых моделей, если не null)
+        if self.config.get("temperature") is not None:
+            params["temperature"] = self.config["temperature"]
+
+        # Reasoning параметры (если не null)
+        reasoning_effort = self.config.get("reasoning_effort")
+        reasoning_summary = self.config.get("reasoning_summary")
+        if reasoning_effort is not None or reasoning_summary is not None:
+            params["reasoning"] = {}
+            if reasoning_effort is not None:
+                params["reasoning"]["effort"] = reasoning_effort
+            if reasoning_summary is not None:
+                params["reasoning"]["summary"] = reasoning_summary
+
+        # verbosity - параметр верхнего уровня (как temperature, model и т.д.)
+        if self.config.get("verbosity") is not None:
+            params["verbosity"] = self.config["verbosity"]
 
         return params
 

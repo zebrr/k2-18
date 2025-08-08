@@ -20,6 +20,7 @@ def test_config():
     return {
         "api_key": "test-key-123",
         "model": "gpt-4o",
+        "is_reasoning": False,  # Явное указание типа модели
         "tpm_limit": 120000,
         "tpm_safety_margin": 0.15,
         "max_completion": 4096,
@@ -38,6 +39,7 @@ def reasoning_config():
     return {
         "api_key": "test-key-123",
         "model": "o4-mini",  # reasoning модель
+        "is_reasoning": True,  # Явное указание типа модели
         "tpm_limit": 60000,
         "tpm_safety_margin": 0.15,
         "max_completion": 2048,
@@ -174,9 +176,7 @@ class MockResponse:
     status: str = "completed"
     _headers: dict = None
 
-    def __init__(
-        self, text="Test response", reasoning_tokens=0, headers=None, status="completed"
-    ):
+    def __init__(self, text="Test response", reasoning_tokens=0, headers=None, status="completed"):
         self.output = [MockResponseOutput(text)]
         self.usage = MockUsage(reasoning_tokens)
         self._headers = headers or {}
@@ -231,9 +231,7 @@ class TestOpenAIClient:
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_init_regular_model(
-        self, mock_openai_class, mock_get_encoding, test_config
-    ):
+    def test_init_regular_model(self, mock_openai_class, mock_get_encoding, test_config):
         """Проверка инициализации с обычной моделью"""
         mock_encoder = MagicMock()
         mock_get_encoding.return_value = mock_encoder
@@ -249,9 +247,7 @@ class TestOpenAIClient:
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_init_reasoning_model(
-        self, mock_openai_class, mock_get_encoding, reasoning_config
-    ):
+    def test_init_reasoning_model(self, mock_openai_class, mock_get_encoding, reasoning_config):
         """Проверка инициализации с reasoning моделью"""
         mock_encoder = MagicMock()
         mock_get_encoding.return_value = mock_encoder
@@ -259,6 +255,24 @@ class TestOpenAIClient:
         client = OpenAIClient(reasoning_config)
 
         assert client.is_reasoning_model is True
+
+    def test_init_missing_is_reasoning(self):
+        """Проверка что без is_reasoning выбрасывается ошибка"""
+        config = {
+            "api_key": "test-key",
+            "model": "gpt-4o",
+            # is_reasoning отсутствует намеренно
+            "tpm_limit": 120000,
+            "max_completion": 4096,
+            "timeout": 45,
+            "max_retries": 3,
+        }
+
+        with pytest.raises(ValueError) as exc_info:
+            OpenAIClient(config)
+
+        assert "is_reasoning" in str(exc_info.value)
+        assert "required" in str(exc_info.value).lower()
 
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
@@ -299,9 +313,7 @@ class TestOpenAIClient:
         retrieve_responses = create_async_response_sequence(final_response)
 
         # Настраиваем mock для create
-        mock_client_instance.responses.with_raw_response.create.return_value = (
-            mock_raw_initial
-        )
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
 
         # Настраиваем mock для retrieve с последовательностью
         mock_raw_responses = []
@@ -311,9 +323,7 @@ class TestOpenAIClient:
             mock_raw.parse.return_value = resp
             mock_raw_responses.append(mock_raw)
 
-        mock_client_instance.responses.with_raw_response.retrieve.side_effect = (
-            mock_raw_responses
-        )
+        mock_client_instance.responses.with_raw_response.retrieve.side_effect = mock_raw_responses
 
         # Создаем клиент и делаем запрос
         client = OpenAIClient(test_config)
@@ -346,22 +356,17 @@ class TestOpenAIClient:
         assert client.tpm_bucket.remaining_tokens == 95000
 
         # Проверка вызова create с background=True
-        create_call_args = (
-            mock_client_instance.responses.with_raw_response.create.call_args[1]
-        )
+        create_call_args = mock_client_instance.responses.with_raw_response.create.call_args[1]
         assert create_call_args["background"] is True
 
         # Проверка что был polling через retrieve
-        assert (
-            mock_client_instance.responses.with_raw_response.retrieve.call_count
-            == len(retrieve_responses)
+        assert mock_client_instance.responses.with_raw_response.retrieve.call_count == len(
+            retrieve_responses
         )
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_reasoning_model_response(
-        self, mock_openai_class, mock_get_encoding, reasoning_config
-    ):
+    def test_reasoning_model_response(self, mock_openai_class, mock_get_encoding, reasoning_config):
         """Проверка работы с reasoning моделью в асинхронном режиме"""
         # Setup
         mock_encoder = MagicMock()
@@ -384,22 +389,16 @@ class TestOpenAIClient:
         mock_raw_initial.parse.return_value = initial_response
 
         # Final response
-        final_response = MockReasoningResponse(
-            "Reasoning response", reasoning_tokens=500
-        )
+        final_response = MockReasoningResponse("Reasoning response", reasoning_tokens=500)
 
         # Настраиваем mock
-        mock_client_instance.responses.with_raw_response.create.return_value = (
-            mock_raw_initial
-        )
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
 
         # Для retrieve - сразу completed
         mock_raw_final = MagicMock()
         mock_raw_final.headers = headers
         mock_raw_final.parse.return_value = final_response
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_final
-        )
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
 
         client = OpenAIClient(reasoning_config)
 
@@ -479,9 +478,9 @@ class TestOpenAIClient:
             _, response_id2, _ = client.create_response("Prompt 2", "Input 2")
 
         # Проверка второго вызова create
-        second_call_args = (
-            mock_client_instance.responses.with_raw_response.create.call_args_list[1][1]
-        )
+        second_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
+            1
+        ][1]
         assert second_call_args["previous_response_id"] == "resp_001"
         assert second_call_args["background"] is True
         assert client.last_response_id == "resp_002"
@@ -503,9 +502,7 @@ class TestOpenAIClient:
         mock_openai_class.return_value = mock_client_instance
 
         # RateLimitError для первого вызова
-        rate_limit_error = openai.RateLimitError(
-            "Rate limit exceeded", response=Mock(), body={}
-        )
+        rate_limit_error = openai.RateLimitError("Rate limit exceeded", response=Mock(), body={})
         rate_limit_error.response = Mock()
         rate_limit_error.response.headers = {
             "x-ratelimit-remaining-tokens": "0",
@@ -529,9 +526,7 @@ class TestOpenAIClient:
             mock_raw_initial,
         ]
 
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_final
-        )
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
 
         client = OpenAIClient(test_config)
 
@@ -555,9 +550,7 @@ class TestOpenAIClient:
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_wait_before_request(
-        self, mock_openai_class, mock_get_encoding, test_config
-    ):
+    def test_wait_before_request(self, mock_openai_class, mock_get_encoding, test_config):
         """Проверка ожидания перед запросом при низком лимите в асинхронном режиме"""
         # Setup
         mock_encoder = MagicMock()
@@ -578,20 +571,14 @@ class TestOpenAIClient:
         mock_raw_final.headers = {}
         mock_raw_final.parse.return_value = final_response
 
-        mock_client_instance.responses.with_raw_response.create.return_value = (
-            mock_raw_initial
-        )
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_final
-        )
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
 
         client = OpenAIClient(test_config)
 
         # Устанавливаем низкий лимит
         current_time = 1000.0
-        client.tpm_bucket.remaining_tokens = (
-            2000  # Мало для 1000 input + 4096 max_completion
-        )
+        client.tpm_bucket.remaining_tokens = 2000  # Мало для 1000 input + 4096 max_completion
         client.tpm_bucket.reset_time = int(current_time + 5)
 
         with patch("src.utils.llm_client.time.sleep") as mock_sleep:
@@ -606,9 +593,7 @@ class TestOpenAIClient:
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_repair_response(
-        self, mock_openai_class, mock_get_encoding, mock_probe, test_config
-    ):
+    def test_repair_response(self, mock_openai_class, mock_get_encoding, mock_probe, test_config):
         """Проверка repair response в асинхронном режиме"""
         # Setup
         mock_encoder = MagicMock()
@@ -663,9 +648,9 @@ class TestOpenAIClient:
             response_text, _, _ = client.repair_response("Original prompt", "Input")
 
         # Проверка repair вызова - должен использовать last_response_id
-        repair_call_args = (
-            mock_client_instance.responses.with_raw_response.create.call_args_list[1][1]
-        )
+        repair_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
+            1
+        ][1]
         assert repair_call_args["instructions"] == "Original prompt"  # No JSON instructions added
         assert repair_call_args["previous_response_id"] == "resp_001"
         assert response_text == "Repaired response"
@@ -708,7 +693,7 @@ class TestOpenAIClient:
             response_text, _, _ = client.repair_response(
                 "Instructions with JSON requirement",
                 "Input data",
-                previous_response_id="resp_explicit"
+                previous_response_id="resp_explicit",
             )
 
         # Проверка: должен использовать явно переданный ID, а не last_response_id
@@ -736,12 +721,8 @@ class TestOpenAIClient:
         mock_raw_initial.parse.return_value = initial_response
 
         # Refusal response
-        mock_refusal_content = Mock(
-            type="refusal", refusal="Cannot process this request"
-        )
-        mock_output = Mock(
-            content=[mock_refusal_content], status="completed", type="message"
-        )
+        mock_refusal_content = Mock(type="refusal", refusal="Cannot process this request")
+        mock_output = Mock(content=[mock_refusal_content], status="completed", type="message")
         mock_response = Mock(output=[mock_output], status="completed", id="resp_12345")
 
         mock_raw_final = MagicMock()
@@ -749,12 +730,8 @@ class TestOpenAIClient:
         mock_raw_final.parse.return_value = mock_response
 
         # Настраиваем mock
-        mock_client_instance.responses.with_raw_response.create.return_value = (
-            mock_raw_initial
-        )
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_final
-        )
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
 
         client = OpenAIClient(test_config)
 
@@ -827,18 +804,14 @@ class TestOpenAIClient:
         assert mock_client_instance.responses.with_raw_response.create.call_count == 2
 
         # Проверка что токены увеличились во втором вызове
-        second_call_args = (
-            mock_client_instance.responses.with_raw_response.create.call_args_list[1][1]
-        )
-        assert second_call_args["max_output_tokens"] == int(
-            4096 * 1.5
-        )  # Увеличено в 1.5 раза
+        second_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
+            1
+        ][1]
+        assert second_call_args["max_output_tokens"] == int(4096 * 1.5)  # Увеличено в 1.5 раза
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
-    def test_timeout_cancellation(
-        self, mock_openai_class, mock_get_encoding, test_config
-    ):
+    def test_timeout_cancellation(self, mock_openai_class, mock_get_encoding, test_config):
         """Проверка отмены запроса при превышении timeout"""
         # Setup
         mock_encoder = MagicMock()
@@ -861,18 +834,14 @@ class TestOpenAIClient:
         mock_raw_queued.parse.return_value = queued_response
 
         # Настраиваем mock
-        mock_client_instance.responses.with_raw_response.create.return_value = (
-            mock_raw_initial
-        )
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_queued
-        )
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_queued
         mock_client_instance.responses.cancel.return_value = None  # Mock cancel метод
 
         client = OpenAIClient(test_config)
         client.config["timeout"] = 0.1  # Очень короткий timeout для теста
 
-        with patch("src.utils.llm_client.time.sleep") as mock_sleep:
+        with patch("src.utils.llm_client.time.sleep"):
             with pytest.raises(TimeoutError, match="Response generation exceeded"):
                 client.create_response("Prompt", "Input")
 
@@ -901,9 +870,7 @@ class TestOpenAIClient:
         mock_raw_initial1.headers = {}
         mock_raw_initial1.parse.return_value = initial_response1
 
-        failed_response = Mock(
-            id="resp_001", status="failed", error=Mock(message="Internal error")
-        )
+        failed_response = Mock(id="resp_001", status="failed", error=Mock(message="Internal error"))
         mock_raw_failed = MagicMock()
         mock_raw_failed.headers = {}
         mock_raw_failed.parse.return_value = failed_response
@@ -990,15 +957,14 @@ class TestLogging:
             mock_raw_initial,
         ]
 
-        mock_client_instance.responses.with_raw_response.retrieve.return_value = (
-            mock_raw_final
-        )
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
 
         caplog.set_level(logging.INFO)
 
         test_config = {
             "api_key": "test-key",
             "model": "gpt-4o",
+            "is_reasoning": False,  # Required parameter
             "tpm_limit": 100000,
             "tpm_safety_margin": 0.15,
             "max_completion": 4096,
@@ -1010,9 +976,7 @@ class TestLogging:
         # Настраиваем mock probe
         mock_probe.return_value = None
 
-        response_text, response_id, usage = client.create_response(
-            "Test prompt", "Test input"
-        )
+        response_text, response_id, usage = client.create_response("Test prompt", "Test input")
 
         # Проверяем результат
         assert response_text == "Success after retries"
@@ -1088,9 +1052,7 @@ class TestTPMBucketEnhanced:
 
         # Проверяем состояние
         assert bucket.remaining_tokens == 95000
-        assert (
-            bucket.reset_time == 1000
-        )  # 1000.0 + 820/1000 = 1000.82, округлено до 1000
+        assert bucket.reset_time == 1000  # 1000.0 + 820/1000 = 1000.82, округлено до 1000
 
         # Проверяем логи
         log_messages = [record.message for record in caplog.records]
@@ -1124,10 +1086,7 @@ class TestTPMBucketEnhanced:
 
         log_messages = [record.message for record in caplog.records]
         assert any("TPM check: need 575 tokens" in msg for msg in log_messages)
-        assert any(
-            "TPM check passed: sufficient tokens available" in msg
-            for msg in log_messages
-        )
+        assert any("TPM check passed: sufficient tokens available" in msg for msg in log_messages)
 
 
 class TestContextAccumulation:
@@ -1145,38 +1104,34 @@ class TestContextAccumulation:
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(1000))  # 1000 tokens
         mock_get_encoding.return_value = mock_encoder
-        
+
         mock_client_instance = MagicMock()
         mock_openai_class.return_value = mock_client_instance
-        
+
         # Setup mock_probe to not actually call API
         mock_probe.return_value = None
-        
+
         client = OpenAIClient(test_config)
         client.tpm_bucket.remaining_tokens = 100000
-        
+
         # Mock successful response
         mock_response = MagicMock()
         mock_response.id = "resp_123"
         mock_response.status = "completed"
         mock_response.output = [{"message": {"content": "Test response"}}]
-        mock_response.usage = {
-            "input_tokens": 1005,
-            "output_tokens": 50,
-            "total_tokens": 1055
-        }
-        
+        mock_response.usage = {"input_tokens": 1005, "output_tokens": 50, "total_tokens": 1055}
+
         # Mock the create response
         mock_create_response = MagicMock()
         mock_create_response.id = "resp_123"
         mock_client_instance.responses.create.return_value = mock_create_response
-        
+
         # Mock the retrieve chain for status checks
         mock_raw_response = MagicMock()
         mock_parsed_response = MagicMock()
         mock_parsed_response.status = "completed"
         mock_parsed_response.id = "resp_123"
-        
+
         # Create proper output structure
         mock_message_output = MagicMock()
         mock_message_output.type = "message"
@@ -1184,9 +1139,9 @@ class TestContextAccumulation:
         mock_content_item.type = "output_text"
         mock_content_item.text = "Test response"
         mock_message_output.content = [mock_content_item]
-        
+
         mock_parsed_response.output = [mock_message_output]
-        
+
         # Create proper usage structure
         mock_usage = MagicMock()
         mock_usage.input_tokens = 1005
@@ -1196,19 +1151,16 @@ class TestContextAccumulation:
         mock_parsed_response.usage = mock_usage
         mock_raw_response.parse.return_value = mock_parsed_response
         mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
-        
+
         # Act
-        response, response_id, usage = client.create_response(
-            "You are helpful", 
-            "What is 2+2?"
-        )
-        
+        response, response_id, usage = client.create_response("You are helpful", "What is 2+2?")
+
         # Assert
         assert client.last_usage is not None
         assert client.last_usage.input_tokens == 1005
         # Without previous_response_id, should encode full prompt
         assert mock_encoder.encode.called
-        
+
     @patch("src.utils.llm_client.time.sleep")
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
@@ -1221,39 +1173,40 @@ class TestContextAccumulation:
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(500))  # 500 new tokens
         mock_get_encoding.return_value = mock_encoder
-        
+
         mock_client_instance = MagicMock()
         mock_openai_class.return_value = mock_client_instance
-        
+
         # Setup mock_probe
         mock_probe.return_value = None
-        
+
         # Add max_context_tokens to config
         test_config["max_context_tokens"] = 128000
-        
+
         client = OpenAIClient(test_config)
         client.tpm_bucket.remaining_tokens = 200000
-        
+
         # Simulate previous usage
         from src.utils.llm_client import ResponseUsage
+
         client.last_usage = ResponseUsage(
             input_tokens=50000,  # Previous context
             output_tokens=1000,
             total_tokens=51000,
-            reasoning_tokens=0
+            reasoning_tokens=0,
         )
-        
+
         # Mock response
         mock_create_response = MagicMock()
         mock_create_response.id = "resp_456"
         mock_client_instance.responses.create.return_value = mock_create_response
-        
+
         # Mock the retrieve chain
         mock_raw_response = MagicMock()
         mock_parsed_response = MagicMock()
         mock_parsed_response.status = "completed"
         mock_parsed_response.id = "resp_456"
-        
+
         # Create proper output structure
         mock_message_output = MagicMock()
         mock_message_output.type = "message"
@@ -1261,9 +1214,9 @@ class TestContextAccumulation:
         mock_content_item.type = "output_text"
         mock_content_item.text = "Another response"
         mock_message_output.content = [mock_content_item]
-        
+
         mock_parsed_response.output = [mock_message_output]
-        
+
         # Create proper usage structure
         mock_usage = MagicMock()
         mock_usage.input_tokens = 50500  # Old context + new
@@ -1273,18 +1226,16 @@ class TestContextAccumulation:
         mock_parsed_response.usage = mock_usage
         mock_raw_response.parse.return_value = mock_parsed_response
         mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
-        
+
         # Act
         response, response_id, usage = client.create_response(
-            "Continue", 
-            "What about 3+3?",
-            previous_response_id="resp_123"
+            "Continue", "What about 3+3?", previous_response_id="resp_123"
         )
-        
+
         # Assert
         # Should use accumulated context (50000 + 500 = 50500)
         assert usage.input_tokens == 50500
-        
+
     @patch("src.utils.llm_client.time.sleep")
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
@@ -1297,39 +1248,40 @@ class TestContextAccumulation:
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(10000))  # 10K new tokens
         mock_get_encoding.return_value = mock_encoder
-        
+
         mock_client_instance = MagicMock()
         mock_openai_class.return_value = mock_client_instance
-        
+
         # Setup mock_probe
         mock_probe.return_value = None
-        
+
         # Set lower context limit
         test_config["max_context_tokens"] = 130000
-        
+
         client = OpenAIClient(test_config)
         client.tpm_bucket.remaining_tokens = 200000
-        
+
         # Simulate large previous context
         from src.utils.llm_client import ResponseUsage
+
         client.last_usage = ResponseUsage(
             input_tokens=125000,  # Close to limit
             output_tokens=1000,
             total_tokens=126000,
-            reasoning_tokens=0
+            reasoning_tokens=0,
         )
-        
+
         # Mock response
         mock_create_response = MagicMock()
         mock_create_response.id = "resp_789"
         mock_client_instance.responses.create.return_value = mock_create_response
-        
+
         # Mock the retrieve chain
         mock_raw_response = MagicMock()
         mock_parsed_response = MagicMock()
         mock_parsed_response.status = "completed"
         mock_parsed_response.id = "resp_789"
-        
+
         # Create proper output structure
         mock_message_output = MagicMock()
         mock_message_output.type = "message"
@@ -1337,9 +1289,9 @@ class TestContextAccumulation:
         mock_content_item.type = "output_text"
         mock_content_item.text = "Response"
         mock_message_output.content = [mock_content_item]
-        
+
         mock_parsed_response.output = [mock_message_output]
-        
+
         # Create proper usage structure
         mock_usage = MagicMock()
         mock_usage.input_tokens = 130000  # Capped at limit
@@ -1349,22 +1301,22 @@ class TestContextAccumulation:
         mock_parsed_response.usage = mock_usage
         mock_raw_response.parse.return_value = mock_parsed_response
         mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_response
-        
+
         caplog.set_level(logging.WARNING)
-        
+
         # Act
         response, response_id, usage = client.create_response(
-            "Continue", 
-            "Long content here...",
-            previous_response_id="resp_456"
+            "Continue", "Long content here...", previous_response_id="resp_456"
         )
-        
+
         # Assert
-        warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
+        warning_messages = [
+            record.message for record in caplog.records if record.levelname == "WARNING"
+        ]
         assert any("Context approaching limit" in msg for msg in warning_messages)
         assert any("135000 tokens" in msg for msg in warning_messages)  # 125K + 10K
         assert any("max: 130000" in msg for msg in warning_messages)
-        
+
     @patch("src.utils.llm_client.time.sleep")
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
@@ -1377,37 +1329,242 @@ class TestContextAccumulation:
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(1000))
         mock_get_encoding.return_value = mock_encoder
-        
+
         mock_client_instance = MagicMock()
         mock_openai_class.return_value = mock_client_instance
-        
+
         # Setup mock_probe
         mock_probe.return_value = None
-        
+
         # Test with 200K limit for o1/o4 models
         config_200k = {
             "api_key": "test-key",
             "model": "o4-mini",
+            "is_reasoning": True,  # Required parameter
             "tpm_limit": 150000,
             "max_completion": 90000,
             "max_context_tokens": 200000,  # 200K for o1/o4
             "timeout": 360,
             "max_retries": 3,
         }
-        
+
         client = OpenAIClient(config_200k)
         assert client.config["max_context_tokens"] == 200000
-        
+
         # Test with 128K limit for gpt-4 models
         config_128k = {
             "api_key": "test-key",
             "model": "gpt-4",
+            "is_reasoning": False,  # Required parameter
             "tpm_limit": 100000,
             "max_completion": 50000,
             "max_context_tokens": 128000,  # 128K for gpt-4
             "timeout": 300,
             "max_retries": 3,
         }
-        
+
         client2 = OpenAIClient(config_128k)
         assert client2.config["max_context_tokens"] == 128000
+
+
+# New tests for is_reasoning parameter
+class TestIsReasoningParameter:
+    """Tests for explicit is_reasoning parameter"""
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_is_reasoning_required(self, mock_openai_class, mock_get_encoding):
+        """Test that is_reasoning parameter is required."""
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+
+        config = {
+            "api_key": "sk-test",
+            "model": "gpt-5-mini",
+            # is_reasoning отсутствует намеренно
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        with pytest.raises(ValueError, match="is_reasoning.*required"):
+            OpenAIClient(config)
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_null_parameters_not_sent(self, mock_openai_class, mock_get_encoding, test_config):
+        """Test that null parameters are not included in API request."""
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+
+        config = {
+            "api_key": "sk-test",
+            "model": "gpt-5-mini",
+            "is_reasoning": True,
+            "temperature": None,  # В Python после загрузки из TOML
+            "reasoning_effort": "medium",
+            "reasoning_summary": None,
+            "verbosity": None,
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        client = OpenAIClient(config)
+        params = client._prepare_request_params("test", "test")
+
+        assert "temperature" not in params
+        assert "verbosity" not in params  # verbosity на верхнем уровне
+        assert "reasoning" in params
+        assert params["reasoning"]["effort"] == "medium"
+        assert "summary" not in params["reasoning"]
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_reasoning_model_extraction(self, mock_openai_class, mock_get_encoding):
+        """Test that reasoning models extract content from correct output index."""
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+
+        config = {
+            "api_key": "sk-test",
+            "model": "o4-mini",
+            "is_reasoning": True,
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        client = OpenAIClient(config)
+
+        # Mock response with reasoning structure
+        mock_response = Mock()
+        mock_response.status = "completed"
+
+        # Create reasoning output
+        mock_reasoning_output = Mock()
+        mock_reasoning_output.type = "reasoning"
+
+        # Create message output
+        mock_message_output = Mock()
+        mock_message_output.type = "message"
+        mock_content_item = Mock()
+        mock_content_item.type = "output_text"
+        mock_content_item.text = "Test response"
+        mock_message_output.content = [mock_content_item]
+
+        mock_response.output = [
+            mock_reasoning_output,  # output[0] for reasoning models
+            mock_message_output,  # output[1] for reasoning models
+        ]
+
+        result = client._extract_response_content(mock_response)
+        assert result == "Test response"
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_non_reasoning_model_extraction(self, mock_openai_class, mock_get_encoding):
+        """Test that non-reasoning models extract content from correct output index."""
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+
+        config = {
+            "api_key": "sk-test",
+            "model": "gpt-4.1-mini",
+            "is_reasoning": False,
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        client = OpenAIClient(config)
+
+        # Mock response with regular structure
+        mock_response = Mock()
+        mock_response.status = "completed"
+
+        # Create message output
+        mock_message_output = Mock()
+        mock_message_output.type = "message"
+        mock_content_item = Mock()
+        mock_content_item.type = "output_text"
+        mock_content_item.text = "Test response"
+        mock_message_output.content = [mock_content_item]
+
+        mock_response.output = [mock_message_output]  # output[0] for regular models
+
+        result = client._extract_response_content(mock_response)
+        assert result == "Test response"
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_verbosity_parameter_handling(self, mock_openai_class, mock_get_encoding):
+        """Test that verbosity parameter is handled correctly."""
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+
+        # Test with verbosity set
+        config_with_verbosity = {
+            "api_key": "sk-test",
+            "model": "gpt-5",
+            "is_reasoning": False,
+            "verbosity": "high",
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        client = OpenAIClient(config_with_verbosity)
+        params = client._prepare_request_params("test", "test")
+
+        assert "verbosity" in params
+        assert params["verbosity"] == "high"
+
+        # Test with verbosity as None
+        config_without_verbosity = {
+            "api_key": "sk-test",
+            "model": "gpt-5",
+            "is_reasoning": False,
+            "verbosity": None,
+            "tpm_limit": 100000,
+            "max_completion": 1000,
+        }
+        client2 = OpenAIClient(config_without_verbosity)
+        params2 = client2._prepare_request_params("test", "test")
+
+        assert "verbosity" not in params2
+
+
+class TestConfigHasTestParameters:
+    """Тесты проверки корректности test параметров в конфигурации"""
+
+    def test_config_has_test_parameters(self):
+        """Проверка что конфиг содержит корректные тестовые параметры"""
+        from src.utils.config import load_config
+
+        config = load_config()
+
+        # Проверка для itext2kg
+        assert "model_test" in config["itext2kg"], "itext2kg должен содержать model_test"
+        assert (
+            "max_context_tokens_test" in config["itext2kg"]
+        ), "itext2kg должен содержать max_context_tokens_test"
+        assert "tpm_limit_test" in config["itext2kg"], "itext2kg должен содержать tpm_limit_test"
+        assert (
+            "max_completion_test" in config["itext2kg"]
+        ), "itext2kg должен содержать max_completion_test"
+
+        # Проверка для refiner
+        assert "model_test" in config["refiner"], "refiner должен содержать model_test"
+        assert (
+            "max_context_tokens_test" in config["refiner"]
+        ), "refiner должен содержать max_context_tokens_test"
+        assert "tpm_limit_test" in config["refiner"], "refiner должен содержать tpm_limit_test"
+        assert (
+            "max_completion_test" in config["refiner"]
+        ), "refiner должен содержать max_completion_test"
+
+        # Проверка что test параметры отличаются от основных (обычно меньше)
+        assert (
+            config["itext2kg"]["tpm_limit_test"] <= config["itext2kg"]["tpm_limit"]
+        ), "tpm_limit_test должен быть меньше или равен tpm_limit"
+        assert (
+            config["itext2kg"]["max_completion_test"] <= config["itext2kg"]["max_completion"]
+        ), "max_completion_test должен быть меньше или равен max_completion"
+
+        assert (
+            config["refiner"]["tpm_limit_test"] <= config["refiner"]["tpm_limit"]
+        ), "tpm_limit_test должен быть меньше или равен tpm_limit"
+        assert (
+            config["refiner"]["max_completion_test"] <= config["refiner"]["max_completion"]
+        ), "max_completion_test должен быть меньше или равен max_completion"

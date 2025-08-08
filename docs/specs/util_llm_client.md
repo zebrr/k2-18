@@ -46,21 +46,25 @@ Main client for working with OpenAI Responses API.
 Initialize client with configuration.
 - **Input**: config - dictionary with parameters:
   - api_key (str) - OpenAI API key
-  - model (str) - model (gpt-4o, o4-mini, etc.)
+  - model (str) - model (gpt-4o, o4-mini, gpt-5, etc.)
+  - is_reasoning (bool, REQUIRED) - whether model is a reasoning model
   - tpm_limit (int) - tokens per minute limit
   - tpm_safety_margin (float) - safety margin (default 0.15)
   - max_completion (int) - maximum tokens for generation
   - max_context_tokens (int) - maximum context window size (default 128000)
   - timeout (int) - request timeout in seconds
   - max_retries (int) - number of retry attempts
-  - temperature (float, optional) - for regular models
-  - reasoning_effort (str, optional) - for reasoning models
-  - reasoning_summary (str, optional) - summary type for reasoning
+  - temperature (float, optional) - temperature parameter (sent only if not None)
+  - reasoning_effort (str, optional) - reasoning effort level (sent only if not None)
+  - reasoning_summary (str, optional) - summary type for reasoning (sent only if not None)
+  - verbosity (str, optional) - verbosity level for GPT-5 models (sent only if not None)
   - poll_interval (int) - polling interval in seconds (default 5)
 - **Attributes**:
   - last_response_id (str) - ID of last successful response for chains
   - last_usage (ResponseUsage) - usage info from last response for context accumulation
   - encoder - tokenizer (tiktoken with o200k_base) for precise token counting
+  - is_reasoning_model (bool) - explicitly set from config
+- **Raises**: ValueError - if required parameter 'is_reasoning' is missing
 
 #### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
 Create response via OpenAI Responses API (public interface).
@@ -114,14 +118,18 @@ Main logic for creating response in asynchronous mode.
 Prepare parameters for Responses API.
 - **Logic**: 
   - Base parameters + store=true
-  - For reasoning models: reasoning parameters, no temperature
-  - For regular models: temperature, no reasoning
+  - Adds only non-null parameters to request:
+    - temperature: included if not None (for any model type)
+    - reasoning: included if reasoning_effort or reasoning_summary not None
+    - verbosity: included if not None (top-level parameter)
+  - Parameters with None values are NOT sent to API
 
 ### OpenAIClient._extract_response_content(response) -> str
 Extract text from response object.
 - **Logic**:
-  - Reasoning models: output[0]=reasoning, output[1]=message
-  - Regular models: output[0]=message
+  - Uses is_reasoning_model from config to determine parsing:
+    - If is_reasoning=true: output[0]=reasoning, output[1]=message
+    - If is_reasoning=false: output[0]=message
   - Handle refusal and incomplete statuses
   - Support both completed and incomplete statuses
 
@@ -176,30 +184,37 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 
 ## Test Coverage
 
-- **test_llm_client**: 23 tests
-  - test_initialization
-  - test_tpm_bucket_*
-  - test_prepare_request_params_*
-  - test_extract_response_content_*
-  - test_create_response_async_*
-  - test_retry_logic_*
-  - test_incomplete_handling
-  - test_timeout_handling
+- **test_llm_client**: 17 tests
+  - Initialization tests - verify config validation and required parameters
+  - TPM bucket tests - token limit control and waiting logic
+  - Parameter preparation tests - request params formatting for API
+  - Response extraction tests - parsing different response structures
+  - Async response creation tests - background mode and polling
+  - Retry logic tests - exponential backoff and error handling
+  - Incomplete handling - automatic token limit increase
+  - Timeout handling - request cancellation on timeout
   
-- **test_llm_client_integration**: 13 tests
-  - test_simple_response
-  - test_json_response
-  - test_response_chain
-  - test_tpm_limiting
-  - test_error_handling
-  - test_reasoning_model
-  - test_headers_update
-  - test_background_mode_verification
-  - test_incomplete_response_handling
-  - test_timeout_cancellation
-  - test_console_progress_output
-  - test_incomplete_with_reasoning_model
-  - test_tpm_probe_mechanism
+- **test_llm_client_integration**: 10 active tests (3 skipped)
+  - Simple response - basic API call verification
+  - JSON response - structured output parsing
+  - Response chain - context preservation with previous_response_id
+  - TPM limiting - rate limit control with artificial throttling
+  - Error handling - authentication and API errors
+  - Reasoning model - o* models with reasoning tokens
+  - Background mode verification - console output capture
+  - Incomplete response handling - automatic retry with token increase
+  - Timeout cancellation - timeout error on long requests
+  - Console progress output - progress messages formatting
+  - **Skipped**: headers_update, incomplete_with_reasoning_model, context_accumulation_integration
+
+## Configuration Notes
+
+### Test Model Parameters
+The client does NOT handle `tpm_limit_test` or `max_completion_test` parameters directly. These are utility-level configuration options used by itext2kg and refiner utilities when deciding between main and test models. The OpenAIClient receives already selected model parameters.
+
+### Required vs Optional Parameters
+- **is_reasoning** (bool) - REQUIRED parameter that must be explicitly provided
+- **temperature**, **reasoning_effort**, **reasoning_summary**, **verbosity** - optional parameters sent to API only when not None
 
 ## Dependencies
 - **Standard Library**: time, logging, json, typing, dataclasses, datetime
@@ -243,7 +258,6 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
   - 1st retry: ×1.5 from original
   - 2nd retry: ×2.0 from original
   - 3rd retry: critical error
-- **Bug fixed**: old_limit variable now correctly defined before use
 
 ### Console Progress Output
 - [QUEUE] ⏳ - request in queue (first time only)
@@ -263,10 +277,11 @@ from src.utils.llm_client import OpenAIClient
 config = {
     'api_key': 'sk-...',
     'model': 'gpt-4.1-mini-2025-04-14',
+    'is_reasoning': False,  # REQUIRED: explicitly specify model type
     'tpm_limit': 120000,
     'tpm_safety_margin': 0.15,
     'max_completion': 4096,
-    'max_context_tokens': 128000,  # Optional, default 128000
+    'max_context_tokens': 128000,
     'timeout': 45,
     'max_retries': 6,
     'temperature': 0.7,
@@ -274,14 +289,10 @@ config = {
 }
 
 client = OpenAIClient(config)
-
-# Simple request
 response_text, response_id, usage = client.create_response(
     "You are a helpful assistant",
     "What is the capital of France?"
 )
-print(f"Response: {response_text}")
-print(f"Tokens used: {usage.total_tokens}")
 ```
 
 ### Request Chain with Context
@@ -296,7 +307,7 @@ text1, id1, usage1 = client.create_response(
 text2, id2, usage2 = client.create_response(
     "Continue being a math tutor",
     "What was my name?",
-    previous_response_id=id1  # Explicit context passing
+    previous_response_id=id1
 )
 # Response will contain "Alice"
 
@@ -308,13 +319,13 @@ print(f"Context tokens accumulated: {usage2.input_tokens}")
 ```python
 config = {
     'api_key': 'sk-...',
-    'model': 'o4-mini-2025-04-16',  # Reasoning model
+    'model': 'o4-mini-2025-04-16',
+    'is_reasoning': True,  # REQUIRED: explicitly specify
     'tpm_limit': 100000,
-    'max_completion': 25000,  # More tokens for reasoning
-    'max_context_tokens': 200000,  # o4 models have larger context
+    'max_completion': 25000,
+    'max_context_tokens': 200000,
     'reasoning_effort': 'medium',
     'reasoning_summary': 'auto',
-    # don't specify temperature for reasoning models!
 }
 
 client = OpenAIClient(config)
@@ -329,9 +340,7 @@ print(f"Reasoning tokens: {usage.reasoning_tokens}")
 ```python
 import json
 
-# Track successful response for potential rollback
 last_successful_id = None
-
 try:
     response_text, response_id, _ = client.create_response(
         "Return a JSON object",
@@ -339,21 +348,20 @@ try:
         previous_response_id=last_successful_id
     )
     data = json.loads(response_text)
-    last_successful_id = response_id  # Update on success
+    last_successful_id = response_id
 except json.JSONDecodeError:
     # Repair with rollback to last successful context
     repair_instructions = (
         "Return a JSON object\n\n"
-        "CRITICAL: Return ONLY valid JSON. "
-        "No markdown formatting, no explanations."
+        "CRITICAL: Return ONLY valid JSON."
     )
     response_text, response_id, _ = client.repair_response(
         instructions=repair_instructions,
         input_data="Create user object with name and age",
-        previous_response_id=last_successful_id  # Rollback!
+        previous_response_id=last_successful_id
     )
     data = json.loads(response_text)
-    last_successful_id = response_id  # Update on success
+    last_successful_id = response_id
 ```
 
 ### Error Handling
@@ -365,7 +373,6 @@ try:
     )
 except IncompleteResponseError as e:
     print(f"Response was incomplete: {e}")
-    # Can retry with larger max_completion
 except TimeoutError as e:
     print(f"Request timed out: {e}")
 except openai.RateLimitError as e:
@@ -381,8 +388,6 @@ print(f"TPM reset at: {client.tpm_bucket.reset_time}")
 # Monitor context accumulation
 response_text, _, usage = client.create_response(...)
 print(f"Input tokens (with context): {usage.input_tokens}")
-print(f"Output tokens: {usage.output_tokens}")
-print(f"Total tokens: {usage.total_tokens}")
 
 # Check if approaching context limit
 if client.last_usage and client.last_usage.input_tokens > 100000:

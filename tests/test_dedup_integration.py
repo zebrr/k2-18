@@ -28,6 +28,7 @@ def create_test_graph_with_semantic_duplicates():
             "type": "Concept",
             "text": "Python",
             "definition": "High-level programming language",
+            "node_offset": 0,
             "local_start": 0,
         }
     )
@@ -38,6 +39,7 @@ def create_test_graph_with_semantic_duplicates():
             "type": "Concept",
             "text": "Variable",
             "definition": "Named storage location",
+            "node_offset": 0,
             "local_start": 10,
         }
     )
@@ -48,6 +50,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_vars_1",
             "type": "Chunk",
             "text": "In Python, variables are containers for storing data values. You create a variable by assigning a value to it using the equals sign.",
+            "node_offset": 0,
             "local_start": 100,
         }
     )
@@ -57,6 +60,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_vars_2",
             "type": "Chunk",
             "text": "Python variables are used to store data values. A variable is created when you assign a value to it with the = operator.",
+            "node_offset": 0,
             "local_start": 200,
         }
     )
@@ -66,6 +70,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_vars_3",
             "type": "Chunk",
             "text": "Variables in Python are containers that hold data. To create a variable, simply assign it a value using the assignment operator (=).",
+            "node_offset": 0,
             "local_start": 300,
         }
     )
@@ -76,6 +81,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_for_1",
             "type": "Chunk",
             "text": "The for loop in Python is used to iterate over a sequence (list, tuple, string) or other iterable objects. It executes a block of code for each item.",
+            "node_offset": 0,
             "local_start": 400,
         }
     )
@@ -85,6 +91,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_for_2",
             "type": "Chunk",
             "text": "Python for loops iterate through sequences like lists, tuples, or strings. The loop runs a code block once for every element in the sequence.",
+            "node_offset": 0,
             "local_start": 500,
         }
     )
@@ -95,6 +102,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_unique_1",
             "type": "Chunk",
             "text": "Python supports multiple programming paradigms including procedural, object-oriented, and functional programming styles.",
+            "node_offset": 0,
             "local_start": 600,
         }
     )
@@ -104,6 +112,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "chunk_unique_2",
             "type": "Chunk",
             "text": "List comprehensions provide a concise way to create lists in Python. They consist of brackets containing an expression followed by a for clause.",
+            "node_offset": 0,
             "local_start": 700,
         }
     )
@@ -114,6 +123,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "assessment_1",
             "type": "Assessment",
             "text": "What is a variable in Python?",
+            "node_offset": 0,
             "local_start": 800,
         }
     )
@@ -123,6 +133,7 @@ def create_test_graph_with_semantic_duplicates():
             "id": "assessment_2",
             "type": "Assessment",
             "text": "How do you create a variable in Python?",  # Семантически похож на assessment_1
+            "node_offset": 0,
             "local_start": 900,
         }
     )
@@ -194,6 +205,7 @@ def create_edge_case_graph():
             "id": "chunk_empty",
             "type": "Chunk",
             "text": "",  # Пустой текст
+            "node_offset": 0,
             "local_start": 0,
         }
     )
@@ -203,6 +215,7 @@ def create_edge_case_graph():
             "id": "chunk_whitespace",
             "type": "Chunk",
             "text": "   \n\t  ",  # Только пробелы
+            "node_offset": 0,
             "local_start": 100,
         }
     )
@@ -214,6 +227,7 @@ def create_edge_case_graph():
             "id": "chunk_very_long",
             "type": "Chunk",
             "text": long_text[:30000],  # Примерно 7000 токенов
+            "node_offset": 0,
             "local_start": 200,
         }
     )
@@ -224,6 +238,7 @@ def create_edge_case_graph():
             "id": "chunk_identical_1",
             "type": "Chunk",
             "text": "Python is a high-level, interpreted programming language known for its simplicity.",
+            "node_offset": 0,
             "local_start": 300,
         }
     )
@@ -233,6 +248,7 @@ def create_edge_case_graph():
             "id": "chunk_identical_2",
             "type": "Chunk",
             "text": "Python is a high-level, interpreted programming language known for its simplicity.",
+            "node_offset": 0,
             "local_start": 400,
         }
     )
@@ -468,6 +484,7 @@ class TestDedupIntegrationReal(unittest.TestCase):
                     "type": "Chunk",
                     "text": f"This is test chunk number {i} with unique content to test rate limiting. "
                     * 10,
+                    "node_offset": 0,
                     "local_start": i * 100,
                 }
             )
@@ -502,7 +519,8 @@ class TestDedupIntegrationReal(unittest.TestCase):
         """Тест обработки невалидной структуры графа"""
         # Граф без обязательного поля 'edges'
         invalid_graph = {
-            "nodes": [{"id": "test", "type": "Chunk", "text": "Test", "local_start": 0}]
+            "nodes": [{"id": "test", "type": "Chunk", "text": "Test", "node_offset": 0,
+            "local_start": 0}]
             # 'edges' отсутствует!
         }
 

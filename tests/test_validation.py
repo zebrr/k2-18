@@ -67,6 +67,7 @@ class TestValidateJson:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Тестовый текст чанка",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 3,
                 },
@@ -74,6 +75,7 @@ class TestValidateJson:
                     "id": "test:concept:1",
                     "type": "Concept",
                     "text": "Концепт",
+                    "node_offset": 0,
                     "local_start": 10,
                     "definition": "Определение концепта",
                 },
@@ -114,6 +116,7 @@ class TestValidateJson:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Текст",
+                    "node_offset": 0,
                     "local_start": 0,
                 }
             ],
@@ -126,7 +129,7 @@ class TestValidateJson:
             ],
         }
 
-        with pytest.raises(ValidationError, match="Schema validation error"):
+        with pytest.raises(ValidationError, match="INVALID_TYPE"):
             validate_json(invalid_data, "LearningChunkGraph")
 
 
@@ -141,6 +144,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Первый чанк",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 2,
                 },
@@ -148,6 +152,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:2",
                     "type": "Chunk",
                     "text": "Второй чанк",
+                    "node_offset": 0,
                     "local_start": 50,
                     "difficulty": 3,
                 },
@@ -173,12 +178,14 @@ class TestValidateGraphInvariants:
                     "id": "duplicate:id",
                     "type": "Chunk",
                     "text": "Первый",
+                    "node_offset": 0,
                     "local_start": 0,
                 },
                 {
                     "id": "duplicate:id",  # Дубликат
                     "type": "Chunk",
                     "text": "Второй",
+                    "node_offset": 0,
                     "local_start": 10,
                 },
             ],
@@ -196,6 +203,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Чанк",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 1,
                 }
@@ -222,6 +230,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Чанк",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 1,
                 }
@@ -246,6 +255,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Первый",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 1,
                 },
@@ -253,6 +263,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:2",
                     "type": "Chunk",
                     "text": "Второй",
+                    "node_offset": 0,
                     "local_start": 10,
                     "difficulty": 1,
                 },
@@ -279,6 +290,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:1",
                     "type": "Chunk",
                     "text": "Первый",
+                    "node_offset": 0,
                     "local_start": 0,
                     "difficulty": 1,
                 },
@@ -286,6 +298,7 @@ class TestValidateGraphInvariants:
                     "id": "test:chunk:2",
                     "type": "Chunk",
                     "text": "Второй",
+                    "node_offset": 0,
                     "local_start": 10,
                     "difficulty": 1,
                 },
@@ -450,12 +463,14 @@ class TestIntermediateValidation:
                     "id": "test:p:concept1",
                     "type": "Concept",
                     "text": "Концепт 1",
+                    "node_offset": 0,
                     "local_start": 0,
                 },
                 {
                     "id": "test:p:concept1",
                     "type": "Concept",
                     "text": "Концепт 1",
+                    "node_offset": 0,
                     "local_start": 100,
                 },  # Дубликат
             ],
@@ -477,12 +492,14 @@ class TestIntermediateValidation:
                     "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Текст 1",
+                    "node_offset": 0,
                     "local_start": 100,
                 },
                 {
                     "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Текст 2",
+                    "node_offset": 0,
                     "local_start": 200,
                 },  # Дубликат
             ],
@@ -502,12 +519,14 @@ class TestIntermediateValidation:
                     "id": "test:q:100:0",
                     "type": "Assessment",
                     "text": "Вопрос 1",
+                    "node_offset": 0,
                     "local_start": 100,
                 },
                 {
                     "id": "test:q:100:0",
                     "type": "Assessment",
                     "text": "Вопрос 1",
+                    "node_offset": 0,
                     "local_start": 200,
                 },  # Дубликат
             ],
@@ -528,6 +547,7 @@ class TestIntermediateValidation:
                     "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Текст",
+                    "node_offset": 0,
                     "local_start": 100,
                 }
             ],
@@ -546,6 +566,7 @@ class TestIntermediateValidation:
                     "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Текст",
+                    "node_offset": 0,
                     "local_start": 100,
                 }
             ],
@@ -569,24 +590,28 @@ class TestIntermediateValidation:
                     "id": "test:p:concept1",
                     "type": "Concept",
                     "text": "Концепт 1",
+                    "node_offset": 0,
                     "local_start": 0,
                 },
                 {
                     "id": "test:p:concept1",
                     "type": "Concept",
                     "text": "Концепт 1 дубликат",
+                    "node_offset": 0,
                     "local_start": 50,
                 },
                 {
                     "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Текст чанка",
+                    "node_offset": 0,
                     "local_start": 100,
                 },
                 {
                     "id": "test:q:200:0",
                     "type": "Assessment",
                     "text": "Вопрос",
+                    "node_offset": 0,
                     "local_start": 200,
                 },
             ],

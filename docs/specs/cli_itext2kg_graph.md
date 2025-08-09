@@ -146,16 +146,16 @@ The utility uses structured progress output with unified format:
 Section `[itext2kg]` in config.toml:
 
 ### Required Parameters
-- **model** (str) - LLM model (o4-mini-2025-04-16)
-- **tpm_limit** (int, >0) - tokens per minute limit
-- **log_level** (str) - logging level (debug/info/warning/error)
+- **model** (str) - LLM model (e.g., o4-mini-2025-04-16)
+- **tpm_limit** (int, >0) - tokens per minute limit (e.g., 200000)
+- **log_level** (str) - logging level: debug/info/warning/error
 
 ### Optional Parameters
 - **tpm_safety_margin** (float, 0-1, default=0.15) - TPM safety margin
-- **max_completion** (int, >0) - maximum tokens per generation
-- **temperature** (float, 0-2) - for regular models
-- **reasoning_effort** (str) - for reasoning models (low/medium/high)
-- **reasoning_summary** (str) - summary format for reasoning models
+- **max_completion** (int, >0, default=25000) - maximum tokens per generation
+- **temperature** (float, 0-2, default=0.6) - for regular models
+- **reasoning_effort** (str, default=medium) - for reasoning models (low/medium/high)
+- **reasoning_summary** (str, default=auto) - summary format for reasoning models
 - **timeout** (int, >0, default=360) - request timeout in seconds
 - **max_retries** (int, >0, default=3) - number of retries on API errors
 - **poll_interval** (int, >0, default=5) - polling interval for async requests
@@ -184,7 +184,7 @@ Section `[itext2kg]` in config.toml:
 ### Critical Failures
 - **Any slice fails** → save dumps → EXIT_RUNTIME_ERROR (3)
 - **Missing ConceptDictionary** → EXIT_INPUT_ERROR (2)
-- **I/O errors** → save dumps → EXIT_IO_ERROR (5)
+- **I/O error saving output** → save dumps → EXIT_IO_ERROR (5)
 
 ## Public Classes
 
@@ -250,24 +250,7 @@ Replace temporary IDs with final position-based IDs.
 - **Note**: Must be called BEFORE any validation or processing
 
 ### SliceProcessor.validate_node_positions(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
-**DEPRECATED**: Position validation no longer needed after ID post-processing.
-- **Input**: 
-  - nodes - list of nodes to validate
-  - slice_token_start - start token position of current slice
-- **Returns**: Always returns nodes (validation is skipped)
-- **Note**: Kept for backward compatibility but performs no validation
-
-### SliceProcessor._validate_node_positions_legacy(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
-Legacy validation method - kept for reference but not used.
-- **Purpose**: Original validation logic that checked node_position calculations
-- **Algorithm**:
-  1. For each Chunk/Assessment node
-  2. Check required fields (node_offset, node_position) exist
-  3. Verify math: node_position = slice_token_start + node_offset
-  4. Check position >= slice_token_start
-  5. Verify ID consistency with stated position
-  6. Return None if any issues found
-- **Note**: Replaced by _assign_final_ids() which fixes IDs automatically
+**DEPRECATED**: Position validation no longer needed after ID post-processing. Always returns nodes unchanged.
 
 ### SliceProcessor._process_single_slice(slice_file: Path) -> bool
 Process single slice with repair mechanism.
@@ -447,8 +430,6 @@ Add patch to graph with full processing.
 - test_temp_dumps - recovery files
 - test_interrupt_handling - Ctrl+C processing
 
-**Coverage: 82%**
-
 ## Dependencies
 
 ### Standard Library
@@ -492,15 +473,60 @@ Final validation uses:
 ## Output Format
 
 ### LearningChunkGraph_raw.json
+
+The output file contains extensive metadata alongside the graph data:
+
 ```json
 {
+  "_meta": {
+    "generated_at": "2024-01-15 10:45:00",
+    "generator": "itext2kg_graph",
+    "config": {
+      "model": "o4-mini-2025-04-16",
+      "temperature": 0.6,
+      "max_output_tokens": 25000,
+      "reasoning_effort": "medium",
+      "overlap": 500,
+      "slice_size": 5000
+    },
+    "source": {
+      "total_slices": 157,
+      "processed_slices": 157,
+      "total_tokens": 85000,
+      "slug": "algo101",
+      "concepts_used": 42
+    },
+    "api_usage": {
+      "total_requests": 157,
+      "total_input_tokens": 450000,
+      "total_output_tokens": 125000,
+      "total_tokens": 575000
+    },
+    "graph_stats": {
+      "total_nodes": 523,
+      "chunks": 400,
+      "concepts": 42,
+      "assessments": 81,
+      "total_edges": 1247,
+      "edge_types": {
+        "MENTIONS": 850,
+        "PREREQUISITE": 200,
+        "ELABORATES": 150,
+        "TESTS": 47
+      }
+    },
+    "processing_time": {
+      "start": "2024-01-15 10:30:00",
+      "end": "2024-01-15 10:45:00",
+      "duration_minutes": 15.0
+    }
+  },
   "nodes": [
     {
       "id": "algo101:c:1000",
       "type": "Chunk",
       "text": "Example chunk text...",
       "node_offset": 0,
-      "node_position": 1000,
       "difficulty": 3,
       "language": "ru",
       "metadata": {}
@@ -510,7 +536,6 @@ Final validation uses:
       "type": "Assessment",
       "text": "Question text...",
       "node_offset": 200,
-      "node_position": 5200,
       "difficulty": 4
     },
     {
@@ -585,6 +610,7 @@ Final validation uses:
 - **Optimization**: automatic MENTIONS reduces need for LLM to find all mentions
 - **Logging**: JSON Lines format for efficient parsing
 - **Critical path**: Post-processing IDs is deterministic and fast
+- **API tracking**: detailed usage statistics for cost monitoring
 
 ## Usage Examples
 

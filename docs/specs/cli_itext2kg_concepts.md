@@ -16,7 +16,7 @@ python -m src.itext2kg_concepts
 - **Formats**: JSON files with slice structure
 
 ### Output Directory/Files
-- **Target**: `/data/out/ConceptDictionary.json` - concept dictionary
+- **Target**: `/data/out/ConceptDictionary.json` - concept dictionary with metadata
 - **Logs**: `/logs/itext2kg_concepts_YYYY-MM-DD_HH-MM-SS.log` - detailed logs
 - **Debug**: `/logs/{slice_id}_bad.json` - problematic LLM responses (on errors)
 - **Recovery**: `/logs/*_temp_*.json` - temporary dumps (on critical errors)
@@ -64,6 +64,11 @@ python -m src.itext2kg_concepts
   - Enables detailed tracing of concept dictionary updates
   - Useful for debugging extraction issues and prompt optimization
 
+### API Usage Tracking
+- Tracks total API requests, input tokens, and output tokens
+- Statistics included in final metadata for cost analysis
+- Accumulated throughout processing for monitoring
+
 ## Core Algorithm
 
 1. **Load slices** from staging in lexicographic order
@@ -77,7 +82,7 @@ python -m src.itext2kg_concepts
    - Continue on partial failures
    - Save temporary dumps on critical errors
 4. **Final validation** of ConceptDictionary invariants
-5. **Save results** to output
+5. **Save results** with metadata to output
 
 ## Terminal Output
 
@@ -219,6 +224,10 @@ Single slice data container.
 Main processing class for concept extraction.
 - **__init__(config: Dict)** - initialization with configuration
 - **run() -> int** - main processing launch method, returns exit code
+- **Internal state tracking**:
+  - api_usage - tracks total requests and token usage for cost monitoring
+  - source_slug - extracted from first slice for metadata
+  - total_source_tokens - calculated from last slice for statistics
 
 ## Internal Methods
 
@@ -261,13 +270,15 @@ Process single slice with full error handling.
   1. Load and validate slice data
   2. Format input with current ConceptDictionary state
   3. Call LLM with previous_response_id
-  4. Parse and validate response
-  5. On JSON error: attempt repair with rollback
-  6. Update concept dictionary on success
-  7. Update previous_response_id (with repair_id if repair was successful)
+  4. Track API usage (requests, tokens)
+  5. Parse and validate response
+  6. On JSON error: attempt repair with rollback
+  7. Update concept dictionary on success
+  8. Update previous_response_id (with repair_id if repair was successful)
 - **Side effects**: 
   - Updates self.concept_dict
   - Updates self.previous_response_id
+  - Updates self.api_usage counters
   - May create bad response files
 - **Error handling**: Catches all exceptions, logs errors, returns False
 
@@ -321,6 +332,18 @@ Output final processing status to terminal.
 - **Format**: `[HH:MM:SS] END      | Done | slices={processed} | time={m}m {s}s`
 - **Side effects**: Prints to stdout
 - **Note**: Called after successful completion before returning EXIT_SUCCESS
+
+### SliceProcessor._finalize_and_save() -> int
+Final validation and save results with comprehensive metadata.
+- **Returns**: Exit code (SUCCESS or error code)
+- **Algorithm**:
+  1. Validate against schema and invariants
+  2. Calculate concept statistics (aliases, counts)
+  3. Collect comprehensive metadata including API usage
+  4. Merge metadata with concept dictionary
+  5. Save to output file
+- **Side effects**: Creates ConceptDictionary.json with metadata
+- **Error handling**: Returns appropriate exit codes, saves temp dumps on failure
 
 ## Testing
 
@@ -402,17 +425,52 @@ Final validation uses:
 
 ## Output Format
 
-### ConceptDictionary.json
+### ConceptDictionary.json (with metadata)
 ```json
 {
+  "_meta": {
+    "generated_at": "2024-01-15 10:30:00",
+    "generator": "itext2kg_concepts",
+    "config": {
+      "model": "o4-mini-2025-04-16",
+      "temperature": 0.1,
+      "max_output_tokens": 25000,
+      "reasoning_effort": "medium",
+      "overlap": 500,
+      "slice_size": 5000
+    },
+    "source": {
+      "total_slices": 157,
+      "processed_slices": 155,
+      "total_tokens": 785000,
+      "slug": "algo101"
+    },
+    "api_usage": {
+      "total_requests": 312,
+      "total_input_tokens": 1250000,
+      "total_output_tokens": 450000,
+      "total_tokens": 1700000
+    },
+    "concepts_stats": {
+      "total_concepts": 234,
+      "concepts_with_aliases": 189,
+      "total_aliases": 567,
+      "avg_aliases_per_concept": 2.42
+    },
+    "processing_time": {
+      "start": "2024-01-15 10:00:00",
+      "end": "2024-01-15 10:30:00",
+      "duration_minutes": 30.5
+    }
+  },
   "concepts": [
     {
-      "concept_id": "slug:p:term",
+      "concept_id": "algo101:p:stack",
       "term": {
-        "primary": "Term",
-        "aliases": ["term", "synonym", "альтернатива"]
+        "primary": "Стек",
+        "aliases": ["stack", "LIFO", "стековая структура"]
       },
-      "definition": "Concept definition with details"
+      "definition": "LIFO-структура данных, где элементы добавляются и удаляются с одного конца"
     }
   ]
 }
@@ -424,7 +482,7 @@ Final validation uses:
   "slice_id": "slice_001",
   "timestamp": "2024-01-15T10:30:00Z",
   "original_response": "invalid LLM response text",
-  "error": "JSON decode error: Expecting value: line 1 column 1",
+  "validation_error": "JSON decode error: Expecting value: line 1 column 1",
   "repair_response": "response after repair attempt (if any)"
 }
 ```
@@ -446,7 +504,6 @@ Final validation uses:
   "stats": {
     "total_slices": 157,
     "processed_slices": 42,
-    "failed_slices": 3,
     "total_concepts": 234,
     "total_tokens_used": 125000,
     "processing_time": "5m 23s"
@@ -462,6 +519,7 @@ Final validation uses:
 - **TPM control** via llm_client with safety margin (15% default)
 - **Bottleneck**: LLM API calls (limited by TPM)
 - **Optimization**: Previous_response_id reduces repeated concept extraction
+- **API usage tracking**: Collects statistics for cost analysis (total requests, input/output tokens)
 - **Logging**: JSON Lines format for efficient parsing
 - **Checkpoint**: Progress logged every 10 slices for recovery
 
@@ -481,6 +539,9 @@ ls data/out/
 
 # Verify concept count
 python -c "import json; d=json.load(open('data/out/ConceptDictionary.json')); print(f'Concepts: {len(d[\"concepts\"])}')"
+
+# Check API usage from metadata
+python -c "import json; d=json.load(open('data/out/ConceptDictionary.json')); m=d['_meta']['api_usage']; print(f'Total API cost estimate: {m[\"total_tokens\"]} tokens')"
 ```
 
 ### Error Recovery
@@ -521,6 +582,16 @@ print(f'Total: {len(ids)}, Unique: {len(set(ids))}')
 # View debug logs for prompt/response analysis
 cat logs/itext2kg_concepts_*.log | jq 'select(.level == "DEBUG" and .event == "llm_request")'
 cat logs/itext2kg_concepts_*.log | jq 'select(.level == "DEBUG" and .event == "llm_response")'
+
+# Analyze API usage patterns
+python -c "
+import json
+d = json.load(open('data/out/ConceptDictionary.json'))
+m = d['_meta']['api_usage']
+avg_in = m['total_input_tokens'] / m['total_requests']
+avg_out = m['total_output_tokens'] / m['total_requests']
+print(f'Avg tokens per request: {avg_in:.0f} in, {avg_out:.0f} out')
+"
 ```
 
 ## See Also

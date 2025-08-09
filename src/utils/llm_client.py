@@ -376,17 +376,28 @@ class OpenAIClient:
             response_id: ID of response to delete
 
         Raises:
-            ValueError: If deletion fails
+            ValueError: If deletion fails with unexpected error
         """
         try:
             result = self.client.responses.delete(response_id)
-            if hasattr(result, "deleted") and result.deleted:
+            # API returns None on successful deletion (confirmed by testing)
+            if result is None:
+                self.logger.debug(f"Successfully deleted response {response_id[:12]}")
+            elif hasattr(result, "deleted") and result.deleted:
+                # Alternative format - if API changes to return object
                 self.logger.debug(f"Successfully deleted response {response_id[:12]}")
             else:
-                raise ValueError(f"Delete returned unexpected result: {result}")
+                # Unexpected format but might not be an error
+                self.logger.warning(f"Delete returned unexpected result: {result}")
         except Exception as e:
-            self.logger.warning(f"Failed to delete response {response_id[:12]}: {e}")
-            raise ValueError(f"Failed to delete response: {e}") from e
+            # Check if it's a 404 error - response already deleted or doesn't exist
+            if "404" in str(e) or "not found" in str(e).lower():
+                self.logger.debug(f"Response {response_id[:12]} already deleted or doesn't exist")
+                # Don't raise - this is not critical
+            else:
+                # Other errors are more serious
+                self.logger.warning(f"Failed to delete response {response_id[:12]}: {e}")
+                raise ValueError(f"Failed to delete response: {e}") from e
 
     def _prepare_request_params(
         self,

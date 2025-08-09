@@ -168,6 +168,8 @@ Section `[itext2kg]` in config.toml:
 - **max_context_tokens** (int, >=1000, default=128000) - maximum context size
 - **max_context_tokens_test** (int, >=1000, default=128000) - max context for testing
 - **poll_interval** (int, >0, default=5) - polling interval for async requests
+- **response_chain_depth** (int, optional) - depth of response chain (None=unlimited, 0=independent, >0=sliding window)
+- **truncation** (str, optional) - truncation strategy ("auto", "disabled", or comment out to omit)
 
 ### Validation
 - Configuration parameters are validated at startup

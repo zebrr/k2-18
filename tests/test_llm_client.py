@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, Mock, patch
 import openai
 import pytest
 
-from src.utils.llm_client import OpenAIClient, TPMBucket
+from src.utils.llm_client import IncompleteResponseError, OpenAIClient, TPMBucket
 
 
 # Fixtures для конфигурации
@@ -746,7 +746,7 @@ class TestOpenAIClient:
     def test_incomplete_response_handling(
         self, mock_openai_class, mock_get_encoding, mock_sleep, mock_probe, test_config
     ):
-        """Проверка обработки incomplete статуса с автоматическим увеличением токенов"""
+        """Проверка обработки incomplete статуса - теперь без retry (сразу exception)"""
         # Setup
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(100))
@@ -771,43 +771,20 @@ class TestOpenAIClient:
         mock_raw_incomplete.headers = {}
         mock_raw_incomplete.parse.return_value = incomplete_response
 
-        # Вторая попытка - успех
-        initial_response2 = Mock(id="resp_002", status="queued")
-        mock_raw_initial2 = MagicMock()
-        mock_raw_initial2.headers = {}
-        mock_raw_initial2.parse.return_value = initial_response2
-
-        final_response = MockResponse("Success with more tokens")
-        final_response.id = "resp_002"
-        mock_raw_final = MagicMock()
-        mock_raw_final.headers = {}
-        mock_raw_final.parse.return_value = final_response
-
         # Настраиваем последовательность
-        mock_client_instance.responses.with_raw_response.create.side_effect = [
-            mock_raw_initial1,
-            mock_raw_initial2,
-        ]
-
-        mock_client_instance.responses.with_raw_response.retrieve.side_effect = [
-            mock_raw_incomplete,
-            mock_raw_final,
-        ]
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial1
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_incomplete
 
         client = OpenAIClient(test_config)
 
-        with patch("src.utils.llm_client.time.sleep"):
-            response_text, _, _ = client.create_response("Prompt", "Input")
+        # Теперь IncompleteResponseError должна быть выброшена сразу без retry
+        with pytest.raises(IncompleteResponseError) as exc_info:
+            client.create_response("Prompt", "Input")
 
         # Проверки
-        assert response_text == "Success with more tokens"
-        assert mock_client_instance.responses.with_raw_response.create.call_count == 2
-
-        # Проверка что токены увеличились во втором вызове
-        second_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
-            1
-        ][1]
-        assert second_call_args["max_output_tokens"] == int(4096 * 1.5)  # Увеличено в 1.5 раза
+        assert "max_output_tokens" in str(exc_info.value)
+        assert "4096 tokens" in str(exc_info.value)
+        assert mock_client_instance.responses.with_raw_response.create.call_count == 1  # Без retry!
 
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
@@ -1568,3 +1545,216 @@ class TestConfigHasTestParameters:
         assert (
             config["refiner"]["max_completion_test"] <= config["refiner"]["max_completion"]
         ), "max_completion_test должен быть меньше или равен max_completion"
+
+
+# Новые тесты для управления response chain
+class TestResponseChainManagement:
+    """Тесты для управления цепочкой ответов с configurable depth"""
+
+    @pytest.fixture
+    def config_with_chain_depth(self):
+        """Конфигурация с response_chain_depth"""
+        return {
+            "api_key": "test-key-123",
+            "model": "gpt-4o",
+            "is_reasoning": False,
+            "tpm_limit": 120000,
+            "tpm_safety_margin": 0.15,
+            "max_completion": 4096,
+            "timeout": 45,
+            "max_retries": 3,
+            "response_chain_depth": 2,  # Sliding window of 2
+            "truncation": "auto",
+        }
+
+    @pytest.fixture
+    def config_independent(self):
+        """Конфигурация для независимых запросов"""
+        return {
+            "api_key": "test-key-123",
+            "model": "gpt-4o",
+            "is_reasoning": False,
+            "tpm_limit": 120000,
+            "tpm_safety_margin": 0.15,
+            "max_completion": 4096,
+            "timeout": 45,
+            "max_retries": 3,
+            "response_chain_depth": 0,  # Independent requests
+        }
+
+    @pytest.fixture
+    def config_unlimited(self):
+        """Конфигурация без ограничения цепочки"""
+        return {
+            "api_key": "test-key-123",
+            "model": "gpt-4o",
+            "is_reasoning": False,
+            "tpm_limit": 120000,
+            "tpm_safety_margin": 0.15,
+            "max_completion": 4096,
+            "timeout": 45,
+            "max_retries": 3,
+            # response_chain_depth not set - unlimited chain
+        }
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_response_chain_depth_none(self, mock_openai_class, mock_get_encoding, config_unlimited):
+        """Проверка неограниченной цепочки (текущее поведение)"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+
+        client = OpenAIClient(config_unlimited)
+        
+        # Проверяем, что цепочка не создается
+        assert client.response_chain_depth is None
+        assert client.response_chain is None
+        # В неограниченном режиме response_chain не создается
+        assert not hasattr(client, "response_chain") or client.response_chain is None
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_response_chain_depth_zero(self, mock_openai_class, mock_get_encoding, config_independent):
+        """Проверка независимых запросов"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+
+        client = OpenAIClient(config_independent)
+        
+        # Проверяем конфигурацию независимых запросов
+        assert client.response_chain_depth == 0
+        assert client.response_chain is None
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_response_chain_depth_limited(self, mock_openai_class, mock_get_encoding, config_with_chain_depth):
+        """Проверка скользящего окна"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Проверяем создание deque
+        assert client.response_chain_depth == 2
+        assert client.response_chain is not None
+        assert len(client.response_chain) == 0
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_response_deletion_success(self, mock_openai_class, mock_get_encoding, config_with_chain_depth):
+        """Проверка успешного удаления старых ответов"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Mock delete response
+        mock_delete_result = Mock(deleted=True)
+        mock_client_instance.responses.delete.return_value = mock_delete_result
+
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Test deletion
+        client._delete_response("resp_old_123")
+        
+        # Verify delete was called
+        mock_client_instance.responses.delete.assert_called_once_with("resp_old_123")
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_response_deletion_failure(self, mock_openai_class, mock_get_encoding, config_with_chain_depth):
+        """Проверка обработки ошибки удаления"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Mock failed delete
+        mock_client_instance.responses.delete.side_effect = Exception("API Error")
+
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Test deletion failure
+        with pytest.raises(ValueError, match="Failed to delete response"):
+            client._delete_response("resp_old_123")
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_truncation_parameter(self, mock_openai_class, mock_get_encoding, config_with_chain_depth):
+        """Проверка передачи параметра truncation в API"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_get_encoding.return_value = mock_encoder
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Test truncation parameter
+        params = client._prepare_request_params("instructions", "input", "prev_id")
+        
+        assert "truncation" in params
+        assert params["truncation"] == "auto"
+
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_incomplete_no_retry(self, mock_openai_class, mock_get_encoding, mock_probe, test_config):
+        """Проверка отсутствия retry при IncompleteResponseError"""
+        # Setup
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        # Mock probe to avoid extra API call
+        mock_probe.return_value = None
+        
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+
+        # Initial response
+        initial_response = Mock(id="resp_12345", status="queued")
+        mock_raw_initial = MagicMock()
+        mock_raw_initial.headers = {}
+        mock_raw_initial.parse.return_value = initial_response
+
+        # Incomplete response
+        mock_response = Mock(
+            output=[],
+            status="incomplete",
+            id="resp_12345",
+            incomplete_details=Mock(reason="max_output_tokens"),
+            usage=Mock(output_tokens=1000)
+        )
+        
+        mock_raw_final = MagicMock()
+        mock_raw_final.headers = {}
+        mock_raw_final.parse.return_value = mock_response
+
+        # Configure mocks
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
+
+        client = OpenAIClient(test_config)
+
+        with patch("src.utils.llm_client.time.sleep"):
+            with pytest.raises(IncompleteResponseError) as exc_info:
+                client.create_response("Prompt", "Input")
+            
+            # Verify no retry was attempted (create called only once after probe)
+            assert mock_client_instance.responses.with_raw_response.create.call_count == 1
+            assert "max_output_tokens" in str(exc_info.value)

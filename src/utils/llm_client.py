@@ -26,6 +26,7 @@ Usage examples:
 
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
@@ -324,6 +325,8 @@ class OpenAIClient:
                 - temperature (float, optional): Temperature for regular models
                 - reasoning_effort (str, optional): Effort level for reasoning models
                 - reasoning_summary (str, optional): Summary type for reasoning
+                - response_chain_depth (int, optional): Response chain depth management
+                - truncation (str, optional): Truncation strategy ("auto", "disabled")
         """
         self.config = config
         self.client = OpenAI(api_key=config["api_key"], timeout=config.get("timeout", 60.0))
@@ -341,13 +344,49 @@ class OpenAIClient:
             raise ValueError("Parameter 'is_reasoning' is required in config")
 
         self.is_reasoning_model = config["is_reasoning"]
+
+        # Response chain management
+        self.response_chain_depth = config.get("response_chain_depth")
+        self.truncation = config.get("truncation")
+
+        # Initialize response chain only if depth > 0
+        if self.response_chain_depth is not None and self.response_chain_depth > 0:
+            self.response_chain = deque()
+            chain_mode = f"sliding window (depth={self.response_chain_depth})"
+        elif self.response_chain_depth == 0:
+            self.response_chain = None
+            chain_mode = "independent requests"
+        else:
+            self.response_chain = None
+            chain_mode = "unlimited chain"
+
         self.logger.info(
             f"Initialized OpenAI client: model={config['model']}, "
-            f"reasoning={self.is_reasoning_model} (explicit config)"
+            f"reasoning={self.is_reasoning_model}, chain_mode={chain_mode}"
         )
 
         # Initialize tokenizer for precise counting
         self.encoder = tiktoken.get_encoding("o200k_base")
+
+    def _delete_response(self, response_id: str) -> None:
+        """
+        Delete response via OpenAI API.
+
+        Args:
+            response_id: ID of response to delete
+
+        Raises:
+            ValueError: If deletion fails
+        """
+        try:
+            result = self.client.responses.delete(response_id)
+            if hasattr(result, "deleted") and result.deleted:
+                self.logger.debug(f"Successfully deleted response {response_id[:12]}")
+            else:
+                raise ValueError(f"Delete returned unexpected result: {result}")
+        except Exception as e:
+            self.logger.warning(f"Failed to delete response {response_id[:12]}: {e}")
+            raise ValueError(f"Failed to delete response: {e}") from e
 
     def _prepare_request_params(
         self,
@@ -397,6 +436,10 @@ class OpenAIClient:
         # verbosity - параметр верхнего уровня (как temperature, model и т.д.)
         if self.config.get("verbosity") is not None:
             params["verbosity"] = self.config["verbosity"]
+
+        # truncation - управление обрезкой контекста
+        if self.truncation is not None:
+            params["truncation"] = self.truncation
 
         return params
 
@@ -586,6 +629,7 @@ class OpenAIClient:
         instructions: str,
         input_data: str,
         previous_response_id: Optional[str] = None,
+        is_repair: bool = False,
     ) -> Tuple[str, str, ResponseUsage]:
         """
         Create response in asynchronous mode with polling.
@@ -597,6 +641,7 @@ class OpenAIClient:
             instructions: System prompt (instructions for model)
             input_data: User data (text or JSON)
             previous_response_id: ID of previous response for context
+            is_repair: If True, response_id won't be added to chain
 
         Returns:
             tuple: (response_text, response_id, usage_info)
@@ -606,6 +651,10 @@ class OpenAIClient:
             IncompleteResponseError: When status is incomplete
             ValueError: When status is failed or model refuses
         """
+        # Handle response_chain_depth == 0 (independent requests)
+        if self.response_chain_depth == 0:
+            previous_response_id = None
+            self.logger.debug("Using independent request mode (response_chain_depth=0)")
         # Prepare parameters as usual
         params = self._prepare_request_params(instructions, input_data, previous_response_id)
 
@@ -731,8 +780,32 @@ class OpenAIClient:
                         response_text = self._extract_response_content(response)
                         usage_info = self._extract_usage_info(response)
 
-                        # Save response_id for next call
-                        self.last_response_id = response_id
+                        # Save response_id for next call (unless it's repair)
+                        if not is_repair:
+                            self.last_response_id = response_id
+
+                            # Manage response chain if configured
+                            if self.response_chain is not None and self.response_chain_depth > 0:
+                                # Add new response to chain
+                                self.response_chain.append(response_id)
+
+                                # Remove old responses if chain exceeds depth
+                                while len(self.response_chain) > self.response_chain_depth:
+                                    old_response_id = self.response_chain.popleft()
+                                    try:
+                                        self._delete_response(old_response_id)
+                                        self.logger.info(
+                                            f"Deleted old response {old_response_id[:12]} from chain "
+                                            f"(chain size: {len(self.response_chain)})"
+                                        )
+                                    except ValueError as e:
+                                        # Deletion failed - log warning and continue
+                                        self.logger.warning(
+                                            f"Failed to delete old response {old_response_id[:12]}: {e}"
+                                        )
+                                        # Continue anyway - chain is already shortened locally
+                        else:
+                            self.logger.debug("Repair response - not adding to chain")
 
                         self.logger.debug(
                             f"Async response success: id={response_id}, "
@@ -775,11 +848,15 @@ class OpenAIClient:
                                 f"[{current_time}] HINT     | 💡 Reasoning model needs more tokens. "
                                 f"Current limit: {self.config['max_completion']}"
                             )
+                            print(
+                                f"[{current_time}] HINT     | 💡 Consider increasing max_completion or enabling truncation='auto'"
+                            )
 
-                        # Throw special exception for handling in retry logic
+                        # NO RETRY for incomplete responses - raise immediately
                         raise IncompleteResponseError(
                             f"Response generation incomplete ({reason}). "
-                            f"Generated only {partial_tokens} tokens."
+                            f"Generated only {partial_tokens} tokens. "
+                            f"Context size: {estimated_input_tokens} tokens."
                         )
 
                     elif status == "failed":
@@ -834,35 +911,17 @@ class OpenAIClient:
                         self.logger.error(f"Unknown response status: {status}")
                         raise ValueError(f"Unknown response status: {status}")
 
-            except (openai.RateLimitError, IncompleteResponseError) as e:
-                # These errors can be retried
+            except IncompleteResponseError as e:
+                # NO RETRY for incomplete responses - raise immediately
+                self.logger.error(f"Response incomplete, not retrying: {e}")
+                raise e
+
+            except openai.RateLimitError as e:
+                # Rate limit errors can be retried
                 retry_count += 1
                 if retry_count > self.config["max_retries"]:
                     self.logger.error(f"Error after all retries: {type(e).__name__}: {e}")
                     raise e
-
-                # For IncompleteResponseError increase token limit
-                if isinstance(e, IncompleteResponseError):
-                    # Save current limit before changing
-                    old_limit = params.get("max_output_tokens", self.config["max_completion"])
-                    if retry_count == 1:
-                        params["max_output_tokens"] = int(old_limit * 1.5)
-                    elif retry_count == 2:
-                        params["max_output_tokens"] = int(old_limit * 2.0)
-                    else:
-                        # Don't increase anymore
-                        raise ValueError(
-                            f"Response still incomplete after {retry_count} retries. "
-                            f"Max tokens tried: {params['max_output_tokens']}"
-                        ) from None
-
-                    self.logger.info(
-                        f"Retrying with increased token limit: {old_limit} → {params['max_output_tokens']}"
-                    )
-                    current_time = datetime.now().strftime("%H:%M:%S")
-                    print(
-                        f"[{current_time}] RETRY    | 🔄 Increasing token limit: {old_limit} → {params['max_output_tokens']}"
-                    )
 
                 wait_time = 20 * (2 ** (retry_count - 1))
                 self.logger.warning(
@@ -901,6 +960,7 @@ class OpenAIClient:
         instructions: str,
         input_data: str,
         previous_response_id: Optional[str] = None,
+        is_repair: bool = False,
     ) -> Tuple[str, str, ResponseUsage]:
         """
         Create response via OpenAI Responses API.
@@ -911,12 +971,14 @@ class OpenAIClient:
         - Performs retry with exponential backoff on errors
         - Handles reasoning model specifics
         - Updates TPM bucket from response headers
+        - Manages response chain with configurable depth
 
         Args:
             instructions: System prompt (instructions for model)
             input_data: User data (text or JSON)
             previous_response_id: ID of previous response (if not specified,
                 uses saved last_response_id)
+            is_repair: If True, response won't be added to chain (for repair requests)
 
         Returns:
             tuple: (response_text, response_id, usage_info)
@@ -928,6 +990,7 @@ class OpenAIClient:
             openai.RateLimitError: When rate limit exceeded after all retries
             openai.APIError: On API errors after all retries
             ValueError: On incorrect response or model refusal
+            IncompleteResponseError: When response is incomplete (no retry)
 
         Example:
             >>> # Simple request
@@ -949,8 +1012,10 @@ class OpenAIClient:
         if previous_response_id is None:
             previous_response_id = self.last_response_id
 
-        # Call new asynchronous method
-        return self._create_response_async(instructions, input_data, previous_response_id)
+        # Call new asynchronous method with is_repair flag
+        return self._create_response_async(
+            instructions, input_data, previous_response_id, is_repair
+        )
 
     def repair_response(
         self, instructions: str, input_data: str, previous_response_id: Optional[str] = None
@@ -958,9 +1023,11 @@ class OpenAIClient:
         """
         Repair request with specified previous_response_id.
 
-        Pure transport layer method that delegates to create_response.
+        Pure transport layer method that delegates to create_response with is_repair=True.
         The caller is responsible for any special instructions needed
         for repair (e.g., JSON formatting requirements).
+
+        IMPORTANT: Repair responses are NOT added to the response chain.
 
         Args:
             instructions: System prompt (caller should include repair instructions)
@@ -986,5 +1053,5 @@ class OpenAIClient:
         else:
             response_id_to_use = self.last_response_id
 
-        # Simply delegate to create_response
-        return self.create_response(instructions, input_data, response_id_to_use)
+        # Delegate to create_response with is_repair=True
+        return self.create_response(instructions, input_data, response_id_to_use, is_repair=True)

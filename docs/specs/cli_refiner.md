@@ -230,6 +230,10 @@ faiss_M = 32                         # HNSW index parameter
 faiss_efC = 200                      # construction precision
 faiss_metric = "INNER_PRODUCT"       # similarity metric (or L2)
 log_level = "info"                   # logging level (info/debug)
+
+# Optional parameters for response chain management
+# response_chain_depth = 0            # 0 recommended for independent analysis
+# truncation = "auto"                 # auto/disabled, or comment out
 ```
 
 ### Validation Rules

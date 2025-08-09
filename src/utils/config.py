@@ -242,6 +242,22 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
 
     if section["max_retries"] < 0:
         raise ConfigValidationError("itext2kg.max_retries must be non-negative")
+    
+    # Validate optional response_chain_depth
+    if "response_chain_depth" in section:
+        depth = section["response_chain_depth"]
+        if not isinstance(depth, int) or depth < 0:
+            raise ConfigValidationError(
+                "itext2kg.response_chain_depth must be a non-negative integer"
+            )
+    
+    # Validate optional truncation
+    if "truncation" in section:
+        truncation = section["truncation"]
+        if truncation not in ["auto", "disabled"]:
+            raise ConfigValidationError(
+                "itext2kg.truncation must be 'auto' or 'disabled'"
+            )
 
 
 def _validate_dedup_section(section: Dict[str, Any]) -> None:
@@ -350,6 +366,22 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError(
             "refiner weights must satisfy: weight_low < weight_mid < weight_high"
         )
+    
+    # Validate optional response_chain_depth
+    if "response_chain_depth" in section:
+        depth = section["response_chain_depth"]
+        if not isinstance(depth, int) or depth < 0:
+            raise ConfigValidationError(
+                "refiner.response_chain_depth must be a non-negative integer"
+            )
+    
+    # Validate optional truncation
+    if "truncation" in section:
+        truncation = section["truncation"]
+        if truncation not in ["auto", "disabled"]:
+            raise ConfigValidationError(
+                "refiner.truncation must be 'auto' or 'disabled'"
+            )
 
 
 def _validate_required_fields(

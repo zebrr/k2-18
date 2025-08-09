@@ -9,6 +9,10 @@ allowed_extensions      = ["json", "txt", "md", "html"]
 [itext2kg]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
+# НОВОЕ: Управление контекстом
+# truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
+# response_chain_depth = 2      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
+
 # Основная модель
 model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
@@ -22,7 +26,7 @@ model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 
 # model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
 max_context_tokens_test = 400000
 tpm_limit_test          = 450000
-max_completion_test     = 128000
+max_completion_test     = 100000
 
 # Общие параметры настройки для ОБЕИХ моделей
 # temperature         = 0.6
@@ -52,6 +56,10 @@ k_neighbors         = 5
 [refiner]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
+# НОВОЕ: Управление контекстом
+# truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
+# response_chain_depth = 0      # Для refiner рекомендуется 0 (независимые запросы)
+
 # Основная модель
 model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
@@ -65,7 +73,7 @@ model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 
 # model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
 max_context_tokens_test = 400000
 tpm_limit_test          = 450000
-max_completion_test     = 128000
+max_completion_test     = 100000
 
 # Общие параметры настройки для ОБЕИХ моделей
 # temperature         = 0.6

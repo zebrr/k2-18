@@ -58,24 +58,30 @@ Initialize client with configuration.
   - reasoning_effort (str, optional) - reasoning effort level (sent only if not None)
   - reasoning_summary (str, optional) - summary type for reasoning (sent only if not None)
   - verbosity (str, optional) - verbosity level for GPT-5 models (sent only if not None)
+  - response_chain_depth (int, optional) - response chain depth (None=unlimited, 0=independent, >0=sliding window)
+  - truncation (str, optional) - truncation strategy ("auto", "disabled", or None to omit)
   - poll_interval (int) - polling interval in seconds (default 5)
 - **Attributes**:
   - last_response_id (str) - ID of last successful response for chains
   - last_usage (ResponseUsage) - usage info from last response for context accumulation
   - encoder - tokenizer (tiktoken with o200k_base) for precise token counting
   - is_reasoning_model (bool) - explicitly set from config
+  - response_chain_depth (int|None) - chain management mode
+  - response_chain (deque|None) - sliding window of response IDs (only if depth > 0)
+  - truncation (str|None) - truncation strategy for API
 - **Raises**: ValueError - if required parameter 'is_reasoning' is missing
 
-#### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None) -> Tuple[str, str, ResponseUsage]
+#### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None, is_repair: bool = False) -> Tuple[str, str, ResponseUsage]
 Create response via OpenAI Responses API (public interface).
 - **Input**: 
   - instructions - system prompt
   - input_data - user data
   - previous_response_id - ID of previous response (optional)
+  - is_repair - if True, response won't be added to chain (for repair requests)
 - **Returns**: (response_text, response_id, usage_info)
 - **Raises**: 
   - TimeoutError - when timeout exceeded
-  - IncompleteResponseError - for incomplete status
+  - IncompleteResponseError - for incomplete status (NO RETRY)
   - ValueError - for failed status or model refusal
   - openai.RateLimitError - when rate limit exceeded
 
@@ -86,9 +92,16 @@ Repair request with specified previous_response_id (transport layer).
   - input_data - user data
   - previous_response_id - ID of previous response (optional, uses last_response_id if None)
 - **Returns**: (response_text, response_id, usage_info)
-- **Logic**: Pure transport layer - simply delegates to create_response with provided previous_response_id
+- **Logic**: Delegates to create_response with is_repair=True (response NOT added to chain)
 
 ## Internal Methods
+
+### OpenAIClient._delete_response(response_id: str) -> None
+Delete response via OpenAI API.
+- **Input**: response_id - ID of response to delete
+- **Logic**: Calls client.responses.delete(response_id)
+- **Raises**: ValueError if deletion fails
+- **Note**: Used for managing response chain when sliding window exceeds depth
 
 ### OpenAIClient._update_tpm_via_probe() -> None
 Get current rate limit data via probe request.
@@ -122,6 +135,7 @@ Prepare parameters for Responses API.
     - temperature: included if not None (for any model type)
     - reasoning: included if reasoning_effort or reasoning_summary not None
     - verbosity: included if not None (top-level parameter)
+    - truncation: included if not None (for context management)
   - Parameters with None values are NOT sent to API
 
 ### OpenAIClient._extract_response_content(response) -> str
@@ -184,17 +198,22 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 
 ## Test Coverage
 
-- **test_llm_client**: 17 tests
+- **test_llm_client**: 24 tests
   - Initialization tests - verify config validation and required parameters
   - TPM bucket tests - token limit control and waiting logic
   - Parameter preparation tests - request params formatting for API
   - Response extraction tests - parsing different response structures
   - Async response creation tests - background mode and polling
   - Retry logic tests - exponential backoff and error handling
-  - Incomplete handling - automatic token limit increase
+  - Incomplete handling - NO RETRY, immediate error
   - Timeout handling - request cancellation on timeout
+  - Response chain management - three modes (unlimited, independent, sliding window)
+  - Response deletion - via OpenAI API
+  - Truncation parameter - context management
+  - Repair flag - responses not added to chain
   
 - **test_llm_client_integration**: 10 active tests (3 skipped)
+- **test_llm_client_integration_chain**: 5 tests (require API key)
   - Simple response - basic API call verification
   - JSON response - structured output parsing
   - Response chain - context preservation with previous_response_id
@@ -202,19 +221,36 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
   - Error handling - authentication and API errors
   - Reasoning model - o* models with reasoning tokens
   - Background mode verification - console output capture
-  - Incomplete response handling - automatic retry with token increase
+  - Response chain window - sliding window management
+  - Independent requests - no context preservation
+  - Repair not in chain - repair responses excluded
+  - Truncation parameter - automatic context truncation
+  - Incomplete response handling - NO RETRY behavior
   - Timeout cancellation - timeout error on long requests
   - Console progress output - progress messages formatting
   - **Skipped**: headers_update, incomplete_with_reasoning_model, context_accumulation_integration
 
 ## Configuration Notes
 
+### Response Chain Management
+The `response_chain_depth` parameter controls how previous responses are managed:
+- **None** (default) - Unlimited chain, all responses kept (current behavior)
+- **0** - Independent requests, previous_response_id always None
+- **>0** - Sliding window of N responses, older ones deleted via API
+
+When using sliding window mode:
+1. Response IDs added to deque after successful completion
+2. When chain exceeds depth, oldest response deleted via API
+3. Deletion failures logged as WARNING but don't stop execution
+4. Repair responses (is_repair=True) NOT added to chain
+
 ### Test Model Parameters
 The client does NOT handle `tpm_limit_test` or `max_completion_test` parameters directly. These are utility-level configuration options used by itext2kg and refiner utilities when deciding between main and test models. The OpenAIClient receives already selected model parameters.
 
 ### Required vs Optional Parameters
 - **is_reasoning** (bool) - REQUIRED parameter that must be explicitly provided
-- **temperature**, **reasoning_effort**, **reasoning_summary**, **verbosity** - optional parameters sent to API only when not None
+- **temperature**, **reasoning_effort**, **reasoning_summary**, **verbosity**, **truncation** - optional parameters sent to API only when not None
+- **response_chain_depth** - optional, controls chain management mode
 
 ## Dependencies
 - **Standard Library**: time, logging, json, typing, dataclasses, datetime

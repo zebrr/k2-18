@@ -157,7 +157,7 @@ class TestOpenAIClientIntegration:
         """Тест ограничения TPM с проактивным ожиданием"""
         # Устанавливаем маленький лимит для теста
         integration_config["tpm_limit"] = 2000  # Увеличиваем до разумного значения
-        integration_config["max_completion"] = 200
+        integration_config["max_completion"] = 500  # Увеличили, чтобы избежать incomplete
         integration_config["tpm_safety_margin"] = 0.15
 
         client = OpenAIClient(integration_config)
@@ -284,40 +284,28 @@ class TestOpenAIClientIntegration:
 
     @pytest.mark.timeout(90)
     def test_incomplete_response_handling(self, integration_config):
-        """Тест обработки incomplete ответа с автоматическим увеличением токенов"""
+        """Тест обработки incomplete ответа - теперь без retry (сразу exception)"""
         # Пропускаем для reasoning моделей - они требуют слишком много токенов
         if integration_config["model"].startswith("o"):
             pytest.skip("Skipping for reasoning models - requires too many tokens")
 
         # Устанавливаем маленький лимит токенов
         integration_config["max_completion"] = 35  # Intentionally small to trigger incomplete
-        integration_config["max_retries"] = 2  # Разрешаем retry
 
         client = OpenAIClient(integration_config)
 
-        try:
-            # Простой запрос, который может поместиться после retry
-            response_text, response_id, usage = client.create_response(
+        # Теперь IncompleteResponseError должна быть выброшена сразу без retry
+        from src.utils.llm_client import IncompleteResponseError
+        
+        with pytest.raises(IncompleteResponseError) as exc_info:
+            client.create_response(
                 instructions="Be concise",
                 input_data="Write exactly 3 sentences about cats",
             )
 
-            # Если получили ответ, значит автоматическое увеличение сработало
-            assert response_text is not None
-            assert len(response_text) > 20  # Должно быть больше начального лимита
-
-            print("\nIncomplete handled successfully")
-            print(f"Final response length: {len(response_text)} chars")
-            print(f"Output tokens: {usage.output_tokens}")
-
-        except ValueError as e:
-            # Если все retry исчерпаны - это тоже успешный тест
-            if "still incomplete after" in str(e):
-                print(f"\nIncomplete response handling tested: {e}")
-                # Проверяем что в сообщении упоминается увеличенный лимит
-                assert "40" in str(e)  # 20 * 2 = 40 на втором retry
-            else:
-                raise
+        # Проверяем что исключение содержит нужную информацию
+        assert "incomplete" in str(exc_info.value).lower()
+        print(f"\nIncomplete response handling tested: {exc_info.value}")
 
     def test_timeout_cancellation(self, integration_config):
         """Тест отмены запроса при timeout"""

@@ -159,6 +159,8 @@ Section `[itext2kg]` in config.toml:
 - **timeout** (int, >0, default=360) - request timeout in seconds
 - **max_retries** (int, >0, default=3) - number of retries on API errors
 - **poll_interval** (int, >0, default=5) - polling interval for async requests
+- **response_chain_depth** (int, optional) - depth of response chain (None=unlimited, 0=independent, >0=sliding window)
+- **truncation** (str, optional) - truncation strategy ("auto", "disabled", or comment out to omit)
 
 ## Error Handling & Exit Codes
 

@@ -359,7 +359,15 @@ def main():
         # Load graph
         logger.info("Loading knowledge graph...")
         with open(input_path, "r", encoding="utf-8") as f:
-            graph = json.load(f)
+            graph_data = json.load(f)
+
+        # Extract graph structure (handle both old and new format)
+        if "nodes" in graph_data and "edges" in graph_data:
+            # Could be old format or new format with _meta
+            graph = {"nodes": graph_data["nodes"], "edges": graph_data["edges"]}
+        else:
+            logger.error("Invalid graph structure: missing nodes or edges")
+            return EXIT_INPUT_ERROR
 
         # Validate input graph
         try:

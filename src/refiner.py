@@ -275,7 +275,14 @@ def load_and_validate_graph(input_path: Path) -> Dict:
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     with open(input_path, encoding="utf-8") as f:
-        graph = json.load(f)
+        graph_data = json.load(f)
+
+    # Extract graph structure (handle both old and new format)
+    if "nodes" in graph_data and "edges" in graph_data:
+        # Could be old format or new format with _meta
+        graph = {"nodes": graph_data["nodes"], "edges": graph_data["edges"]}
+    else:
+        raise ValueError("Invalid graph structure: missing nodes or edges")
 
     # Schema validation
     validate_json(graph, "LearningChunkGraph")

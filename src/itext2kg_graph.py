@@ -90,6 +90,7 @@ class SliceProcessor:
             config: Configuration from config.toml
         """
         self.config = config["itext2kg"]
+        self.full_config = config  # Save full config for accessing slicer settings
         self.llm_client = OpenAIClient(self.config)
         self.logger = self._setup_logger()
         self.stats = ProcessingStats()
@@ -104,6 +105,13 @@ class SliceProcessor:
 
         # Context tracking for incremental processing
         self.previous_response_id: Optional[str] = None
+
+        # API usage tracking
+        self.api_usage = {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
 
         # Load prompt and schema
         self.extraction_prompt = self._load_extraction_prompt()
@@ -903,6 +911,11 @@ class SliceProcessor:
             )
             self.stats.total_tokens_used += usage.total_tokens
 
+            # Track API usage
+            self.api_usage["total_requests"] += 1
+            self.api_usage["total_input_tokens"] += usage.input_tokens
+            self.api_usage["total_output_tokens"] += usage.output_tokens
+
             # Log LLM response
             self.logger.debug(
                 json.dumps(
@@ -950,6 +963,11 @@ class SliceProcessor:
                     previous_response_id=self.previous_response_id,  # Rollback!
                 )
                 self.stats.total_tokens_used += repair_usage.total_tokens
+
+                # Track API usage for repair
+                self.api_usage["total_requests"] += 1
+                self.api_usage["total_input_tokens"] += repair_usage.input_tokens
+                self.api_usage["total_output_tokens"] += repair_usage.output_tokens
                 success, parsed = self._process_llm_response(repair_text, slice_id)
 
                 if success:
@@ -1025,6 +1043,22 @@ class SliceProcessor:
 
         self.stats.total_slices = len(slice_files)
 
+        # Calculate total source tokens and get slug from first slice
+        self.total_source_tokens = 0
+        self.source_slug = "unknown"
+
+        # Load first slice to get slug and calculate total tokens
+        if slice_files:
+            try:
+                first_slice_data = json.loads(slice_files[0].read_text(encoding="utf-8"))
+                self.source_slug = first_slice_data.get("slug", "unknown")
+
+                # Calculate total tokens from last slice's end position
+                last_slice_data = json.loads(slice_files[-1].read_text(encoding="utf-8"))
+                self.total_source_tokens = last_slice_data.get("slice_token_end", 0)
+            except Exception:
+                pass  # Use defaults if can't read
+
         # Display start message
         model = self.config["model"]
         tpm_limit = self.config["tpm_limit"]
@@ -1069,7 +1103,71 @@ class SliceProcessor:
         # Save results
         output_path = OUTPUT_DIR / "LearningChunkGraph_raw.json"
         try:
-            graph_data = {"nodes": self.graph_nodes, "edges": self.graph_edges}
+            # Calculate graph statistics
+            graph_stats = {
+                "total_nodes": len(self.graph_nodes),
+                "chunks": len([n for n in self.graph_nodes if n.get("type") == "Chunk"]),
+                "concepts": len([n for n in self.graph_nodes if n.get("type") == "Concept"]),
+                "assessments": len([n for n in self.graph_nodes if n.get("type") == "Assessment"]),
+                "total_edges": len(self.graph_edges),
+                "edge_types": {},
+            }
+
+            # Count edge types
+            for edge in self.graph_edges:
+                edge_type = edge.get("type", "UNKNOWN")
+                graph_stats["edge_types"][edge_type] = (
+                    graph_stats["edge_types"].get(edge_type, 0) + 1
+                )
+
+            # Get config values safely
+            config = self.config.copy()
+            slicer_config = self.full_config.get("slicer", {})
+
+            # Get concepts count from ConceptDictionary
+            concepts_count = len(self.concept_dict.get("concepts", []))
+
+            # Collect metadata
+            end_time = datetime.now()
+            duration_minutes = (end_time - self.stats.start_time).total_seconds() / 60
+
+            metadata = {
+                "_meta": {
+                    "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "generator": "itext2kg_graph",
+                    "config": {
+                        "model": config.get("model"),
+                        "temperature": config.get("temperature"),
+                        "max_output_tokens": config.get("max_completion"),
+                        "reasoning_effort": config.get("reasoning_effort"),
+                        "overlap": slicer_config.get("overlap", 0),
+                        "slice_size": slicer_config.get("max_tokens", 5000),
+                    },
+                    "source": {
+                        "total_slices": self.stats.total_slices,
+                        "processed_slices": self.stats.processed_slices,
+                        "total_tokens": self.total_source_tokens,
+                        "slug": self.source_slug,
+                        "concepts_used": concepts_count,
+                    },
+                    "api_usage": {
+                        "total_requests": self.api_usage["total_requests"],
+                        "total_input_tokens": self.api_usage["total_input_tokens"],
+                        "total_output_tokens": self.api_usage["total_output_tokens"],
+                        "total_tokens": self.api_usage["total_input_tokens"]
+                        + self.api_usage["total_output_tokens"],
+                    },
+                    "graph_stats": graph_stats,
+                    "processing_time": {
+                        "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "duration_minutes": round(duration_minutes, 2),
+                    },
+                }
+            }
+
+            # Merge metadata with graph data
+            output_data = {**metadata, "nodes": self.graph_nodes, "edges": self.graph_edges}
 
             # Validate basic structure before saving
             if not self.graph_nodes:
@@ -1078,7 +1176,7 @@ class SliceProcessor:
                 self.logger.warning("No edges in final graph")
 
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(graph_data, f, ensure_ascii=False, indent=2)
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
 
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"[{timestamp}] SUCCESS  | ✅ Results saved to /data/out/")

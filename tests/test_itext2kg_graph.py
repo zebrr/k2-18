@@ -702,6 +702,14 @@ class TestSliceProcessor:
         with open(output_file, encoding="utf-8") as f:
             graph = json.load(f)
 
+        # Check metadata exists
+        assert "_meta" in graph
+        assert graph["_meta"]["generator"] == "itext2kg_graph"
+        assert "api_usage" in graph["_meta"]
+        assert "graph_stats" in graph["_meta"]
+        assert "processing_time" in graph["_meta"]
+        
+        # Check data structure
         assert "nodes" in graph
         assert "edges" in graph
         assert len(graph["nodes"]) > 0

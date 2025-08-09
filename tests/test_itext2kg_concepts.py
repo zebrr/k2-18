@@ -447,6 +447,9 @@ class TestSliceProcessor:
             }
         )
         processor.stats.processed_slices = 5
+        processor.stats.total_slices = 10
+        processor.total_source_tokens = 50000
+        processor.source_slug = "test"
 
         with patch("src.itext2kg_concepts.OUTPUT_DIR", output_dir):
             result = processor._finalize_and_save()
@@ -456,8 +459,82 @@ class TestSliceProcessor:
 
         # Check saved content
         saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
+        
+        # Check metadata exists
+        assert "_meta" in saved_data
+        assert saved_data["_meta"]["generator"] == "itext2kg_concepts"
+        assert "api_usage" in saved_data["_meta"]
+        assert "concepts_stats" in saved_data["_meta"]
+        assert "processing_time" in saved_data["_meta"]
+        
+        # Check data is still there
         assert len(saved_data["concepts"]) == 1
         assert saved_data["concepts"][0]["concept_id"] == "test:p:stack"
+
+    def test_metadata_generation(self, processor, tmp_path):
+        """Test that metadata is correctly generated."""
+        output_dir = tmp_path / "out"
+        output_dir.mkdir()
+
+        # Setup processor state
+        processor.concept_dictionary["concepts"] = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO", "стек"]},
+                "definition": "LIFO data structure",
+            },
+            {
+                "concept_id": "test:p:queue",
+                "term": {"primary": "Queue", "aliases": []},
+                "definition": "FIFO data structure",
+            }
+        ]
+        processor.stats.processed_slices = 5
+        processor.stats.total_slices = 10
+        processor.total_source_tokens = 50000
+        processor.source_slug = "test"
+        processor.api_usage = {
+            "total_requests": 5,
+            "total_input_tokens": 10000,
+            "total_output_tokens": 5000,
+        }
+
+        with patch("src.itext2kg_concepts.OUTPUT_DIR", output_dir):
+            result = processor._finalize_and_save()
+
+        assert result == EXIT_SUCCESS
+        
+        # Check saved metadata
+        saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
+        meta = saved_data["_meta"]
+        
+        # Check config
+        assert meta["config"]["model"] == "test-model"
+        assert isinstance(meta["config"]["slice_size"], int)
+        assert isinstance(meta["config"]["overlap"], int)
+        
+        # Check source stats
+        assert meta["source"]["total_slices"] == 10
+        assert meta["source"]["processed_slices"] == 5
+        assert meta["source"]["total_tokens"] == 50000
+        assert meta["source"]["slug"] == "test"
+        
+        # Check API usage
+        assert meta["api_usage"]["total_requests"] == 5
+        assert meta["api_usage"]["total_input_tokens"] == 10000
+        assert meta["api_usage"]["total_output_tokens"] == 5000
+        assert meta["api_usage"]["total_tokens"] == 15000
+        
+        # Check concepts stats
+        assert meta["concepts_stats"]["total_concepts"] == 2
+        assert meta["concepts_stats"]["concepts_with_aliases"] == 1
+        assert meta["concepts_stats"]["total_aliases"] == 2
+        assert meta["concepts_stats"]["avg_aliases_per_concept"] == 1.0
+        
+        # Check processing time
+        assert "start" in meta["processing_time"]
+        assert "end" in meta["processing_time"]
+        assert isinstance(meta["processing_time"]["duration_minutes"], float)
 
     def test_previous_response_id_preserved(self, processor, tmp_path):
         """Test that previous_response_id is used across slices."""

@@ -91,6 +91,7 @@ class SliceProcessor:
             config: Configuration from config.toml
         """
         self.config = config["itext2kg"]
+        self.full_config = config  # Save full config for accessing slicer settings
         self.llm_client = OpenAIClient(self.config)
         self.logger = self._setup_logger()
         self.stats = ProcessingStats()
@@ -101,6 +102,13 @@ class SliceProcessor:
 
         # Context tracking for incremental processing
         self.previous_response_id: Optional[str] = None
+
+        # API usage tracking
+        self.api_usage = {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
 
         # Load prompt and schemas
         self.extraction_prompt = self._load_extraction_prompt()
@@ -494,6 +502,11 @@ class SliceProcessor:
                     previous_response_id=self.previous_response_id,
                 )
 
+                # Track API usage
+                self.api_usage["total_requests"] += 1
+                self.api_usage["total_input_tokens"] += usage.input_tokens
+                self.api_usage["total_output_tokens"] += usage.output_tokens
+
                 # DEBUG log response
                 if self.config["log_level"].lower() == "debug":
                     self.logger.debug(
@@ -555,6 +568,11 @@ class SliceProcessor:
                         input_data=input_data,
                         previous_response_id=self.previous_response_id,  # Rollback!
                     )
+
+                    # Track API usage for repair
+                    self.api_usage["total_requests"] += 1
+                    self.api_usage["total_input_tokens"] += repair_usage.input_tokens
+                    self.api_usage["total_output_tokens"] += repair_usage.output_tokens
 
                     success, parsed_data = self._process_llm_response(repair_text, slice_data.id)
 
@@ -714,6 +732,22 @@ class SliceProcessor:
 
             self.stats.total_slices = len(slice_files)
 
+            # Calculate total source tokens and get slug from first slice
+            self.total_source_tokens = 0
+            self.source_slug = "unknown"
+
+            # Load first slice to get slug and calculate total tokens
+            if slice_files:
+                try:
+                    first_slice_data = json.loads(slice_files[0].read_text(encoding="utf-8"))
+                    self.source_slug = first_slice_data.get("slug", "unknown")
+
+                    # Calculate total tokens from last slice's end position
+                    last_slice_data = json.loads(slice_files[-1].read_text(encoding="utf-8"))
+                    self.total_source_tokens = last_slice_data.get("slice_token_end", 0)
+                except Exception:
+                    pass  # Use defaults if can't read
+
             # Output initial status
             self._print_start_status()
 
@@ -836,11 +870,74 @@ class SliceProcessor:
             # Invariant validation
             validate_concept_dictionary_invariants(self.concept_dictionary)
 
+            # Calculate concepts statistics
+            concepts_with_aliases = 0
+            total_aliases = 0
+            for concept in self.concept_dictionary.get("concepts", []):
+                aliases = concept.get("term", {}).get("aliases", [])
+                if aliases:
+                    concepts_with_aliases += 1
+                    total_aliases += len(aliases)
+
+            total_concepts = len(self.concept_dictionary.get("concepts", []))
+            avg_aliases = round(total_aliases / total_concepts, 2) if total_concepts > 0 else 0
+
+            # Collect metadata
+            end_time = datetime.now()
+            duration_minutes = (end_time - self.stats.start_time).total_seconds() / 60
+
+            # Get config values safely
+            config = self.config.copy()
+            slicer_config = self.full_config.get("slicer", {})
+            metadata = {
+                "_meta": {
+                    "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "generator": "itext2kg_concepts",
+                    "config": {
+                        "model": config.get("model"),
+                        "temperature": config.get("temperature"),
+                        "max_output_tokens": config.get("max_completion"),
+                        "reasoning_effort": config.get("reasoning_effort"),
+                        "overlap": slicer_config.get("overlap", 0),
+                        "slice_size": slicer_config.get("max_tokens", 5000),
+                    },
+                    "source": {
+                        "total_slices": self.stats.total_slices,
+                        "processed_slices": self.stats.processed_slices,
+                        "total_tokens": self.total_source_tokens,
+                        "slug": self.source_slug if hasattr(self, "source_slug") else "unknown",
+                    },
+                    "api_usage": {
+                        "total_requests": self.api_usage["total_requests"],
+                        "total_input_tokens": self.api_usage["total_input_tokens"],
+                        "total_output_tokens": self.api_usage["total_output_tokens"],
+                        "total_tokens": (
+                            self.api_usage["total_input_tokens"]
+                            + self.api_usage["total_output_tokens"]
+                        ),
+                    },
+                    "concepts_stats": {
+                        "total_concepts": total_concepts,
+                        "concepts_with_aliases": concepts_with_aliases,
+                        "total_aliases": total_aliases,
+                        "avg_aliases_per_concept": avg_aliases,
+                    },
+                    "processing_time": {
+                        "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "duration_minutes": round(duration_minutes, 2),
+                    },
+                }
+            }
+
+            # Merge with concept dictionary
+            output_data = {**metadata, **self.concept_dictionary}
+
             # Save file
             concept_path = OUTPUT_DIR / "ConceptDictionary.json"
 
             concept_path.write_text(
-                json.dumps(self.concept_dictionary, ensure_ascii=False, indent=2),
+                json.dumps(output_data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
 

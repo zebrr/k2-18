@@ -4,14 +4,14 @@ overlap                 = 0
 soft_boundary           = true
 soft_boundary_max_shift = 500
 tokenizer               = "o200k_base"
-allowed_extensions      = ["json", "txt", "md", "html"]
+allowed_extensions      = ["txt", "md", "html"]
 
 [itext2kg]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
-# НОВОЕ: Управление контекстом
-# truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
-# response_chain_depth = 2      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
+# Управление контекстом
+truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
+response_chain_depth = 1      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
 
 # Основная модель
 model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
@@ -30,7 +30,7 @@ max_completion_test     = 100000
 
 # Общие параметры настройки для ОБЕИХ моделей
 # temperature         = 0.6
-reasoning_effort    = "high"
+reasoning_effort    = "medium"
 reasoning_summary   = "auto"
 # verbosity         = "medium"      # Закомментирован = null
 
@@ -56,9 +56,9 @@ k_neighbors         = 5
 [refiner]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
-# НОВОЕ: Управление контекстом
+# Управление контекстом
 # truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
-# response_chain_depth = 0      # Для refiner рекомендуется 0 (независимые запросы)
+response_chain_depth = 0      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
 
 # Основная модель
 model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
@@ -81,7 +81,7 @@ reasoning_effort    = "high"
 reasoning_summary   = "auto"
 # verbosity         = "medium"      # Закомментирован = null
 
-# Параметры для embeddings и поиска пар (НЕ УДАЛЯТЬ!)
+# Параметры для embeddings и поиска пар
 run                 = true
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
@@ -91,7 +91,7 @@ max_pairs_per_node  = 20
 faiss_M             = 32
 faiss_metric        = "INNER_PRODUCT"
 
-# Остальные параметры утилиты (НЕ УДАЛЯТЬ!)
+# Остальные параметры утилиты
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
 tpm_safety_margin   = 0.15
 log_level           = "info"

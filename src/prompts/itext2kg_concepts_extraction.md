@@ -14,27 +14,27 @@ You are an LLM agent tasked with extracting educational concepts from textbook s
 
 **Input: Context Provided**
 
-- **ConceptDictionary excerpt (JSON):** Contains all previously identified concepts. Do not modify; use only for reference. Format:
+- **ConceptDictionary excerpt** - a JSON object containing all previously identified concepts. Do not modify; use only for reference. Format:
 ```jsonc
 {
   "concepts": [
     {
       "concept_id": "algo101:p:stack",
-      "term": { "primary": "Стек", "aliases": ["stack"] },
-      "definition": "LIFO‑структура данных …"
+      "term": { "primary": "Стек", "aliases": ["stack", "LIFO"] },
+      "definition": "LIFO‑структура данных ..."
     }
-    /* …all known concepts so far (can be empty)… */
+    // ...all known concepts so far (can be empty)...
   ]
 }
 ```
 
-- **Slice object (JSON):** Slice includes fields like `slug` and `text` (only these two relevant for concept reasoning). Format:
+- **Slice** - a JSON object with information about a single textbook slice. Includes fields like `slug` and `text` (only these two relevant for reasoning). Format:
 ```jsonc
 {
   "id": "slice_042",
   "order": 42,
   "source_file": "chapter03.md",
-  "slug": "algo101",            // Relevant field `slug`
+  "slug": "algo101",                      // Relevant field `slug`
   "text": "<plain text of the slice>",    // Relevant field `text`
   "slice_token_start": <int>,
   "slice_token_end": <int>
@@ -118,6 +118,7 @@ If ID already exists → algo101:p:binary-search-1
 6. Quality over quantity - it's better to extract fewer, well-defined concepts than many poorly defined ones.
 
 ## Planning and Verification
+
 - Ensure required fields: `concept_id`, `term.primary`, `term.aliases` (unique, case-insensitive), and `definition` are set for every entry.
 - After generating output, validate output for required fields, order, and JSON `ConceptDictionary.schema`; self-correct and regenerate if any validation fails.
 - Maintain exact code snippets and hyperlinks from input in definitions.
@@ -125,6 +126,7 @@ If ID already exists → algo101:p:binary-search-1
 - Responses must be as concise as possible; output only the specified minimal necessary fields and structure.
 
 ## Stop Conditions
+
 - Halt processing and return output as soon as all new/updated concepts from the `slice.text` have been exhaustively and accurately extracted and output in the correct format.
 - Regenerate output if any formatting or schema rules are violated.
 - Verify that no concept in `concepts_added` has a `concept_id` that already exists in the input ConceptDictionary. If found, you must regenerate the ID with a numeric suffix.
@@ -207,6 +209,8 @@ If ID already exists → algo101:p:binary-search-1
 }
 ```
 
-## Reference: ConceptDictionary.schema
+## Reference: ConceptDictionary.schema.json
 
 {concept_dictionary_schema}
+
+All output must conform exactly to these specifications.

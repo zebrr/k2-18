@@ -2,7 +2,7 @@
 
 ## Status: READY
 
-CLI utility for incremental concept extraction from educational texts. Processes slices sequentially, sends them to LLM while preserving context through previous_response_id. Extracts only concepts to build ConceptDictionary without any graph construction.
+CLI utility for incremental concept extraction from educational texts. Processes slices sequentially, sends them to LLM while preserving context through previous_response_id. Extracts only concepts to build ConceptDictionary without any graph construction. Uses two-phase confirmation pattern for robust error recovery.
 
 ## CLI Interface
 
@@ -23,17 +23,37 @@ python -m src.itext2kg_concepts
 
 ## Key Features
 
+### Two-Phase Confirmation Pattern
+Module uses two-phase confirmation from llm_client for robust error recovery:
+
+1. **Response Phase**: 
+   - `create_response()` returns response but doesn't finalize chain
+   - Response stored as unconfirmed in llm_client
+   - Previous unconfirmed responses auto-cleared
+   
+2. **Validation Phase**:
+   - Response parsed and validated against schema
+   - On success: `confirm_response()` called to finalize
+   - On failure: proceed to repair without confirmation
+   
+3. **Repair Phase**:
+   - `repair_response()` automatically uses last confirmed response as context
+   - Ensures clean rollback without broken JSON in chain
+   - Repair responses don't need explicit confirmation (handled internally by llm_client)
+
+This pattern prevents invalid responses from corrupting the context chain and ensures reliable incremental processing.
+
 ### Context Management
 - Automatic previous_response_id management for incremental processing
 - Context preservation between slices up to 128K tokens
-- Same previous_response_id used for retry and repair (rollback mechanism)
+- Two-phase confirmation ensures only valid responses enter the chain
 - **CRITICAL**: Context helps LLM remember which concepts were already extracted
 - **Implementation**: 
   - `self.previous_response_id` initialized as None in `__init__()`
   - Each `create_response()` call passes `previous_response_id=self.previous_response_id`
-  - After successful slice processing, updated with new response_id
-  - On successful repair, updated with repair_id instead of original response_id
-  - On repair, uses rollback to last successful response_id
+  - After successful processing AND confirmation, updated with new response_id
+  - On successful repair, updated with repair_id (repair responses are auto-confirmed)
+  - On repair, uses rollback to last confirmed response_id
 
 ### Incremental ConceptDictionary Update
 - New concepts added with automatic case-insensitive duplicate cleanup in aliases
@@ -49,10 +69,12 @@ python -m src.itext2kg_concepts
   - First occurrence of each unique alias preserved with original case
 
 ### Error Recovery
-- **Repair-reprompt**: on invalid JSON makes repeat request with clarification
-  - Repair uses rollback to last successful response_id (not the failed one)
-  - Prevents "anchoring" on broken JSON structure
+- **Repair-reprompt with two-phase confirmation**: 
+  - On invalid JSON, makes repair request with clarification
+  - Repair uses `repair_response()` which automatically rolls back to last confirmed response
+  - Prevents "anchoring" on broken JSON structure in context
   - Repair prompt adds explicit error indication and valid JSON requirement
+  - Successful repairs are auto-confirmed by llm_client
 - **Graceful degradation**: process continues on partial failures
 - **Temporary dumps**: state saving on critical errors
 - **Interrupt handling**: correct Ctrl+C handling with result saving
@@ -76,7 +98,8 @@ python -m src.itext2kg_concepts
    - Format input data (ConceptDictionary + Slice)
    - Call LLM via Responses API
    - Validate and parse response
-   - Repair-reprompt on errors (1 attempt with rollback)
+   - Confirm successful responses via two-phase pattern
+   - Repair-reprompt on errors (1 attempt with automatic rollback)
    - Incremental concept dictionary update
 3. **Error handling** with graceful degradation:
    - Continue on partial failures
@@ -156,6 +179,7 @@ Section `[itext2kg]` in config.toml:
 - **model** (str) - LLM model (o4-mini-2025-04-16)
 - **tpm_limit** (int, >0) - tokens per minute limit
 - **log_level** (str) - logging level (debug/info/warning/error)
+- **is_reasoning** (bool) - whether model is a reasoning model (REQUIRED for llm_client)
 
 ### Optional Parameters
 - **tpm_safety_margin** (float, 0-1, default=0.15) - TPM safety margin
@@ -174,6 +198,7 @@ Section `[itext2kg]` in config.toml:
 ### Validation
 - Configuration parameters are validated at startup
 - `max_context_tokens` and `max_context_tokens_test` must be integers >= 1000
+- `is_reasoning` must be explicitly provided for llm_client
 - Invalid configuration causes EXIT_CONFIG_ERROR
 
 ## Error Handling & Exit Codes
@@ -187,9 +212,11 @@ Section `[itext2kg]` in config.toml:
 - **5 (IO_ERROR)** - file write errors
 
 ### Recoverable Errors
-- **JSON validation errors** → repair-reprompt (1 attempt) → bad response saved
+- **JSON validation errors** → repair-reprompt with automatic rollback
   - Uses two-phase confirmation: response confirmed only after successful validation
-  - On validation failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
+  - On validation failure, `repair_response()` uses last confirmed response_id
+  - Prevents "Previous response not found" error and context corruption
+  - Repair responses are auto-confirmed internally by llm_client
 - **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
 - **Rate limits** → automatic wait via TPMBucket with recovery
 
@@ -232,6 +259,7 @@ Main processing class for concept extraction.
   - api_usage - tracks total requests and token usage for cost monitoring
   - source_slug - extracted from first slice for metadata
   - total_source_tokens - calculated from last slice for statistics
+  - previous_response_id - maintains context chain between slices
 
 ## Internal Methods
 
@@ -267,7 +295,7 @@ Save temporary dumps on critical errors.
 - **Note**: Used for recovery from failures
 
 ### SliceProcessor._process_single_slice(slice_file: Path) -> bool
-Process single slice with full error handling.
+Process single slice with two-phase confirmation pattern.
 - **Input**: slice_file - Path to slice JSON file
 - **Returns**: True on success, False on failure
 - **Algorithm**:
@@ -276,15 +304,24 @@ Process single slice with full error handling.
   3. Call LLM with previous_response_id
   4. Track API usage (requests, tokens)
   5. Parse and validate response
-  6. On JSON error: attempt repair with rollback
-  7. Update concept dictionary on success
-  8. Update previous_response_id (with repair_id if repair was successful)
+  6. **On success**: Call `confirm_response()` to finalize
+  7. **On JSON error**: 
+     - Attempt repair with `repair_response()`
+     - Repair automatically uses last confirmed response as context
+     - No explicit confirmation needed (handled internally)
+     - Save bad responses for debugging
+  8. Update concept dictionary on success
+  9. Update previous_response_id:
+     - If repair was successful: use repair_id
+     - Otherwise: use original response_id
 - **Side effects**: 
-  - Updates self.concept_dict
+  - Updates self.concept_dictionary
   - Updates self.previous_response_id
   - Updates self.api_usage counters
   - May create bad response files
+  - Confirms valid responses via llm_client
 - **Error handling**: Catches all exceptions, logs errors, returns False
+- **Critical**: Uses two-phase confirmation to prevent context corruption
 
 ### SliceProcessor._process_llm_response(response_text: str, slice_id: str) -> Tuple[bool, Optional[Dict]]
 Process and validate LLM response.
@@ -311,7 +348,7 @@ Update concept dictionary with new concepts and aliases.
   2. Case-insensitive duplicate removal within aliases
   3. Primary term excluded from aliases list
   4. Preserve first occurrence of each unique alias
-- **Side effects**: Modifies self.concept_dict
+- **Side effects**: Modifies self.concept_dictionary
 - **Note**: Critical for incremental processing consistency
 
 ### SliceProcessor._apply_concepts(response_data: Dict) -> None
@@ -368,7 +405,7 @@ Final validation and save results with comprehensive metadata.
 **LLM Integration:**
 - test_llm_response_processing - response parsing
 - test_bad_response_saving - error file creation
-- test_repair_reprompt_mechanism - JSON error recovery
+- test_repair_reprompt_mechanism - JSON error recovery with two-phase confirmation
 - test_context_preservation - previous_response_id usage
 - test_response_id_chaining - multi-slice context
 - test_repair_id_update - correct ID after successful repair
@@ -396,11 +433,12 @@ Final validation and save results with comprehensive metadata.
 
 ### External
 - python-dotenv - environment variable loading
+- openai>=1.0.0 - via llm_client
 
 ### Internal
 - utils.config - configuration loading and validation
 - utils.exit_codes - standardized exit codes
-- utils.llm_client - OpenAI API wrapper with retry logic
+- utils.llm_client - OpenAI API wrapper with retry logic and two-phase confirmation
 - utils.validation - JSON schema validation
 - utils.console_encoding - UTF-8 console setup for Windows
 
@@ -415,6 +453,7 @@ Final validation and save results with comprehensive metadata.
 - **Duplicate concept_id from LLM** → merge aliases, log warning
 - **API timeout** → retry via llm_client, eventual fail after max_retries
 - **Invalid configuration parameters** → EXIT_CONFIG_ERROR at startup
+- **Broken JSON in response** → repair with automatic rollback to last confirmed
 
 ## Output Validation
 
@@ -523,6 +562,7 @@ Final validation uses:
 - **TPM control** via llm_client with safety margin (15% default)
 - **Bottleneck**: LLM API calls (limited by TPM)
 - **Optimization**: Previous_response_id reduces repeated concept extraction
+- **Two-phase confirmation**: Small overhead for increased reliability
 - **API usage tracking**: Collects statistics for cost analysis (total requests, input/output tokens)
 - **Logging**: JSON Lines format for efficient parsing
 - **Checkpoint**: Progress logged every 10 slices for recovery
@@ -601,6 +641,6 @@ print(f'Avg tokens per request: {avg_in:.0f} in, {avg_out:.0f} out')
 ## See Also
 
 - `/docs/specs/cli_itext2kg_graph.md` - graph construction utility
-- `/docs/specs/util_llm_client.md` - LLM client implementation
+- `/docs/specs/util_llm_client.md` - LLM client with two-phase confirmation
 - `/src/prompts/itext2kg_concepts_extraction.md` - LLM prompt
 - `/src/schemas/ConceptDictionary.schema.json` - output schema

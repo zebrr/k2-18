@@ -34,12 +34,15 @@ python -m src.itext2kg_graph
 - **Critical for data integrity**: Prevents ~75% content loss from ID collisions
 - **Implementation**: See `_assign_final_ids()` method
 
-### JSON Repair Mechanism
-Single repair attempt for JSON parsing errors:
-- **JSON parsing errors**:
-  - Add emphasis on valid JSON format
-  - Remove markdown formatting instructions
-  - Rollback to previous_response_id
+### JSON Repair Mechanism with Confirmation
+Two-phase confirmation mechanism for response management:
+- **Phase 1 - Response creation**: LLM generates response, gets validated
+- **Phase 2 - Confirmation**: On successful validation, `llm_client.confirm_response()` confirms the response
+- **Repair on failure**: 
+  - If JSON parsing fails, attempt repair with format emphasis
+  - Repair uses `previous_response_id` rollback (uses last confirmed response)
+  - On successful repair, confirm the repair response
+- **Benefits**: Prevents "Previous response not found" errors during repair
 
 ### Node Processing
 - **Chunk nodes**: Keep longer text version on duplicates
@@ -74,9 +77,12 @@ Safety net for MENTIONS edges the LLM might miss:
    - Format input data (FULL ConceptDictionary + Slice)
    - Call LLM via Responses API
    - Parse and validate response
+   - **Confirm response** if validation successful (Phase 1 of confirmation)
+   - **JSON repair mechanism** (if validation failed):
+     - Repair with format emphasis
+     - Use rollback to last confirmed response_id
+     - Confirm repair response if successful (Phase 2)
    - **Apply ID post-processing**: Replace temporary IDs with final position-based IDs using `_assign_final_ids()`
-   - **JSON repair mechanism** (if needed):
-     - JSON errors → repair with format emphasis
    - Process nodes (handle duplicates)
    - Validate edges
    - Add automatic MENTIONS edges
@@ -255,9 +261,18 @@ Replace temporary IDs with final position-based IDs.
 
 ### SliceProcessor.validate_node_positions(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
 **DEPRECATED**: Position validation no longer needed after ID post-processing. Always returns nodes unchanged.
+- **Input**: nodes - list of nodes (ignored), slice_token_start - slice start position (ignored)
+- **Returns**: Always returns nodes parameter unchanged
+- **Note**: Kept for backward compatibility, actual validation is skipped
+
+### SliceProcessor._validate_node_positions_legacy(nodes: List[Dict], slice_token_start: int) -> Optional[List[Dict]]
+Legacy validation method - preserved for reference but not used.
+- **Purpose**: Original position validation logic before ID post-processing was implemented
+- **Algorithm**: Validates node_position calculations, math consistency, ID format
+- **Note**: Not called in current implementation, kept for historical reference
 
 ### SliceProcessor._process_single_slice(slice_file: Path) -> bool
-Process single slice with repair mechanism.
+Process single slice with repair mechanism and response confirmation.
 - **Input**: slice_file - Path to slice JSON file
 - **Returns**: True on success, False on failure
 - **Algorithm**:
@@ -265,16 +280,19 @@ Process single slice with repair mechanism.
   2. Format input with full ConceptDictionary
   3. Call LLM with previous_response_id
   4. Parse response and check for JSON errors
-  5. If JSON error: repair with format emphasis and rollback
-  6. Apply ID post-processing with `_assign_final_ids()`
-  7. Process nodes and edges
-  8. Add automatic MENTIONS edges
-  9. Validate graph intermediate state
-  10. Update previous_response_id on success
+  5. If successful: confirm response via `llm_client.confirm_response()`
+  6. If JSON error: repair with format emphasis and rollback to last confirmed response
+  7. If repair successful: confirm repair response
+  8. Apply ID post-processing with `_assign_final_ids()`
+  9. Process nodes and edges
+  10. Add automatic MENTIONS edges
+  11. Validate graph intermediate state
+  12. Update previous_response_id on success
 - **Side effects**: 
   - Updates graph_nodes and graph_edges
   - Updates previous_response_id
   - May create bad response files
+  - Confirms successful responses with LLM client
 - **Error handling**: Returns False on any failure
 
 ### SliceProcessor._process_chunk_nodes(new_nodes: List[Dict]) -> List[Dict]
@@ -399,6 +417,7 @@ Add patch to graph with full processing.
 - test_dual_repair_json - JSON error repair
 - test_repair_rollback - previous_response_id handling
 - test_repair_failure - exit on repair failure
+- test_confirm_response_mechanism - two-phase confirmation
 
 **Node Processing:**
 - test_chunk_duplicate_handling - longer text wins
@@ -434,6 +453,21 @@ Add patch to graph with full processing.
 - test_temp_dumps - recovery files
 - test_interrupt_handling - Ctrl+C processing
 
+### test_itext2kg_graph_postprocessing: 9 tests
+
+**ID Post-processing Tests:**
+- test_assign_final_ids_chunks - chunk ID calculation
+- test_assign_final_ids_assessments - assessment ID calculation
+- test_concept_ids_unchanged - concept IDs preserved
+- test_missing_node_offset_warning - warning for missing offsets
+- test_mixed_node_types - processing mix of node types
+- test_assessment_index_extraction - correct index extraction
+- test_empty_patch - handling empty patches
+- test_edge_with_nonexistent_nodes - graceful edge handling
+- test_legacy_validation_exists - legacy method preserved
+
+**Total Test Coverage: 41 tests**
+
 ## Dependencies
 
 ### Standard Library
@@ -448,7 +482,7 @@ Add patch to graph with full processing.
 ### Internal
 - utils.config - configuration loading and validation
 - utils.exit_codes - standardized exit codes
-- utils.llm_client - OpenAI API client with repair_response() method for rollback
+- utils.llm_client - OpenAI API client with confirm_response() and repair_response() methods
 - utils.validation - JSON schema validation (currently unused but available)
 - utils.console_encoding - UTF-8 console setup for Windows
 
@@ -464,6 +498,7 @@ Add patch to graph with full processing.
 - **I/O error saving output** → save dumps → EXIT_IO_ERROR (5)
 - **Empty graph (no nodes)** → log warning but save → SUCCESS
 - **Graph with nodes but no edges** → log warning but save → SUCCESS
+- **Response confirmation failure** → handled by repair mechanism with rollback
 
 ## Output Validation
 
@@ -611,6 +646,7 @@ The output file contains extensive metadata alongside the graph data:
 - **TPM control** via llm_client with safety margin
 - **Bottleneck**: LLM API calls (limited by TPM)
 - **ID post-processing**: eliminates repair overhead, faster than validation
+- **Response confirmation**: adds minimal overhead but prevents errors
 - **Optimization**: automatic MENTIONS reduces need for LLM to find all mentions
 - **Logging**: JSON Lines format for efficient parsing
 - **Critical path**: Post-processing IDs is deterministic and fast
@@ -647,6 +683,9 @@ cat logs/slice_042_bad.json | jq .error
 # Check for temporary ID replacements
 cat logs/itext2kg_graph_*.log | grep "Replaced"
 
+# Check confirmation mechanism
+cat logs/itext2kg_graph_*.log | grep "confirm"
+
 # Recover from temporary dumps
 ls logs/LearningChunkGraph_temp_*.json
 # LearningChunkGraph_temp_critical_error_20240115_103045.json
@@ -670,6 +709,9 @@ cat logs/itext2kg_graph_*.log | grep REPAIR
 # Check ID post-processing
 cat logs/itext2kg_graph_*.log | grep "Post-processing"
 
+# Check response confirmations
+cat logs/itext2kg_graph_*.log | grep "Confirm"
+
 # Validate final graph structure
 python -c "
 import json
@@ -683,6 +725,6 @@ print(f'Chunks: {len(chunks)}, MENTIONS edges: {len(mentions)}')
 ## See Also
 
 - `/docs/specs/cli_itext2kg_concepts.md` - concept extraction utility
-- `/docs/specs/util_llm_client.md` - LLM client implementation
+- `/docs/specs/util_llm_client.md` - LLM client implementation with confirm_response
 - `/src/prompts/itext2kg_graph_extraction.md` - LLM prompt
 - `/src/schemas/LearningChunkGraph.schema.json` - output schema

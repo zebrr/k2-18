@@ -63,6 +63,8 @@ Validates [itext2kg] section parameters.
   - api_key not empty or available via environment
   - timeout > 0
   - max_retries >= 0
+  - response_chain_depth >= 0 (if present)
+  - truncation in ["auto", "disabled"] (if present)
 
 ### _validate_dedup_section(section: Dict[str, Any]) -> None
 Validates [dedup] section parameters.
@@ -88,6 +90,8 @@ Validates [refiner] section parameters.
   - max_completion between 1 and 100000
   - timeout > 0
   - max_retries >= 0
+  - response_chain_depth >= 0 (if present)
+  - truncation in ["auto", "disabled"] (if present)
   - Weights validation: 0.0 <= weight_low < weight_mid < weight_high <= 1.0
 
 ### _validate_required_fields(section: Dict[str, Any], required_fields: Dict[str, type], section_name: str) -> None
@@ -119,6 +123,8 @@ Generic validator for required fields presence and types.
 - **api_key** (str, non-empty) - OpenAI API key (or via OPENAI_API_KEY env)
 - **timeout** (int, >0) - request timeout in seconds
 - **max_retries** (int, ≥0) - number of retries
+- **response_chain_depth** (int, ≥0, optional) - depth of response chain (0=independent requests, 1-N=chain depth, not set=unlimited)
+- **truncation** (str, "auto"/"disabled", optional) - truncation strategy for context overflow
 
 **Non-validated parameters (passed through to LLM client):**
 - **poll_interval** (int, >0) - status check interval in seconds for async mode
@@ -160,6 +166,8 @@ Generic validator for required fields presence and types.
 - **max_completion** (int, 1-100000) - maximum generated tokens
 - **timeout** (int, >0) - request timeout
 - **max_retries** (int, ≥0) - number of retries
+- **response_chain_depth** (int, ≥0, optional) - depth of response chain (0=independent requests, 1-N=chain depth, not set=unlimited)
+- **truncation** (str, "auto"/"disabled", optional) - truncation strategy for context overflow
 - **weight_low** (float, 0.0-1.0) - low connection weight
 - **weight_mid** (float, 0.0-1.0) - medium connection weight
 - **weight_high** (float, 0.0-1.0) - high connection weight
@@ -180,6 +188,7 @@ Generic validator for required fields presence and types.
 - **max_context_tokens_test** (int) - context limit for test model
 - **tpm_limit_test** (int) - TPM limit for test model
 - **max_completion_test** (int) - max completion for test model
+- **log_level** (str) - logging level for refiner
 
 ## Validation Rules
 
@@ -214,22 +223,35 @@ Generic validator for required fields presence and types.
   - test_invalid_max_tokens - validates positive values
   - test_overlap_soft_boundary_validation - validates dependency rules
 
-- **test_itext2kg_validation**: 2 tests
+- **test_itext2kg_validation**: 5 tests
   - test_invalid_log_level - validates enum values
   - test_empty_api_key - validates API key availability
+  - test_missing_is_reasoning_parameter - validates required is_reasoning
+  - test_consistency_warning_reasoning_with_temperature - warns for reasoning models with temperature
+  - test_consistency_warning_non_reasoning_with_effort - warns for non-reasoning models with reasoning_effort
 
-- **test_refiner_validation**: 2 tests
+- **test_refiner_validation**: 3 tests
   - test_invalid_weight_order - validates weight ordering
   - test_weight_out_of_range - validates weight ranges
+  - test_missing_is_reasoning_parameter - validates required is_reasoning
 
 - **test_type_validation**: 1 test
   - test_wrong_type_validation - validates type checking
 
-**Missing test coverage:**
-- is_reasoning parameter validation
-- Consistency warnings for reasoning/temperature combinations
-- Environment variable injection
-- All dedup section validations
+- **test_environment_variables**: 3 tests
+  - test_api_key_from_environment - validates API key injection from env
+  - test_embedding_api_key_from_environment - validates embedding key injection
+  - test_placeholder_detection - validates placeholder key detection
+
+- **test_dedup_validation**: 3 tests
+  - test_embedding_model_required - validates required embedding_model
+  - test_invalid_similarity_threshold - validates threshold range
+  - test_invalid_faiss_parameters - validates positive FAISS parameters
+
+- **test_config_integration**: 3 tests
+  - test_load_real_config - integration test with real config.toml
+  - test_config_file_exists - verifies config.toml location
+  - test_config_accessibility_from_utils - tests import from other modules
 
 ## Usage Examples
 
@@ -285,6 +307,30 @@ if config["refiner"]["is_reasoning"]:
     reasoning_effort = config["refiner"].get("reasoning_effort", "medium")
 ```
 
+### Working with Context Management Parameters
+```python
+config = load_config()
+
+# Check response chain depth for context management
+itext2kg_config = config["itext2kg"]
+chain_depth = itext2kg_config.get("response_chain_depth")
+
+if chain_depth is not None:
+    if chain_depth == 0:
+        print("Independent requests mode - no context sharing")
+    else:
+        print(f"Chain mode with depth {chain_depth}")
+else:
+    print("Unlimited chain depth")
+
+# Check truncation strategy
+truncation = itext2kg_config.get("truncation")
+if truncation == "auto":
+    print("Will truncate context automatically if needed")
+elif truncation == "disabled":
+    print("No truncation - may fail if context too large")
+```
+
 ### Error Handling
 ```python
 try:
@@ -298,6 +344,10 @@ except ConfigValidationError as e:
         print("Missing required is_reasoning parameter")
     elif "api_key" in str(e):
         print("API key not configured - set OPENAI_API_KEY environment variable")
+    elif "response_chain_depth" in str(e):
+        print("Invalid response_chain_depth - must be non-negative integer")
+    elif "truncation" in str(e):
+        print("Invalid truncation - must be 'auto' or 'disabled'")
     else:
         print(f"Config validation failed: {e}")
     sys.exit(1)
@@ -309,3 +359,21 @@ except ConfigValidationError as e:
 - Validation overhead is minimal
 - No caching - config is re-read and validated on each load_config() call
 - Thread-safe - can be called from multiple threads
+
+## Model Support
+
+The configuration supports both reasoning and non-reasoning models from OpenAI:
+
+**Reasoning models** (is_reasoning=true):
+- gpt-5-2025-08-07 (400K context, 128K output)
+- gpt-5-mini-2025-08-07 (400K context, 128K output)
+- o4-mini-2025-04-16
+- o3-2025-04-16
+
+**Non-reasoning models** (is_reasoning=false):
+- gpt-4.1-2025-04-14 (1M context, 32K output)
+- gpt-4.1-mini-2025-04-14 (1M context, 32K output)
+- gpt-4.1-nano-2025-04-14
+- gpt-4o and variants
+
+Choose models based on task complexity and budget constraints. Test models (_test suffix parameters) should match the type (reasoning/non-reasoning) of the main model.

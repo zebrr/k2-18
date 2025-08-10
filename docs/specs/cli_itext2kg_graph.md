@@ -175,6 +175,8 @@ Section `[itext2kg]` in config.toml:
 ### Recovery Strategy
 1. Try to parse response
 2. If JSON error → repair with format emphasis
+   - Uses two-phase confirmation: response confirmed only after successful validation
+   - On validation failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
 3. Post-process IDs with `_assign_final_ids()` (no repair needed)
 4. If repair fails → save dumps and exit with RUNTIME_ERROR
 

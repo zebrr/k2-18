@@ -253,6 +253,8 @@ log_level = "info"                   # logging level (info/debug)
 
 ### LLM Response Errors
 - **Invalid JSON**: one repair-retry with error prompt
+  - Uses two-phase confirmation: response confirmed only after successful JSON parsing
+  - On parsing failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
 - **Invalid edges**: filter with logging
 - **Failed nodes**: save to `/logs/{node_id}_bad.json`
 

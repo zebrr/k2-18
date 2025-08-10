@@ -6,6 +6,9 @@ soft_boundary_max_shift = 500
 tokenizer               = "o200k_base"
 allowed_extensions      = ["txt", "md", "html"]
 
+# gpt-5-2025-08-07 - дорогая
+# gpt-5-mini-2025-08-07 - дешевая
+
 [itext2kg]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
@@ -14,7 +17,7 @@ truncation = "auto"           # "auto" | "disabled" | закомментиров
 response_chain_depth = 1      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
 
 # Основная модель
-model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
+model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
 max_context_tokens  = 400000
 tpm_limit           = 450000
@@ -40,7 +43,7 @@ tpm_safety_margin   = 0.15
 log_level           = "info"
 timeout             = 360
 max_retries         = 3
-poll_interval       = 7
+poll_interval       = 10
 
 [dedup]
 embedding_model     = "text-embedding-3-small"

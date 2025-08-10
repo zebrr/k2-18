@@ -90,9 +90,19 @@ Repair request with specified previous_response_id (transport layer).
 - **Input**: 
   - instructions - system prompt (caller should include repair instructions)
   - input_data - user data
-  - previous_response_id - ID of previous response (optional, uses last_response_id if None)
+  - previous_response_id - ID of previous response (optional, uses last_confirmed_response_id if None)
 - **Returns**: (response_text, response_id, usage_info)
 - **Logic**: Delegates to create_response with is_repair=True (response NOT added to chain)
+- **CRITICAL CHANGE**: Now uses last_confirmed_response_id instead of last_response_id
+
+#### OpenAIClient.confirm_response() -> None
+Confirm that the last unconfirmed response is valid.
+- **Logic**: 
+  - Updates last_confirmed_response_id
+  - Adds response to chain if configured
+  - Deletes old responses if chain exceeds depth
+- **Note**: Should be called after successful validation of response content
+- **Safe**: Can be called multiple times (no-op if no unconfirmed response)
 
 ## Internal Methods
 
@@ -195,6 +205,28 @@ Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
   ```
   [10:31:15] INFO     | ✅ TPM limit reset, continuing...
   ```
+
+## Usage Examples
+
+### Two-Phase Confirmation Pattern
+```python
+# Получаем response
+response_text, response_id, usage = client.create_response(instructions, data)
+
+# Валидируем
+try:
+    validated_data = json.loads(response_text)
+    # Успех - подтверждаем
+    client.confirm_response()
+except json.JSONDecodeError:
+    # Ошибка - repair автоматически использует последний подтвержденный
+    repair_text, repair_id, _ = client.repair_response(
+        instructions + "\nReturn valid JSON",
+        data
+    )
+    validated_data = json.loads(repair_text)
+    client.confirm_response()  # Подтверждаем repair
+```
 
 ## Test Coverage
 

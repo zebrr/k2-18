@@ -360,6 +360,11 @@ class OpenAIClient:
             self.response_chain = None
             chain_mode = "unlimited chain"
 
+        # Two-phase confirmation fields
+        self.last_confirmed_response_id = None  # Last CONFIRMED response
+        self.unconfirmed_response_id = None  # Awaiting confirmation
+        self.last_response_id = None  # For backward compatibility
+
         self.logger.info(
             f"Initialized OpenAI client: model={config['model']}, "
             f"reasoning={self.is_reasoning_model}, chain_mode={chain_mode}"
@@ -662,6 +667,13 @@ class OpenAIClient:
             IncompleteResponseError: When status is incomplete
             ValueError: When status is failed or model refuses
         """
+        # НОВОЕ: Автоочистка забытых неподтвержденных
+        if self.unconfirmed_response_id and not is_repair:
+            self.logger.warning(
+                f"Previous response {self.unconfirmed_response_id[:12]} was never confirmed, discarding"
+            )
+            self.unconfirmed_response_id = None
+
         # Handle response_chain_depth == 0 (independent requests)
         if self.response_chain_depth == 0:
             previous_response_id = None
@@ -791,32 +803,18 @@ class OpenAIClient:
                         response_text = self._extract_response_content(response)
                         usage_info = self._extract_usage_info(response)
 
-                        # Save response_id for next call (unless it's repair)
+                        # Two-phase confirmation: save as unconfirmed (unless it's repair)
                         if not is_repair:
-                            self.last_response_id = response_id
+                            # НОВОЕ: Сохраняем как неподтвержденный
+                            self.unconfirmed_response_id = response_id
+                            # НЕ обновляем last_confirmed_response_id
+                            # НЕ трогаем response_chain
+                            # НЕ удаляем старые response
 
-                            # Manage response chain if configured
-                            if self.response_chain is not None and self.response_chain_depth > 0:
-                                # Add new response to chain
-                                self.response_chain.append(response_id)
-
-                                # Remove old responses if chain exceeds depth
-                                while len(self.response_chain) > self.response_chain_depth:
-                                    old_response_id = self.response_chain.popleft()
-                                    try:
-                                        self._delete_response(old_response_id)
-                                        self.logger.info(
-                                            f"Deleted old response {old_response_id[:12]} from chain "
-                                            f"(chain size: {len(self.response_chain)})"
-                                        )
-                                    except ValueError as e:
-                                        # Deletion failed - log warning and continue
-                                        self.logger.warning(
-                                            f"Failed to delete old response {old_response_id[:12]}: {e}"
-                                        )
-                                        # Continue anyway - chain is already shortened locally
+                            self.logger.debug(f"Response {response_id[:12]} awaiting confirmation")
                         else:
-                            self.logger.debug("Repair response - not adding to chain")
+                            # Repair responses не требуют подтверждения
+                            self.logger.debug("Repair response - no confirmation needed")
 
                         self.logger.debug(
                             f"Async response success: id={response_id}, "
@@ -1058,11 +1056,59 @@ class OpenAIClient:
             ...     previous_response_id=last_successful_id
             ... )
         """
-        # Use provided previous_response_id or fall back to last_response_id
-        if previous_response_id is not None:
-            response_id_to_use = previous_response_id
-        else:
-            response_id_to_use = self.last_response_id
+        # ИЗМЕНЕНО: используем последний ПОДТВЕРЖДЕННЫЙ
+        if previous_response_id is None:
+            previous_response_id = self.last_confirmed_response_id
+            self.logger.debug(
+                f"Repair using last confirmed response: {previous_response_id[:12] if previous_response_id else 'None'}"
+            )
 
         # Delegate to create_response with is_repair=True
-        return self.create_response(instructions, input_data, response_id_to_use, is_repair=True)
+        return self.create_response(instructions, input_data, previous_response_id, is_repair=True)
+
+    def confirm_response(self) -> None:
+        """
+        Confirm that the last unconfirmed response is valid.
+
+        This method should be called after successful validation of response content.
+        It updates the response chain and deletes old responses if needed.
+
+        Note:
+            If no unconfirmed response exists, this is a no-op.
+            Safe to call multiple times.
+        """
+        if self.unconfirmed_response_id is None:
+            self.logger.debug("No unconfirmed response to confirm")
+            return
+
+        response_id = self.unconfirmed_response_id
+        self.logger.debug(f"Confirming response {response_id[:12]}")
+
+        # Update confirmed ID
+        self.last_confirmed_response_id = response_id
+        self.last_response_id = response_id  # Backward compatibility
+
+        # Now safe to manage response chain
+        if self.response_chain is not None and self.response_chain_depth > 0:
+            self.response_chain.append(response_id)
+            self.logger.debug(
+                f"Added {response_id[:12]} to chain (size: {len(self.response_chain)})"
+            )
+
+            # Delete old responses only after confirmation
+            while len(self.response_chain) > self.response_chain_depth:
+                old_response_id = self.response_chain.popleft()
+                try:
+                    self._delete_response(old_response_id)
+                    self.logger.info(
+                        f"Deleted old response {old_response_id[:12]} from chain "
+                        f"(new chain size: {len(self.response_chain)})"
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to delete old response {old_response_id[:12]}: {e}"
+                    )
+
+        # Clear unconfirmed
+        self.unconfirmed_response_id = None
+        self.logger.debug(f"Response {response_id[:12]} confirmed and chain updated")

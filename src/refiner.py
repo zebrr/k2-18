@@ -709,6 +709,8 @@ def analyze_candidate_pairs(
             # Parse response
             try:
                 edges_response = json.loads(response_text)
+                # НОВОЕ: Подтверждаем response после успешной валидации
+                llm_client.confirm_response()
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse LLM response for node {source_node['id']}: {e}")
                 logger.debug(f"Raw response: {response_text}")
@@ -726,6 +728,8 @@ def analyze_candidate_pairs(
 
                 try:
                     edges_response = json.loads(response_text)
+                    # НОВОЕ: Подтверждаем repair response после успешной валидации
+                    llm_client.confirm_response()
                 except json.JSONDecodeError as e2:
                     logger.error(f"Failed to parse repaired response: {e2}")
 

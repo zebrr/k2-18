@@ -136,6 +136,8 @@ class TestOpenAIClientIntegration:
             instructions="You are a math tutor. Be very brief in your answers.",
             input_data="My name is Alice. What is 5 + 3?",
         )
+        # Подтверждаем успешный ответ
+        client.confirm_response()
 
         assert "8" in text1
         assert client.last_response_id == id1
@@ -144,6 +146,8 @@ class TestOpenAIClientIntegration:
         text2, id2, usage2 = client.create_response(
             instructions="Continue being a math tutor.", input_data="What was my name?"
         )
+        # Подтверждаем второй ответ
+        client.confirm_response()
 
         assert "alice" in text2.lower()
         assert id2 != id1

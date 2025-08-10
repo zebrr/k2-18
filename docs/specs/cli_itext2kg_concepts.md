@@ -188,6 +188,8 @@ Section `[itext2kg]` in config.toml:
 
 ### Recoverable Errors
 - **JSON validation errors** → repair-reprompt (1 attempt) → bad response saved
+  - Uses two-phase confirmation: response confirmed only after successful validation
+  - On validation failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
 - **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
 - **Rate limits** → automatic wait via TPMBucket with recovery
 

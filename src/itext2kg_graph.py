@@ -941,8 +941,11 @@ class SliceProcessor:
         # Try to parse JSON
         success, parsed = self._process_llm_response(response_text, slice_id)
 
+        if success:
+            # НОВОЕ: Подтверждаем response после успешной валидации
+            self.llm_client.confirm_response()
         # Handle JSON parsing errors
-        if not success:
+        elif not success:
             self.logger.warning(f"JSON validation failed for {slice_id}, attempting repair...")
 
             # Add console output
@@ -972,6 +975,8 @@ class SliceProcessor:
 
                 if success:
                     # Repair successful
+                    # НОВОЕ: Подтверждаем repair response
+                    self.llm_client.confirm_response()
                     current_time = datetime.now().strftime("%H:%M:%S")
                     print(f"[{current_time}] REPAIR   | ✅ JSON validation fixed successfully!")
                     # Update response_id to repair_id for successful repair

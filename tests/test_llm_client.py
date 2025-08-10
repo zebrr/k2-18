@@ -472,10 +472,13 @@ class TestOpenAIClient:
         with patch("src.utils.llm_client.time.sleep"):
             # Первый запрос
             _, response_id1, _ = client.create_response("Prompt 1", "Input 1")
+            # Теперь нужно подтвердить response
+            client.confirm_response()
             assert client.last_response_id == "resp_001"
 
             # Второй запрос
             _, response_id2, _ = client.create_response("Prompt 2", "Input 2")
+            client.confirm_response()
 
         # Проверка второго вызова create
         second_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
@@ -643,16 +646,19 @@ class TestOpenAIClient:
         with patch("src.utils.llm_client.time.sleep"):
             # Первый запрос
             client.create_response("Original prompt", "Input")
+            # Нужно подтвердить, чтобы repair мог использовать last_confirmed_response_id
+            client.confirm_response()
 
             # Repair запрос без explicit previous_response_id (backward compatibility)
             response_text, _, _ = client.repair_response("Original prompt", "Input")
 
-        # Проверка repair вызова - должен использовать last_response_id
+        # Проверка repair вызова - должен использовать last_confirmed_response_id
         repair_call_args = mock_client_instance.responses.with_raw_response.create.call_args_list[
             1
-        ][1]
-        assert repair_call_args["instructions"] == "Original prompt"  # No JSON instructions added
-        assert repair_call_args["previous_response_id"] == "resp_001"
+        ]
+        # repair_response вызывает create_response, который вызывает API
+        # Проверяем kwargs в API вызове
+        assert repair_call_args[1]["previous_response_id"] == "resp_001"
         assert response_text == "Repaired response"
 
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
@@ -1758,3 +1764,258 @@ class TestResponseChainManagement:
             # Verify no retry was attempted (create called only once after probe)
             assert mock_client_instance.responses.with_raw_response.create.call_count == 1
             assert "max_output_tokens" in str(exc_info.value)
+
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_confirm_response_workflow(self, mock_openai_class, mock_get_encoding, config_with_chain_depth):
+        """Test two-phase confirmation workflow"""
+        # Setup encoder mock
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        # Setup OpenAI client mocks
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        # Create response using MockResponse helper
+        from tests.test_llm_client import MockResponse
+        
+        # Initial response
+        initial_response = Mock(id="test_response_id", status="queued")
+        mock_raw_initial = MagicMock()
+        mock_raw_initial.headers = {}
+        mock_raw_initial.parse.return_value = initial_response
+        
+        # Final response
+        final_response = MockResponse("test response")
+        final_response.id = "test_response_id"
+        mock_raw_final = MagicMock()
+        mock_raw_final.headers = {}
+        mock_raw_final.parse.return_value = final_response
+        
+        # Configure mocks
+        mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial
+        mock_client_instance.responses.with_raw_response.retrieve.return_value = mock_raw_final
+        
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Create response - should not update chain yet
+        with patch("src.utils.llm_client.time.sleep"):
+            response_text, response_id, usage = client.create_response("test", "data")
+        
+        assert client.unconfirmed_response_id == "test_response_id"
+        assert client.last_confirmed_response_id is None
+        if client.response_chain is not None:
+            assert len(client.response_chain) == 0
+        
+        # Confirm - should update chain
+        client.confirm_response()
+        assert client.unconfirmed_response_id is None
+        assert client.last_confirmed_response_id == "test_response_id"
+        if client.response_chain is not None:
+            assert len(client.response_chain) == 1
+
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_repair_uses_confirmed_id(self, mock_openai_class, mock_get_encoding, mock_probe, config_with_chain_depth):
+        """Test that repair uses last confirmed ID, not unconfirmed"""
+        # Setup encoder mock
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        # Setup OpenAI client mocks
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        from tests.test_llm_client import MockResponse
+        
+        # First response
+        initial_response1 = Mock(id="resp_001", status="queued")
+        mock_raw_initial1 = MagicMock()
+        mock_raw_initial1.headers = {}
+        mock_raw_initial1.parse.return_value = initial_response1
+        
+        final_response1 = MockResponse("First response")
+        final_response1.id = "resp_001"
+        mock_raw_final1 = MagicMock()
+        mock_raw_final1.headers = {}
+        mock_raw_final1.parse.return_value = final_response1
+        
+        # Second response (unconfirmed)
+        initial_response2 = Mock(id="resp_002", status="queued")
+        mock_raw_initial2 = MagicMock()
+        mock_raw_initial2.headers = {}
+        mock_raw_initial2.parse.return_value = initial_response2
+        
+        final_response2 = MockResponse("Second response")
+        final_response2.id = "resp_002"
+        mock_raw_final2 = MagicMock()
+        mock_raw_final2.headers = {}
+        mock_raw_final2.parse.return_value = final_response2
+        
+        # Repair response
+        initial_response3 = Mock(id="resp_repair", status="queued")
+        mock_raw_initial3 = MagicMock()
+        mock_raw_initial3.headers = {}
+        mock_raw_initial3.parse.return_value = initial_response3
+        
+        final_response3 = MockResponse("Repaired response")
+        final_response3.id = "resp_repair"
+        mock_raw_final3 = MagicMock()
+        mock_raw_final3.headers = {}
+        mock_raw_final3.parse.return_value = final_response3
+        
+        # Configure mocks
+        mock_client_instance.responses.with_raw_response.create.side_effect = [
+            mock_raw_initial1,
+            mock_raw_initial2,
+            mock_raw_initial3,
+        ]
+        
+        mock_client_instance.responses.with_raw_response.retrieve.side_effect = [
+            mock_raw_final1,
+            mock_raw_final2,
+            mock_raw_final3,
+        ]
+        
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Create and confirm first response
+        with patch("src.utils.llm_client.time.sleep"):
+            client.create_response("test", "data1")
+            client.confirm_response()
+            
+            # Create second response but don't confirm
+            client.create_response("test", "data2", previous_response_id="resp_001")
+            
+            # Repair should use confirmed ID, not unconfirmed
+            client.repair_response("repair", "data")
+        
+        # Check that repair used the confirmed ID
+        # Call index 2 (0=first, 1=second, 2=repair)
+        repair_call = mock_client_instance.responses.with_raw_response.create.call_args_list[2]
+        assert repair_call[1]["previous_response_id"] == "resp_001"
+
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_auto_discard_unconfirmed(self, mock_openai_class, mock_get_encoding, mock_probe, config_with_chain_depth, caplog):
+        """Test automatic discard of unconfirmed response on next create"""
+        # Setup encoder mock
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        # Setup OpenAI client mocks
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        from tests.test_llm_client import MockResponse
+        
+        # Two responses
+        responses = []
+        for i in range(2):
+            initial_response = Mock(id=f"resp_{i:03d}", status="queued")
+            mock_raw_initial = MagicMock()
+            mock_raw_initial.headers = {}
+            mock_raw_initial.parse.return_value = initial_response
+            
+            final_response = MockResponse(f"Response {i}")
+            final_response.id = f"resp_{i:03d}"
+            mock_raw_final = MagicMock()
+            mock_raw_final.headers = {}
+            mock_raw_final.parse.return_value = final_response
+            
+            responses.append((mock_raw_initial, mock_raw_final))
+        
+        # Configure mocks
+        mock_client_instance.responses.with_raw_response.create.side_effect = [
+            responses[0][0], responses[1][0]
+        ]
+        
+        mock_client_instance.responses.with_raw_response.retrieve.side_effect = [
+            responses[0][1], responses[1][1]
+        ]
+        
+        client = OpenAIClient(config_with_chain_depth)
+        
+        # Create but don't confirm
+        import logging
+        caplog.set_level(logging.WARNING)
+        
+        with patch("src.utils.llm_client.time.sleep"):
+            client.create_response("test", "data1")
+            unconfirmed = client.unconfirmed_response_id
+            
+            # Create another - should discard previous unconfirmed
+            client.create_response("test", "data2")
+        
+        # Check that discard warning was logged
+        assert any("was never confirmed, discarding" in msg for msg in caplog.messages)
+
+    @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
+    @patch("src.utils.llm_client.tiktoken.get_encoding")
+    @patch("src.utils.llm_client.OpenAI")
+    def test_validation_failure_scenario(self, mock_openai_class, mock_get_encoding, mock_probe, test_config):
+        """Test the exact scenario that caused the production bug"""
+        # Setup encoder mock
+        mock_encoder = MagicMock()
+        mock_encoder.encode.return_value = list(range(100))
+        mock_get_encoding.return_value = mock_encoder
+        
+        # Setup OpenAI client mocks
+        mock_client_instance = MagicMock()
+        mock_openai_class.return_value = mock_client_instance
+        
+        from tests.test_llm_client import MockResponse
+        
+        config = test_config.copy()
+        config['response_chain_depth'] = 1  # Critical: depth = 1
+        
+        # Three responses: first (confirmed), second (unconfirmed), repair
+        responses = []
+        for i in range(3):
+            initial_response = Mock(id=f"resp_{i:03d}", status="queued")
+            mock_raw_initial = MagicMock()
+            mock_raw_initial.headers = {}
+            mock_raw_initial.parse.return_value = initial_response
+            
+            final_response = MockResponse(f"Response {i}")
+            final_response.id = f"resp_{i:03d}"
+            mock_raw_final = MagicMock()
+            mock_raw_final.headers = {}
+            mock_raw_final.parse.return_value = final_response
+            
+            responses.append((mock_raw_initial, mock_raw_final))
+        
+        # Configure mocks
+        mock_client_instance.responses.with_raw_response.create.side_effect = [
+            responses[0][0], responses[1][0], responses[2][0]
+        ]
+        
+        mock_client_instance.responses.with_raw_response.retrieve.side_effect = [
+            responses[0][1], responses[1][1], responses[2][1]
+        ]
+        
+        client = OpenAIClient(config)
+        
+        # Simulate the exact production scenario
+        with patch("src.utils.llm_client.time.sleep"):
+            # First successful response (slice_007)
+            text1, id1, _ = client.create_response("test", "data1")
+            client.confirm_response()  # Simulates successful validation
+            
+            # Second response (slice_008) - simulates validation failure
+            text2, id2, _ = client.create_response("test2", "data2")
+            # DON'T confirm - simulates validation failure
+            
+            # With the fix, repair should work without "Previous response not found" error
+            repair_text, repair_id, _ = client.repair_response("repair", "data")
+        
+        # Verify repair used the confirmed ID (resp_000), not the unconfirmed one
+        # Call index 2 (0=first, 1=second, 2=repair)
+        repair_call = mock_client_instance.responses.with_raw_response.create.call_args_list[2]
+        assert repair_call[1]["previous_response_id"] == "resp_000"

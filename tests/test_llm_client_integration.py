@@ -100,10 +100,6 @@ class TestOpenAIClientIntegration:
         # В async режиме reset_time обновляется через probe
         # assert client.tpm_bucket.reset_time is not None
 
-        print(f"\nResponse: {response_text}")
-        print(f"Response ID: {response_id}")
-        print(f"Tokens used: {usage.total_tokens}")
-        print(f"TPM remaining: {client.tpm_bucket.remaining_tokens}")
 
     def test_json_response(self, integration_config):
         """Тест получения JSON ответа"""
@@ -124,8 +120,6 @@ class TestOpenAIClientIntegration:
         except json.JSONDecodeError:
             pytest.fail(f"Response is not valid JSON: {response_text}")
 
-        print(f"\nJSON response: {json.dumps(data, indent=2)}")
-        print(f"Tokens used: {usage.total_tokens}")
 
     def test_response_chain(self, integration_config):
         """Тест цепочки ответов с контекстом"""
@@ -153,9 +147,6 @@ class TestOpenAIClientIntegration:
         assert id2 != id1
         assert client.last_response_id == id2
 
-        print(f"\nFirst response: {text1}")
-        print(f"Second response: {text2}")
-        print(f"Total tokens: {usage1.total_tokens + usage2.total_tokens}")
 
     def test_tpm_limiting(self, integration_config):
         """Тест ограничения TPM с проактивным ожиданием"""
@@ -167,22 +158,16 @@ class TestOpenAIClientIntegration:
         client = OpenAIClient(integration_config)
 
         # Первый запрос
-        print(f"\nTPM initial: {client.tpm_bucket.initial_limit}")
-        print(f"TPM remaining before 1st: {client.tpm_bucket.remaining_tokens}")
 
         text1, _, usage1 = client.create_response(
             instructions="Answer in one word only.", input_data="Say hello"
         )
 
-        print(f"1st response: {text1}, tokens: {usage1.total_tokens}")
-        print(f"TPM remaining after 1st: {client.tpm_bucket.remaining_tokens}")
 
         # Эмулируем низкий остаток токенов для теста ожидания
         client.tpm_bucket.remaining_tokens = 100  # Очень мало
         client.tpm_bucket.reset_time = int(time.time() + 2)  # Reset через 2 секунды
 
-        print(f"\nTPM artificially lowered to: {client.tpm_bucket.remaining_tokens}")
-        print("TPM reset time set to: +2 seconds")
 
         # Второй запрос должен подождать
         start_time = time.time()
@@ -191,8 +176,6 @@ class TestOpenAIClientIntegration:
         )
         wait_time = time.time() - start_time
 
-        print(f"2nd response: {text2}, tokens: {usage2.total_tokens}")
-        print(f"Waited: {wait_time:.1f}s before request")
 
         # Проверяем что ждали
         assert wait_time > 2.0, f"Should have waited >2s, but waited {wait_time:.1f}s"
@@ -216,7 +199,6 @@ class TestOpenAIClientIntegration:
             or "invalid" in str(exc_info.value).lower()
         )
 
-        print(f"\nError handled correctly: {type(exc_info.value).__name__}")
 
     def test_reasoning_model(self, integration_config):
         """Тест reasoning модели"""
@@ -237,9 +219,6 @@ class TestOpenAIClientIntegration:
         assert "56088" in response_text or "56,088" in response_text
         assert usage.reasoning_tokens > 0  # Должны быть reasoning токены
 
-        print(f"\nReasoning response: {response_text}")
-        print(f"Reasoning tokens: {usage.reasoning_tokens}")
-        print(f"Total tokens: {usage.total_tokens}")
 
     def test_headers_update(self, integration_config):
         """Test that TPM is updated via probe mechanism."""
@@ -260,11 +239,6 @@ class TestOpenAIClientIntegration:
         # reset_time может остаться None если лимиты не достигнуты
         # или обновиться если probe получил эту информацию
 
-        print("\n✓ TPM probe executed")
-        print(f"  Initial remaining: {initial_remaining}")
-        print(f"  Current remaining: {client.tpm_bucket.remaining_tokens}")
-        print(f"  Reset time: {client.tpm_bucket.reset_time}")
-        print(f"  Response: {response_text}")
 
     def test_background_mode_verification(self, integration_config, capsys):
         """Тест проверки работы в background режиме"""
@@ -282,10 +256,8 @@ class TestOpenAIClientIntegration:
         assert "] QUEUE" in captured.out or "] PROGRESS" in captured.out
         assert response_id[:8] in captured.out  # Первые 8 символов ID должны быть в выводе
 
-        print("\nBackground mode verified")
-        print(f"Console output captured: {len(captured.out)} chars")
-        print(f"Response: {response_text}")
 
+    @pytest.mark.slow
     @pytest.mark.timeout(90)
     def test_incomplete_response_handling(self, integration_config):
         """Тест обработки incomplete ответа - теперь без retry (сразу exception)"""
@@ -309,7 +281,6 @@ class TestOpenAIClientIntegration:
 
         # Проверяем что исключение содержит нужную информацию
         assert "incomplete" in str(exc_info.value).lower()
-        print(f"\nIncomplete response handling tested: {exc_info.value}")
 
     def test_timeout_cancellation(self, integration_config):
         """Тест отмены запроса при timeout"""
@@ -330,8 +301,8 @@ class TestOpenAIClientIntegration:
         error_msg = str(exc_info.value)
         assert "exceeded" in error_msg and "2s" in error_msg
 
-        print(f"\nTimeout handled correctly: {error_msg}")
 
+    @pytest.mark.slow
     @pytest.mark.timeout(45)
     def test_console_progress_output(self, integration_config, capsys):
         """Тест вывода прогресса в консоль"""
@@ -351,9 +322,6 @@ class TestOpenAIClientIntegration:
         captured = capsys.readouterr()
 
         # Для отладки - выведем что поймали
-        print("\n=== CAPTURED OUTPUT ===")
-        print(captured.out)
-        print("=== END CAPTURED ===")
 
         # Проверяем элементы вывода
         has_queue = "] QUEUE" in captured.out
@@ -375,12 +343,6 @@ class TestOpenAIClientIntegration:
         # Response ID должен быть в выводе (первые 8 символов)
         assert response_id[:8] in captured.out
 
-        print("\nConsole output test results:")
-        print(f"  Output captured: {len(captured.out)} chars")
-        print(f"  Queue messages: {has_queue}")
-        print(f"  Progress messages: {has_progress}")
-        print(f"  Response length: {len(response_text)} chars")
-        print(f"  Tokens used: {usage.output_tokens}")
 
     @pytest.mark.skip(reason="Test hangs due to insufficient token limit for reasoning models")
     def test_incomplete_with_reasoning_model(self, integration_config):
@@ -401,13 +363,10 @@ class TestOpenAIClientIntegration:
 
             # Если получили ответ после retry - успех
             assert "516006" in response_text or "516,006" in response_text
-            print("\nReasoning model handled incomplete successfully")
-            print(f"Final output tokens: {usage.output_tokens}")
 
         except (ValueError, IncompleteResponseError) as e:
             # Проверяем что это именно incomplete ошибка
             assert "incomplete" in str(e).lower()
-            print(f"\nReasoning incomplete test: {e}")
 
     def test_tpm_probe_mechanism(self, integration_config, caplog):
         """Test that TPM probe mechanism works correctly."""
@@ -435,10 +394,6 @@ class TestOpenAIClientIntegration:
         update_logs = [r for r in caplog.records if "TPM probe successful" in r.message]
         assert len(update_logs) > 0, "Should log successful probe"
 
-        print("\n✓ TPM probe mechanism verified")
-        print(f"  Probe logs found: {len(probe_logs)}")
-        print(f"  Initial tokens: {initial_remaining}")
-        print(f"  Current tokens: {client.tpm_bucket.remaining_tokens}")
 
     def test_context_accumulation_integration(self, integration_config):
         """Test that context accumulation works correctly in real API calls"""
@@ -480,10 +435,6 @@ class TestOpenAIClientIntegration:
         # Each subsequent request should have more context
         assert usage3.input_tokens > usage2.input_tokens
 
-        print("\n✓ Context accumulation verified:")
-        print(f"  Request 1 input tokens: {usage1.input_tokens}")
-        print(f"  Request 2 input tokens: {usage2.input_tokens} (accumulated)")
-        print(f"  Request 3 input tokens: {usage3.input_tokens} (further accumulated)")
 
 
 if __name__ == "__main__":

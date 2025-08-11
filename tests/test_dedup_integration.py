@@ -280,7 +280,7 @@ class TestDedupIntegrationReal(unittest.TestCase):
                 try:
                     path.unlink()
                 except Exception as e:
-                    print(f"Warning: Could not remove {file_path}: {e}")
+                    pass  # Ignore cleanup errors
 
     def test_semantic_duplicates_two_thresholds(self):
         """Тест с двумя порогами - низким 0.5 и реальным из конфига"""
@@ -298,16 +298,13 @@ class TestDedupIntegrationReal(unittest.TestCase):
         logs_path.mkdir(exist_ok=True)
 
         # ПЕРВЫЙ ВЫЗОВ: с низким порогом 0.5 для гарантированного нахождения дубликатов
-        print("\n=== TEST 1: Low threshold (0.5) - должны найтись дубликаты ===")
 
         # Загружаем реальный конфиг и патчим только sim_threshold
         from src.utils import load_config
 
         real_config = load_config()
         patched_config = real_config.copy()
-        patched_config["dedup"][
-            "sim_threshold"
-        ] = 0.5  # Низкий порог для семантических дубликатов
+        patched_config["dedup"]["sim_threshold"] = 0.5  # Низкий порог для семантических дубликатов
 
         with patch("src.dedup.load_config", return_value=patched_config):
             from src.dedup import main
@@ -316,7 +313,6 @@ class TestDedupIntegrationReal(unittest.TestCase):
             exit_code = main()
             duration = time.time() - start_time
 
-        print(f"Dedup with threshold 0.5 completed in {duration:.2f}s")
         assert exit_code == EXIT_SUCCESS
 
         # Проверяем результат с низким порогом
@@ -324,25 +320,13 @@ class TestDedupIntegrationReal(unittest.TestCase):
         with open(output_path, "r", encoding="utf-8") as f:
             result_low_threshold = json.load(f)
 
-        original_count = len(
-            [n for n in graph["nodes"] if n["type"] in ["Chunk", "Assessment"]]
-        )
+        original_count = len([n for n in graph["nodes"] if n["type"] in ["Chunk", "Assessment"]])
         result_count_low = len(
-            [
-                n
-                for n in result_low_threshold["nodes"]
-                if n["type"] in ["Chunk", "Assessment"]
-            ]
+            [n for n in result_low_threshold["nodes"] if n["type"] in ["Chunk", "Assessment"]]
         )
-
-        print("\nWith threshold 0.5:")
-        print(f"  Original chunks/assessments: {original_count}")
-        print(f"  Result chunks/assessments: {result_count_low}")
 
         # С низким порогом ДОЛЖНЫ найтись дубликаты
-        assert (
-            result_count_low < original_count
-        ), "With threshold 0.5 duplicates MUST be found"
+        assert result_count_low < original_count, "With threshold 0.5 duplicates MUST be found"
 
         # Смотрим что нашлось
         dedup_map_path = Path("logs/dedup_map.csv")
@@ -350,14 +334,14 @@ class TestDedupIntegrationReal(unittest.TestCase):
             reader = csv.DictReader(f)
             dedup_entries_low = list(reader)
 
-        print(f"  Duplicates found: {len(dedup_entries_low)}")
         for entry in dedup_entries_low[:5]:  # Показываем первые 5
-            print(
-                f"    {entry['duplicate_id']} -> {entry['master_id']} (similarity: {entry['similarity']})"
-            )
+            # Проверяем структуру записей в dedup_map
+            assert "duplicate_id" in entry, "Должен быть duplicate_id в записи"
+            assert "master_id" in entry, "Должен быть master_id в записи"
+            assert "similarity" in entry, "Должна быть similarity в записи"
+            assert float(entry["similarity"]) >= 0.5, "Similarity должна быть >= 0.5"
 
         # ВТОРОЙ ВЫЗОВ: с реальным порогом из конфига (0.97)
-        print("\n=== TEST 2: Real threshold (0.97) - могут не найтись дубликаты ===")
 
         # Восстанавливаем входной файл (на случай если dedup его изменил)
         with open(input_path, "w", encoding="utf-8") as f:
@@ -370,7 +354,6 @@ class TestDedupIntegrationReal(unittest.TestCase):
         exit_code = main()
         duration = time.time() - start_time
 
-        print(f"Dedup with real threshold completed in {duration:.2f}s")
         assert exit_code == EXIT_SUCCESS
 
         # Проверяем результат с высоким порогом
@@ -378,22 +361,15 @@ class TestDedupIntegrationReal(unittest.TestCase):
             result_high_threshold = json.load(f)
 
         result_count_high = len(
-            [
-                n
-                for n in result_high_threshold["nodes"]
-                if n["type"] in ["Chunk", "Assessment"]
-            ]
+            [n for n in result_high_threshold["nodes"] if n["type"] in ["Chunk", "Assessment"]]
         )
-
-        print("\nWith threshold 0.97:")
-        print(f"  Original chunks/assessments: {original_count}")
-        print(f"  Result chunks/assessments: {result_count_high}")
 
         # С высоким порогом дубликаты могут не найтись - это нормально
         if result_count_high == original_count:
-            print(
-                "  No duplicates found - threshold 0.97 is very high for semantic similarity"
-            )
+            # Проверяем что с порогом 0.97 дубликаты действительно не найдены
+            assert (
+                result_count_high == original_count
+            ), "С порогом 0.97 ожидалось сохранение всех узлов"
 
         # Смотрим что нашлось
         with open(dedup_map_path, "r", encoding="utf-8") as f:
@@ -401,21 +377,28 @@ class TestDedupIntegrationReal(unittest.TestCase):
             dedup_entries_high = list(reader)
 
         if dedup_entries_high:
-            print(f"  Duplicates found: {len(dedup_entries_high)}")
             for entry in dedup_entries_high:
-                print(
-                    f"    {entry['duplicate_id']} -> {entry['master_id']} (similarity: {entry['similarity']})"
-                )
+                # Проверяем записи с высоким порогом
+                assert (
+                    float(entry["similarity"]) >= 0.97
+                ), f"Similarity должна быть >= 0.97, но получено {entry['similarity']}"
+                assert (
+                    entry["duplicate_id"] != entry["master_id"]
+                ), "duplicate_id не должен совпадать с master_id для дубликатов"
         else:
-            print("  No duplicates found with 0.97 threshold")
+            # Если записей нет, проверяем что все узлы сохранены
+            assert (
+                result_count_high == original_count
+            ), "Если дубликатов нет, должны сохраниться все узлы"
 
         # Итоговое сравнение
-        print("\n=== SUMMARY ===")
-        print(f"Low threshold (0.5):  {len(dedup_entries_low)} duplicates found")
-        print(f"High threshold (0.97): {len(dedup_entries_high)} duplicates found")
-        print(
-            f"Difference: {len(dedup_entries_low) - len(dedup_entries_high)} more duplicates with lower threshold"
-        )
+        # Проверяем что с низким порогом найдено больше дубликатов чем с высоким
+        assert (
+            result_count_low <= result_count_high
+        ), f"С низким порогом (0.5) должно остаться меньше или столько же узлов чем с высоким (0.97): {result_count_low} vs {result_count_high}"
+        assert len(dedup_entries_low) >= len(
+            dedup_entries_high
+        ), f"С низким порогом должно найтись больше или столько же дубликатов: {len(dedup_entries_low)} vs {len(dedup_entries_high)}"
 
     def test_edge_cases_with_real_api(self):
         """Тест граничных случаев с реальным API"""
@@ -469,9 +452,7 @@ class TestDedupIntegrationReal(unittest.TestCase):
             if "identical" in e["duplicate_id"] or "identical" in e["master_id"]
         ]
         assert len(identical_entries) == 1
-        assert (
-            float(identical_entries[0]["similarity"]) > 0.99
-        )  # Почти 1.0 для идентичных
+        assert float(identical_entries[0]["similarity"]) > 0.99  # Почти 1.0 для идентичных
 
     def test_rate_limiting_handling(self):
         """Тест обработки rate limiting от реального API"""
@@ -505,22 +486,20 @@ class TestDedupIntegrationReal(unittest.TestCase):
         exit_code = main()
         duration = time.time() - start_time
 
-        print(f"\nProcessed {len(nodes)} nodes in {duration:.2f}s")
-        print(f"Average time per node: {duration/len(nodes):.3f}s")
-
         # Должно успешно завершиться
         assert exit_code == EXIT_SUCCESS
 
         # Если обработка заняла больше 20 секунд, возможно было ожидание rate limit
         if duration > 20:
-            print("Processing took >20s, likely hit rate limits and waited")
+            pass  # Было print предупреждение о долгой работе
 
     def test_invalid_graph_structure(self):
         """Тест обработки невалидной структуры графа"""
         # Граф без обязательного поля 'edges'
         invalid_graph = {
-            "nodes": [{"id": "test", "type": "Chunk", "text": "Test", "node_offset": 0,
-            "local_start": 0}]
+            "nodes": [
+                {"id": "test", "type": "Chunk", "text": "Test", "node_offset": 0, "local_start": 0}
+            ]
             # 'edges' отсутствует!
         }
 

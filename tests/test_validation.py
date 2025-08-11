@@ -41,6 +41,11 @@ class TestLoadSchema:
 class TestValidateJson:
     """Тесты валидации JSON по схемам."""
 
+    def setup_method(self):
+        """Очистить кэш схем перед каждым тестом для изоляции."""
+        from src.utils import validation
+        validation._SCHEMA_CACHE.clear()
+
     def test_valid_concept_dictionary(self):
         """Тест валидации корректного ConceptDictionary."""
         valid_data = {
@@ -135,6 +140,11 @@ class TestValidateJson:
 
 class TestValidateGraphInvariants:
     """Тесты проверки инвариантов графа."""
+
+    def setup_method(self):
+        """Очистить кэш схем перед каждым тестом для изоляции."""
+        from src.utils import validation
+        validation._SCHEMA_CACHE.clear()
 
     def test_valid_graph_invariants(self):
         """Тест корректного графа."""

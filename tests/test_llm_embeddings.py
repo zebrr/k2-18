@@ -14,8 +14,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from utils.llm_embeddings import (EmbeddingsClient, cosine_similarity_batch,
-                                  get_embeddings)
+from utils.llm_embeddings import EmbeddingsClient, cosine_similarity_batch, get_embeddings
 
 
 class TestEmbeddingsClient:
@@ -278,3 +277,111 @@ class TestHelperFunctions:
         # Косинус между векторами
         expected = 0.6 * 0.8 + 0.8 * 0.6  # = 0.96
         assert np.isclose(similarity[0, 0], expected)
+
+    def test_get_embeddings_with_mixed_empty_texts(self):
+        """Тест обработки смешанных пустых и непустых текстов (покрытие строк 319-330)."""
+        texts = [
+            "First non-empty text",
+            "",  # Empty text
+            "   ",  # Whitespace only
+            "Second non-empty text",
+            "",  # Another empty
+            "Third non-empty text",
+        ]
+
+        mock_response = Mock()
+        mock_response.data = [
+            Mock(embedding=[0.1] * 1536),
+            Mock(embedding=[0.2] * 1536),
+            Mock(embedding=[0.3] * 1536),
+        ]
+
+        config = {
+            "embedding_api_key": "test-key",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_tpm_limit": 350000,
+            "batch_size": 100,
+        }
+
+        with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            mock_client = Mock()
+            mock_client.embeddings.create.return_value = mock_response
+            mock_openai.return_value = mock_client
+
+            with patch("builtins.print"):  # Suppress print output
+                result = get_embeddings(texts, config)
+
+        # Проверяем, что результат имеет правильную форму
+        assert result.shape == (6, 1536)
+
+        # Проверяем, что пустые тексты получили нулевые векторы
+        assert np.allclose(result[1], 0)  # Empty text
+        assert np.allclose(result[2], 0)  # Whitespace only
+        assert np.allclose(result[4], 0)  # Another empty
+
+        # Проверяем, что непустые тексты получили ненулевые векторы
+        assert not np.allclose(result[0], 0)  # First non-empty
+        assert not np.allclose(result[3], 0)  # Second non-empty
+        assert not np.allclose(result[5], 0)  # Third non-empty
+
+    def test_get_embeddings_batch_processing_with_retries(self):
+        """Тест batch processing с retry при ошибках API."""
+        texts = ["text" + str(i) for i in range(250)]  # Больше чем один batch
+
+        # Создаем 250 embeddings для всех текстов
+        # Первые 100 - [0.1] * 1536, следующие 100 - [0.2] * 1536, последние 50 - [0.3] * 1536
+        all_embeddings = []
+        all_embeddings.extend([Mock(embedding=[0.1] * 1536) for _ in range(100)])
+        all_embeddings.extend([Mock(embedding=[0.2] * 1536) for _ in range(100)])
+        all_embeddings.extend([Mock(embedding=[0.3] * 1536) for _ in range(50)])
+        
+        # Один Mock response со всеми 250 embeddings
+        mock_response = Mock(data=all_embeddings)
+
+        config = {
+            "embedding_api_key": "test-key",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_tpm_limit": 350000,
+            "batch_size": 250,  # Process all at once
+            "max_retries": 3,
+        }
+
+        with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            mock_client = Mock()
+            # Первая попытка вызывает ошибку, вторая успешная
+            mock_client.embeddings.create.side_effect = [
+                Exception("Rate limit error"),
+                mock_response,
+            ]
+            mock_openai.return_value = mock_client
+
+            with patch("utils.llm_embeddings.time.sleep"):  # Skip sleep during test
+                with patch("utils.llm_embeddings.logger"):  # Suppress log output
+                    result = get_embeddings(texts, config)
+
+        # Проверяем, что все тексты получили embeddings несмотря на ошибку
+        assert result.shape == (250, 1536)
+        assert not np.allclose(result, 0)  # Все векторы должны быть ненулевыми
+
+    def test_embeddings_client_retry_with_final_failure(self):
+        """Тест исчерпания попыток retry."""
+        config = {
+            "embedding_api_key": "test-key",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_tpm_limit": 350000,
+            "max_retries": 2,
+        }
+
+        with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            mock_client = Mock()
+            # Все попытки вызывают ошибку
+            mock_client.embeddings.create.side_effect = Exception("Persistent API error")
+            mock_openai.return_value = mock_client
+
+            client = EmbeddingsClient(config)
+
+            with patch("utils.llm_embeddings.time.sleep"):  # Skip sleep
+                with pytest.raises(Exception) as exc_info:
+                    client.get_embeddings(["test text"])
+
+                assert "Persistent API error" in str(exc_info.value)

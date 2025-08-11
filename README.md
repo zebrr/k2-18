@@ -45,7 +45,7 @@ Raw Content (.md, .txt, .html)
 - **Context Preservation**: Maintains semantic continuity across chunk boundaries
 - **Smart Deduplication**: Uses embeddings to identify and merge semantically identical content
 - **Long-range Connections**: Discovers relationships between concepts separated by many pages
-- **Language Support**: Russian and English content
+- **Language Support**: Any UTF-8 text content
 
 ## Requirements
 
@@ -166,30 +166,6 @@ The pipeline uses consistent exit codes:
 
 See `/docs/specs/util_exit_codes.md` for details.
 
-## Project Structure
-
-```
-k2-18/
-├── src/
-│   ├── slicer.py              # Text chunking
-│   ├── itext2kg_concepts.py   # Concept extraction
-│   ├── itext2kg_graph.py      # Graph construction
-│   ├── dedup.py               # Deduplication
-│   ├── refiner.py             # Connection refinement
-│   ├── config.toml            # Configuration
-│   ├── prompts/               # LLM prompts
-│   ├── schemas/               # JSON schemas
-│   └── utils/                 # Shared utilities
-├── data/
-│   ├── raw/                   # Input files
-│   ├── staging/               # Intermediate files
-│   └── out/                   # Results
-├── docs/
-│   └── specs/                 # Module specifications
-├── tests/                     # Test suite
-└── logs/                      # Processing logs
-```
-
 ## Documentation
 
 Detailed specifications for each component are in `/docs/specs/`:
@@ -221,15 +197,38 @@ Detailed specifications for each component are in `/docs/specs/`:
 ### Running Tests
 
 ```bash
-# All tests
+# Activate virtual environment first
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate     # Windows
+
+# Quick unit tests (< 10 seconds)
+pytest tests/ -m "not integration and not slow" -v
+
+# All unit tests with coverage
+pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
+
+# Integration tests (require API key)
+pytest tests/ -m "integration" -v
+
+# Full test suite
 pytest tests/ -v
 
-# Specific module
-pytest tests/test_slicer.py -v
-
-# With coverage
+# Generate HTML coverage report
 pytest tests/ --cov=src --cov-report=html
+# Open htmlcov/index.html in browser
+
+# Specific module testing
+pytest tests/test_slicer.py -v
+pytest tests/test_validation.py::TestValidateJson -v
+
+# Check test quality
+grep -r "pass.*# Было print" tests/  # Should return nothing
 ```
+
+Test markers:
+- `integration` - Tests requiring real API calls
+- `slow` - Tests taking >30 seconds
+- `timeout` - Tests with explicit timeout settings
 
 ### Code Quality
 

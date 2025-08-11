@@ -1073,6 +1073,57 @@ class TestEnvironmentVariables:
                 os.environ["OPENAI_API_KEY"] = original_api_key
 
 
+def get_minimal_valid_config():
+    """Возвращает минимальную валидную конфигурацию для тестов."""
+    return textwrap.dedent(
+        """
+        [slicer]
+        log_level = "info"
+        max_tokens = 4000
+        overlap = 400
+        tokenizer = "o200k_base"
+        allowed_extensions = ["md", "txt", "json", "html"]
+        soft_boundary = true
+        soft_boundary_max_shift = 200
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        log_level = "info"
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+    )
+
+
 class TestDedupValidation:
     """Tests for dedup section validation."""
 
@@ -1249,6 +1300,255 @@ class TestDedupValidation:
             f.flush()
 
             with pytest.raises(ConfigValidationError, match="dedup.faiss_M must be positive"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_slicer_negative_overlap(self):
+        """Тест валидации отрицательного overlap (покрытие строки 182)."""
+        config_with_negative_overlap = textwrap.dedent(
+            """
+        [slicer]
+        log_level = "info"
+        max_tokens = 4000
+        overlap = -10
+        tokenizer = "o200k_base"
+        allowed_extensions = ["md", "txt", "json", "html"]
+        soft_boundary = true
+        soft_boundary_max_shift = 200
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_overlap)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="slicer.overlap must be non-negative"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_slicer_negative_soft_boundary_shift(self):
+        """Тест валидации отрицательного soft_boundary_max_shift (покрытие строки 185)."""
+        config = get_minimal_valid_config()
+        # Заменяем значение soft_boundary_max_shift на отрицательное
+        config_with_negative_shift = config.replace(
+            "soft_boundary_max_shift = 200",
+            "soft_boundary_max_shift = -100"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_shift)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="slicer.soft_boundary_max_shift must be non-negative"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_itext2kg_invalid_temperature(self):
+        """Тест валидации некорректной temperature (покрытие строк 198, 202)."""
+        # Температура < 0
+        config = get_minimal_valid_config()
+        # Добавляем temperature с некорректным значением
+        config_with_negative_temp = config.replace(
+            "max_retries = 3",
+            "max_retries = 3\n        temperature = -0.5"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_temp)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="temperature must be between 0 and 2"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+        # Температура > 2
+        config = get_minimal_valid_config()
+        config_with_high_temp = config.replace(
+            "max_retries = 3",
+            "max_retries = 3\n        temperature = 2.5"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_high_temp)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="temperature must be between 0 and 2"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_dedup_invalid_similarity_threshold(self):
+        """Тест валидации некорректного sim_threshold (покрытие строк 221, 224)."""
+        # sim_threshold < 0
+        config = get_minimal_valid_config()
+        config_with_negative_sim = config.replace(
+            "sim_threshold = 0.97",
+            "sim_threshold = -0.1"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_sim)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="dedup.sim_threshold must be between 0.0 and 1.0"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+        # sim_threshold > 1
+        config = get_minimal_valid_config()
+        config_with_high_sim = config.replace(
+            "sim_threshold = 0.97",
+            "sim_threshold = 1.5"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_high_sim)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="dedup.sim_threshold must be between 0.0 and 1.0"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_dedup_invalid_len_ratio(self):
+        """Тест валидации некорректного len_ratio_min (покрытие строк 241, 244)."""
+        # len_ratio_min < 0
+        config_with_negative_ratio = get_minimal_valid_config().replace(
+            "len_ratio_min = 0.8", "len_ratio_min = -0.1"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_ratio)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="dedup.len_ratio_min must be between 0.0 and 1.0"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+        # len_ratio_min > 1
+        config_with_high_ratio = get_minimal_valid_config().replace(
+            "len_ratio_min = 0.8", "len_ratio_min = 1.1"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_high_ratio)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="dedup.len_ratio_min must be between 0.0 and 1.0"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_refiner_invalid_weight_boundaries(self):
+        """Тест валидации некорректных weight границ (покрытие строк 282, 288, 291, 294)."""
+        # weight_low отрицательный
+        config_invalid_weights = get_minimal_valid_config().replace(
+            "weight_low = 0.3", "weight_low = -0.1"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_invalid_weights)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="refiner.weight_low must be between 0.0 and 1.0"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+        # weight_mid > 1
+        config_invalid_mid = get_minimal_valid_config().replace(
+            "weight_mid = 0.6", "weight_mid = 1.5"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_invalid_mid)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="refiner.weight_mid must be between 0.0 and 1.0"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+        # weight_high < 0
+        config_invalid_high = get_minimal_valid_config().replace(
+            "weight_high = 0.9", "weight_high = -0.1"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_invalid_high)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="refiner.weight_high must be between 0.0 and 1.0"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_weight_order(self):
+        """Тест валидации порядка weight (покрытие строк 301-302)."""
+        # Make weight_low > weight_mid to violate the order
+        config_invalid_order = (
+            get_minimal_valid_config()
+            .replace("weight_low = 0.3", "weight_low = 0.7")
+            .replace("weight_mid = 0.6", "weight_mid = 0.5")
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_invalid_order)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="refiner weights must satisfy: weight_low < weight_mid < weight_high"
+            ):
                 load_config(f.name)
 
         Path(f.name).unlink()

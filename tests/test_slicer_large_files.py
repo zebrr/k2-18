@@ -11,6 +11,7 @@
 
 import json
 import shutil
+
 # Добавляем src в path для импорта
 import sys
 import tempfile
@@ -50,6 +51,7 @@ class TestSlicerLargeFiles:
             # Восстанавливаем рабочую директорию
             os.chdir(original_cwd)
 
+    @pytest.mark.slow
     @pytest.mark.timeout(60)  # Таймаут 60 секунд
     def test_large_file_performance(self, temp_project_dir):
         """Тест производительности на большом файле."""
@@ -69,8 +71,6 @@ class TestSlicerLargeFiles:
         # Измеряем размер файла
         file_size_bytes = target_file.stat().st_size
         file_size_mb = file_size_bytes / (1024 * 1024)
-
-        print(f"\nРазмер файла: {file_size_mb:.2f} MB ({file_size_bytes} байт)")
 
         # Конфигурация для более быстрой обработки
         test_config = {
@@ -97,11 +97,6 @@ class TestSlicerLargeFiles:
             throughput_mb_per_sec = file_size_mb / processing_time
             throughput_mb_per_min = throughput_mb_per_sec * 60
 
-            print(f"Время обработки: {processing_time:.2f} секунд")
-            print(
-                f"Производительность: {throughput_mb_per_sec:.2f} MB/sec ({throughput_mb_per_min:.1f} MB/min)"
-            )
-
             # Проверяем успешное завершение
             assert exit_code == 0, "Slicer завершился с ошибкой"
 
@@ -115,8 +110,6 @@ class TestSlicerLargeFiles:
             slice_files = list(staging_dir.glob("*.slice.json"))
             assert len(slice_files) > 0, "Не создались slice файлы"
 
-            print(f"Создано слайсов: {len(slice_files)}")
-
             # Базовая проверка слайсов
             for slice_file in slice_files:
                 with open(slice_file, "r", encoding="utf-8") as f:
@@ -127,8 +120,6 @@ class TestSlicerLargeFiles:
                 assert "text" in slice_data
                 assert "slice_token_start" in slice_data
                 assert "slice_token_end" in slice_data
-
-            print("✅ Тест производительности пройден")
 
         finally:
             slicer.load_config = original_load_config
@@ -189,9 +180,6 @@ class TestSlicerLargeFiles:
                     json_slices[slice_data["id"]] = slice_data
 
             # === АНАЛИЗ РЕЗУЛЬТАТОВ ===
-            print("\nРезультаты обработки:")
-            print(f"  MD файл: {len(md_slices)} слайсов")
-            print(f"  JSON файл: {len(json_slices)} слайсов")
 
             # Проверяем что оба файла успешно обработаны
             assert len(md_slices) > 0, "MD файл не создал слайсов"
@@ -199,16 +187,11 @@ class TestSlicerLargeFiles:
 
             # Подсчитываем общее количество токенов
             md_total_tokens = sum(
-                s["slice_token_end"] - s["slice_token_start"]
-                for s in md_slices.values()
+                s["slice_token_end"] - s["slice_token_start"] for s in md_slices.values()
             )
             json_total_tokens = sum(
-                s["slice_token_end"] - s["slice_token_start"]
-                for s in json_slices.values()
+                s["slice_token_end"] - s["slice_token_start"] for s in json_slices.values()
             )
-
-            print(f"  MD токенов: {md_total_tokens}")
-            print(f"  JSON токенов: {json_total_tokens}")
 
             # Проверяем что разница в токенах разумная (< 20%)
             # JSON обычно содержит больше токенов из-за синтаксиса
@@ -218,7 +201,6 @@ class TestSlicerLargeFiles:
                     / max(md_total_tokens, json_total_tokens)
                     * 100
                 )
-                print(f"  Разница в токенах: {token_diff_percent:.1f}%")
 
                 assert (
                     token_diff_percent < 20
@@ -226,21 +208,17 @@ class TestSlicerLargeFiles:
 
             # Проверяем что количество слайсов в разумных пределах (< 20% разницы)
             slice_diff_percent = (
-                abs(len(md_slices) - len(json_slices))
-                / max(len(md_slices), len(json_slices))
-                * 100
+                abs(len(md_slices) - len(json_slices)) / max(len(md_slices), len(json_slices)) * 100
             )
-            print(f"  Разница в количестве слайсов: {slice_diff_percent:.1f}%")
 
             assert (
                 slice_diff_percent < 20
             ), f"Слишком большая разница в количестве слайсов: {slice_diff_percent:.1f}%"
 
-            print("✅ Форматы показывают консистентные результаты")
-
         finally:
             slicer.load_config = original_load_config
 
+    @pytest.mark.slow
     @pytest.mark.timeout(30)  # Уменьшаем таймаут до 30 секунд
     def test_slice_validation_large_scale(self, temp_project_dir):
         """Тест валидации множества slice файлов."""
@@ -275,8 +253,6 @@ class TestSlicerLargeFiles:
             slice_files = list(staging_dir.glob("*.slice.json"))
             assert len(slice_files) > 0, "Должен быть создан хотя бы один слайс"
 
-            print(f"\nВалидируем {len(slice_files)} slice файлов...")
-
             # Валидируем каждый slice файл
             validation_errors = []
 
@@ -298,23 +274,17 @@ class TestSlicerLargeFiles:
                     ]
                     for field in required_fields:
                         if field not in slice_data:
-                            validation_errors.append(
-                                f"{slice_file.name}: missing field {field}"
-                            )
+                            validation_errors.append(f"{slice_file.name}: missing field {field}")
 
                     # Проверяем типы данных
                     if not isinstance(slice_data.get("order"), int):
                         validation_errors.append(f"{slice_file.name}: order is not int")
 
                     if not isinstance(slice_data.get("slice_token_start"), int):
-                        validation_errors.append(
-                            f"{slice_file.name}: slice_token_start is not int"
-                        )
+                        validation_errors.append(f"{slice_file.name}: slice_token_start is not int")
 
                     if not isinstance(slice_data.get("slice_token_end"), int):
-                        validation_errors.append(
-                            f"{slice_file.name}: slice_token_end is not int"
-                        )
+                        validation_errors.append(f"{slice_file.name}: slice_token_end is not int")
 
                     # Проверяем логику
                     start = slice_data.get("slice_token_start", 0)
@@ -338,27 +308,27 @@ class TestSlicerLargeFiles:
                     # Проверяем slug формат
                     slug = slice_data.get("slug", "")
                     if " " in slug or slug != slug.lower():
-                        validation_errors.append(
-                            f"{slice_file.name}: invalid slug format"
-                        )
+                        validation_errors.append(f"{slice_file.name}: invalid slug format")
 
                 except Exception as e:
                     validation_errors.append(f"{slice_file.name}: {str(e)}")
 
             # Выводим ошибки валидации
             if validation_errors:
-                print(f"\nОшибки валидации ({len(validation_errors)}):")
                 for error in validation_errors[:10]:  # Показываем первые 10
-                    print(f"  - {error}")
+                    # Проверяем формат ошибок
+                    assert isinstance(error, str), "Ошибка должна быть строкой"
+                    assert ":" in error, f"Ошибка должна содержать ':' - {error}"
                 if len(validation_errors) > 10:
-                    print(f"  ... и еще {len(validation_errors) - 10} ошибок")
+                    # Проверяем что есть дополнительные ошибки
+                    assert (
+                        len(validation_errors) > 10
+                    ), f"Должно быть больше 10 ошибок, но найдено {len(validation_errors)}"
 
             # Проверяем что нет критических ошибок валидации
             assert (
                 len(validation_errors) == 0
             ), f"Найдены ошибки валидации: {len(validation_errors)}"
-
-            print(f"✅ Все {len(slice_files)} slice файлов прошли валидацию")
 
         finally:
             slicer.load_config = original_load_config
@@ -432,28 +402,29 @@ class TestSlicerLargeFiles:
                     "slice_token_end",
                 ]:
                     if first[field] != second[field]:
-                        differences.append(
-                            f"{slice_id}.{field}: {first[field]} != {second[field]}"
-                        )
+                        differences.append(f"{slice_id}.{field}: {first[field]} != {second[field]}")
 
                 # Проверяем текст (должен быть идентичным)
                 if first["text"] != second["text"]:
                     differences.append(f"{slice_id}.text: content differs")
 
             if differences:
-                print(f"\nНайдены различия между запусками ({len(differences)}):")
                 for diff in differences[:5]:
-                    print(f"  - {diff}")
+                    # Проверяем формат различий
+                    assert isinstance(diff, str), "Различие должно быть строкой"
+                    assert ":" in diff, f"Различие должно содержать ':' - {diff}"
+                    assert (
+                        "!=" in diff or "differs" in diff
+                    ), f"Различие должно указывать на несовпадение - {diff}"
                 if len(differences) > 5:
-                    print(f"  ... и еще {len(differences) - 5} различий")
+                    # Проверяем что есть дополнительные различия
+                    assert (
+                        len(differences) > 5
+                    ), f"Должно быть больше 5 различий, но найдено {len(differences)}"
 
             assert (
                 len(differences) == 0
             ), f"Результаты не детерминированы: {len(differences)} различий"
-
-            print(
-                f"✅ Детерминированность подтверждена для {len(first_run_slices)} слайсов"
-            )
 
         finally:
             slicer.load_config = original_load_config

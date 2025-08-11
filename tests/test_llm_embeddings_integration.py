@@ -137,7 +137,6 @@ class TestBatchProcessing:
         duration = time.time() - start_time
 
         assert embeddings.shape == (150, 1536)
-        print(f"\nОбработка 150 текстов заняла {duration:.2f} секунд")
 
         # Проверяем, что векторы различны
         # Берем несколько случайных пар
@@ -353,8 +352,6 @@ class TestTPMLimits:
         duration = time.time() - start_time
 
         assert embeddings.shape == (50, 1536)
-        print(f"\nОбработка 50 текстов заняла {duration:.2f} секунд")
-        print(f"Осталось токенов: {client.remaining_tokens}")
 
 
 class TestErrorHandling:
@@ -432,7 +429,6 @@ class TestPerformance:
         assert duration < 5.0
 
         texts_per_second = 20 / duration
-        print(f"\nСкорость: {texts_per_second:.1f} текстов/сек")
 
 
 if __name__ == "__main__":

@@ -243,6 +243,12 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
     if section["max_retries"] < 0:
         raise ConfigValidationError("itext2kg.max_retries must be non-negative")
     
+    # Проверяем температуру, если она указана
+    if "temperature" in section:
+        temp = section["temperature"]
+        if not (0 <= temp <= 2):
+            raise ConfigValidationError("itext2kg.temperature must be between 0 and 2")
+    
     # Validate optional response_chain_depth
     if "response_chain_depth" in section:
         depth = section["response_chain_depth"]

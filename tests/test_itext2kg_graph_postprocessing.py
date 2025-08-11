@@ -31,7 +31,7 @@ class TestIDPostProcessing:
                 "reasoning_summary": "auto",
                 "timeout": 360,
                 "max_retries": 3,
-                "poll_interval": 7,
+                "poll_interval": 2,
             }
         }
 

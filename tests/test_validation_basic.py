@@ -19,20 +19,15 @@ from src.utils.validation import (GraphInvariantError, _load_schema,
 def test_basic_functionality():
     """Базовый тест загрузки модуля и схем."""
 
-    print("=== Тест загрузки модуля валидации ===")
 
     # Тест 1: Проверяем, что можем загрузить схемы
     try:
         concept_schema = _load_schema("ConceptDictionary")
-        print("✅ ConceptDictionary.schema.json загружена")
-        print(f"   Содержит ключи: {list(concept_schema.keys())}")
     except Exception as e:
         pytest.fail(f"Ошибка загрузки ConceptDictionary.schema.json: {e}")
 
     try:
         graph_schema = _load_schema("LearningChunkGraph")
-        print("✅ LearningChunkGraph.schema.json загружена")
-        print(f"   Содержит ключи: {list(graph_schema.keys())}")
     except Exception as e:
         pytest.fail(f"Ошибка загрузки LearningChunkGraph.schema.json: {e}")
 
@@ -51,7 +46,6 @@ def test_basic_functionality():
 
         validate_json(valid_concept_dict, "ConceptDictionary")
         validate_concept_dictionary_invariants(valid_concept_dict)
-        print("✅ Валидация ConceptDictionary прошла успешно")
 
     except Exception as e:
         pytest.fail(f"Ошибка валидации ConceptDictionary: {e}")
@@ -74,7 +68,6 @@ def test_basic_functionality():
 
         validate_json(valid_graph, "LearningChunkGraph")
         validate_graph_invariants(valid_graph)
-        print("✅ Валидация LearningChunkGraph прошла успешно")
 
     except Exception as e:
         pytest.fail(f"Ошибка валидации LearningChunkGraph: {e}")
@@ -106,13 +99,12 @@ def test_basic_functionality():
 
     except GraphInvariantError as e:
         if "self-loop" in str(e):
-            print("✅ Корректно обнаружил PREREQUISITE self-loop")
+            pass  # Ожидаемая ошибка обнаружена
         else:
             pytest.fail(f"Неожиданная ошибка: {e}")
     except Exception as e:
         pytest.fail(f"Неожиданное исключение: {e}")
 
-    print("\n🎉 Все базовые тесты прошли успешно!")
     # Тест завершается успешно - не возвращаем значение
 
 

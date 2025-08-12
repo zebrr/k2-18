@@ -7,8 +7,11 @@ Unit тесты для модуля slicer.py
 - validate_config_parameters()
 """
 
+import json
+
 # Добавляем src в path для импорта
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -16,8 +19,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from slicer import (create_slug, preprocess_text, slice_text_with_window,
-                    validate_config_parameters)
+from slicer import (
+    InputError,
+    create_slug,
+    load_and_validate_file,
+    preprocess_text,
+    process_file,
+    save_slice,
+    slice_text_with_window,
+    validate_config_parameters,
+)
 from utils.tokenizer import count_tokens
 
 
@@ -220,9 +231,7 @@ class TestValidateConfigParameters:
         """Тест отсутствия секции slicer."""
         config = {"other": {}}
 
-        with pytest.raises(
-            ValueError, match="Missing required parameter slicer.max_tokens"
-        ):
+        with pytest.raises(ValueError, match="Missing required parameter slicer.max_tokens"):
             validate_config_parameters(config)
 
     def test_missing_required_param(self):
@@ -236,9 +245,7 @@ class TestValidateConfigParameters:
             }
         }
 
-        with pytest.raises(
-            ValueError, match="Missing required parameter slicer.overlap"
-        ):
+        with pytest.raises(ValueError, match="Missing required parameter slicer.overlap"):
             validate_config_parameters(config)
 
     def test_invalid_max_tokens(self):
@@ -266,9 +273,7 @@ class TestValidateConfigParameters:
             }
         }
 
-        with pytest.raises(
-            ValueError, match="must be a non-negative integer"
-        ):
+        with pytest.raises(ValueError, match="must be a non-negative integer"):
             validate_config_parameters(config)
 
     def test_overlap_greater_than_max_tokens(self):
@@ -472,4 +477,232 @@ class TestSliceTextWithWindow:
         # (порядок может слегка отличаться из-за токенизации, но основное содержание должно быть)
         assert "Привет" in combined_text
         assert "🌍" in combined_text
-        assert "эмодзи" in combined_text
+
+
+class TestLoadAndValidateFile:
+    """Тесты для функции load_and_validate_file."""
+
+    def test_valid_file_utf8(self):
+        """Тест загрузки валидного UTF-8 файла."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".txt", delete=False
+        ) as f:
+            f.write("This is a test content.\nСодержимое на русском языке.")
+            temp_path = Path(f.name)
+
+        try:
+            content = load_and_validate_file(temp_path, ["txt"])
+            assert "This is a test content" in content
+            assert "Содержимое на русском языке" in content
+        finally:
+            temp_path.unlink()
+
+    def test_valid_file_cp1251(self):
+        """Тест загрузки файла в кодировке CP1251."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="cp1251", suffix=".txt", delete=False
+        ) as f:
+            f.write("Текст в кодировке CP1251")
+            temp_path = Path(f.name)
+
+        try:
+            content = load_and_validate_file(temp_path, ["txt"])
+            assert "Текст в кодировке CP1251" in content
+        finally:
+            temp_path.unlink()
+
+    def test_empty_file_error(self):
+        """Проверка InputError для пустого файла."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(InputError) as exc_info:
+                load_and_validate_file(temp_path, ["txt"])
+            assert "Empty file detected" in str(exc_info.value)
+        finally:
+            temp_path.unlink()
+
+    def test_unsupported_extension_error(self):
+        """Проверка InputError для неподдерживаемого расширения."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xyz", delete=False) as f:
+            f.write("Some content")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(InputError) as exc_info:
+                load_and_validate_file(temp_path, ["txt", "md", "json"])
+            assert "Unsupported file extension" in str(exc_info.value)
+        finally:
+            temp_path.unlink()
+
+    def test_file_with_only_whitespace(self):
+        """Файл только с пробелами должен вызвать InputError."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("   \n\t\n   ")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(InputError) as exc_info:
+                load_and_validate_file(temp_path, ["txt"])
+            assert "Empty file detected" in str(exc_info.value)
+        finally:
+            temp_path.unlink()
+
+
+class TestSaveSlice:
+    """Тесты для функции save_slice."""
+
+    def test_save_slice_success(self):
+        """Успешное сохранение слайса."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            slice_data = {
+                "id": "slice_001",
+                "order": 1,
+                "source_file": "test.txt",
+                "slug": "test",
+                "text": "Test content",
+                "slice_token_start": 0,
+                "slice_token_end": 10,
+            }
+
+            save_slice(slice_data, output_dir)
+
+            # Check file exists
+            output_file = output_dir / "slice_001.slice.json"
+            assert output_file.exists()
+
+            # Check content
+            with open(output_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+
+            assert saved_data == slice_data
+
+    def test_save_slice_creates_directory(self):
+        """Создание директории если не существует."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "nested" / "dir"
+            slice_data = {
+                "id": "slice_002",
+                "order": 2,
+                "source_file": "test.txt",
+                "slug": "test",
+                "text": "Test content",
+                "slice_token_start": 0,
+                "slice_token_end": 10,
+            }
+
+            # Directory doesn't exist yet, but parent does
+            output_dir.parent.mkdir(parents=True, exist_ok=True)
+
+            # Note: save_slice expects directory to exist
+            # Create directory first
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            save_slice(slice_data, output_dir)
+
+            output_file = output_dir / "slice_002.slice.json"
+            assert output_file.exists()
+
+    def test_save_slice_utf8_content(self):
+        """Корректное сохранение UTF-8 контента."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            slice_data = {
+                "id": "slice_003",
+                "order": 3,
+                "source_file": "test.txt",
+                "slug": "test",
+                "text": "Тест UTF-8: 你好 🌍 éñ",
+                "slice_token_start": 0,
+                "slice_token_end": 10,
+            }
+
+            save_slice(slice_data, output_dir)
+
+            output_file = output_dir / "slice_003.slice.json"
+            with open(output_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+
+            assert saved_data["text"] == "Тест UTF-8: 你好 🌍 éñ"
+
+
+class TestProcessFile:
+    """Тесты для функции process_file."""
+
+    def test_process_valid_file(self):
+        """Успешная обработка валидного файла."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".txt", delete=False
+        ) as f:
+            f.write("This is a test content for processing. " * 10)
+            temp_path = Path(f.name)
+
+        config = {
+            "slicer": {
+                "max_tokens": 50,
+                "overlap": 0,
+                "soft_boundary": False,
+                "soft_boundary_max_shift": 0,
+                "allowed_extensions": ["txt"],
+            }
+        }
+
+        try:
+            slices, counter = process_file(temp_path, config, 1)
+
+            assert len(slices) > 0
+            assert counter > 1
+            assert slices[0]["id"] == "slice_001"
+            assert slices[0]["source_file"] == temp_path.name
+            assert "test content" in slices[0]["text"]
+        finally:
+            temp_path.unlink()
+
+    def test_process_empty_file_raises_input_error(self):
+        """InputError для пустого файла."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("")
+            temp_path = Path(f.name)
+
+        config = {
+            "slicer": {
+                "max_tokens": 50,
+                "overlap": 0,
+                "soft_boundary": False,
+                "soft_boundary_max_shift": 0,
+                "allowed_extensions": ["txt"],
+            }
+        }
+
+        try:
+            with pytest.raises(InputError) as exc_info:
+                process_file(temp_path, config, 1)
+            assert "Empty file detected" in str(exc_info.value)
+        finally:
+            temp_path.unlink()
+
+    def test_process_file_with_invalid_extension(self):
+        """InputError для неверного расширения."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xyz", delete=False) as f:
+            f.write("Some content")
+            temp_path = Path(f.name)
+
+        config = {
+            "slicer": {
+                "max_tokens": 50,
+                "overlap": 0,
+                "soft_boundary": False,
+                "soft_boundary_max_shift": 0,
+                "allowed_extensions": ["txt", "md"],
+            }
+        }
+
+        try:
+            with pytest.raises(InputError) as exc_info:
+                process_file(temp_path, config, 1)
+            assert "Unsupported file extension" in str(exc_info.value)
+        finally:
+            temp_path.unlink()

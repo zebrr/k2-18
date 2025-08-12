@@ -26,8 +26,11 @@ class TestEmbeddingsClient:
         return {
             "embedding_api_key": "test-key",
             "embedding_model": "text-embedding-3-small",
-            "embedding_tpm_limit": 350000,
+            "embedding_tpm_limit": 1000000,
             "max_retries": 3,
+            "max_batch_tokens": 100000,
+            "max_texts_per_batch": 2048,
+            "truncate_tokens": 8000,
         }
 
     @pytest.fixture
@@ -45,8 +48,11 @@ class TestEmbeddingsClient:
         with patch("utils.llm_embeddings.OpenAI"):
             client = EmbeddingsClient(mock_config)
             assert client.model == "text-embedding-3-small"
-            assert client.tpm_limit == 350000
+            assert client.tpm_limit == 1000000
             assert client.max_retries == 3
+            assert client.max_batch_tokens == 100000
+            assert client.max_texts_per_batch == 2048
+            assert client.truncate_tokens == 8000
 
     def test_init_fallback_to_api_key(self):
         """Тест fallback на основной api_key."""
@@ -115,7 +121,7 @@ class TestEmbeddingsClient:
 
                 texts = ["very long text", "normal text", "another text"]
                 with patch.object(client, "_truncate_text", return_value="truncated"):
-                    batches = client._batch_texts(texts)
+                    _ = client._batch_texts(texts)
 
                     # Должен вызвать truncate для длинного текста
                     client._truncate_text.assert_called_once()
@@ -162,9 +168,17 @@ class TestEmbeddingsClient:
     def test_get_embeddings_success(self, mock_config, mock_openai_response):
         """Тест успешного получения эмбеддингов."""
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
-            # Настройка mock
+            # Настройка mock для raw response
+            mock_raw = Mock()
+            mock_raw.headers = {
+                "x-ratelimit-remaining-tokens": "900000",
+                "x-ratelimit-reset-tokens": "5000ms",
+            }
+            mock_raw.parse.return_value = mock_openai_response
+
+            # Настройка mock client
             mock_client = Mock()
-            mock_client.embeddings.create.return_value = mock_openai_response
+            mock_client.embeddings.with_raw_response.create.return_value = mock_raw
             mock_openai.return_value = mock_client
 
             client = EmbeddingsClient(mock_config)
@@ -175,7 +189,7 @@ class TestEmbeddingsClient:
             # Проверки
             assert isinstance(embeddings, np.ndarray)
             assert embeddings.shape == (2, 1536)
-            mock_client.embeddings.create.assert_called_once()
+            mock_client.embeddings.with_raw_response.create.assert_called_once()
 
     def test_get_embeddings_empty_input(self, mock_config):
         """Тест обработки пустого входа."""
@@ -188,12 +202,20 @@ class TestEmbeddingsClient:
     def test_get_embeddings_rate_limit_retry(self, mock_config):
         """Тест retry при rate limit."""
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
-            # Настройка mock
+            # Настройка mock для raw response
+            mock_raw_success = Mock()
+            mock_raw_success.headers = {
+                "x-ratelimit-remaining-tokens": "900000",
+                "x-ratelimit-reset-tokens": "5000ms",
+            }
+            mock_raw_success.parse.return_value = Mock(data=[Mock(embedding=[0.1] * 1536)])
+
+            # Настройка mock client
             mock_client = Mock()
             # Первый вызов - rate limit error, второй - успех
-            mock_client.embeddings.create.side_effect = [
+            mock_client.embeddings.with_raw_response.create.side_effect = [
                 Exception("rate_limit exceeded"),
-                Mock(data=[Mock(embedding=[0.1] * 1536)]),
+                mock_raw_success,
             ]
             mock_openai.return_value = mock_client
 
@@ -203,14 +225,14 @@ class TestEmbeddingsClient:
                 embeddings = client.get_embeddings(["text"])
 
             assert embeddings.shape == (1, 1536)
-            assert mock_client.embeddings.create.call_count == 2
+            assert mock_client.embeddings.with_raw_response.create.call_count == 2
 
     def test_get_embeddings_max_retries_exceeded(self, mock_config):
         """Тест исчерпания попыток retry."""
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
             # Настройка mock
             mock_client = Mock()
-            mock_client.embeddings.create.side_effect = Exception("API Error")
+            mock_client.embeddings.with_raw_response.create.side_effect = Exception("API Error")
             mock_openai.return_value = mock_client
 
             client = EmbeddingsClient(mock_config)
@@ -221,7 +243,76 @@ class TestEmbeddingsClient:
                     client.get_embeddings(["text"])
 
             # Должен попытаться max_retries раз
-            assert mock_client.embeddings.create.call_count == 2
+            assert mock_client.embeddings.with_raw_response.create.call_count == 2
+
+    def test_config_parameters_loading(self):
+        """Тест загрузки новых параметров из конфига."""
+        config = {
+            "embedding_api_key": "test-key",
+            "max_batch_tokens": 50000,
+            "max_texts_per_batch": 1000,
+            "truncate_tokens": 7000,
+        }
+
+        with patch("utils.llm_embeddings.OpenAI"):
+            client = EmbeddingsClient(config)
+
+            # Проверяем что параметры применились
+            assert client.max_batch_tokens == 50000
+            assert client.max_texts_per_batch == 1000
+            assert client.truncate_tokens == 7000
+            assert client.max_texts_per_request == 1000  # Должен быть равен max_texts_per_batch
+
+    def test_with_raw_response_handling(self, mock_config):
+        """Тест обработки raw response с headers."""
+        with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            # Создать mock raw response
+            mock_raw = Mock()
+            mock_raw.headers = {
+                "x-ratelimit-remaining-tokens": "900000",
+                "x-ratelimit-reset-tokens": "5000ms",
+            }
+            mock_raw.parse.return_value = Mock(data=[Mock(embedding=[0.1] * 1536)])
+
+            # Настроить mock client
+            mock_client = Mock()
+            mock_client.embeddings.with_raw_response.create.return_value = mock_raw
+            mock_openai.return_value = mock_client
+
+            client = EmbeddingsClient(mock_config)
+
+            # Вызвать get_embeddings
+            _ = client.get_embeddings(["test"])
+
+            # Проверить извлечение headers
+            assert client.remaining_tokens == 900000
+            assert client.reset_time > time.time()
+
+            # Проверить что вызов был с with_raw_response
+            mock_client.embeddings.with_raw_response.create.assert_called_once()
+
+    def test_fallback_when_headers_not_available(self, mock_config):
+        """Тест fallback на простое вычитание токенов когда headers недоступны."""
+        with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            # Создать mock raw response без headers
+            mock_raw = Mock()
+            mock_raw.headers = {}  # Пустые headers
+            mock_raw.parse.return_value = Mock(data=[Mock(embedding=[0.1] * 1536)])
+
+            # Настроить mock client
+            mock_client = Mock()
+            mock_client.embeddings.with_raw_response.create.return_value = mock_raw
+            mock_openai.return_value = mock_client
+
+            client = EmbeddingsClient(mock_config)
+            initial_tokens = client.remaining_tokens
+
+            # Вызвать get_embeddings
+            with patch.object(client, "_count_tokens", return_value=100):
+                _ = client.get_embeddings(["test"])
+
+            # Проверить что использовался fallback (простое вычитание)
+            assert client.remaining_tokens == initial_tokens - 100
 
 
 class TestHelperFunctions:
@@ -299,13 +390,21 @@ class TestHelperFunctions:
         config = {
             "embedding_api_key": "test-key",
             "embedding_model": "text-embedding-3-small",
-            "embedding_tpm_limit": 350000,
+            "embedding_tpm_limit": 1000000,
             "batch_size": 100,
         }
 
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            # Создать mock raw response
+            mock_raw = Mock()
+            mock_raw.headers = {
+                "x-ratelimit-remaining-tokens": "900000",
+                "x-ratelimit-reset-tokens": "5000ms",
+            }
+            mock_raw.parse.return_value = mock_response
+
             mock_client = Mock()
-            mock_client.embeddings.create.return_value = mock_response
+            mock_client.embeddings.with_raw_response.create.return_value = mock_raw
             mock_openai.return_value = mock_client
 
             with patch("builtins.print"):  # Suppress print output
@@ -334,24 +433,32 @@ class TestHelperFunctions:
         all_embeddings.extend([Mock(embedding=[0.1] * 1536) for _ in range(100)])
         all_embeddings.extend([Mock(embedding=[0.2] * 1536) for _ in range(100)])
         all_embeddings.extend([Mock(embedding=[0.3] * 1536) for _ in range(50)])
-        
+
         # Один Mock response со всеми 250 embeddings
         mock_response = Mock(data=all_embeddings)
 
         config = {
             "embedding_api_key": "test-key",
             "embedding_model": "text-embedding-3-small",
-            "embedding_tpm_limit": 350000,
+            "embedding_tpm_limit": 1000000,
             "batch_size": 250,  # Process all at once
             "max_retries": 3,
         }
 
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
+            # Создать mock raw response для успешного вызова
+            mock_raw_success = Mock()
+            mock_raw_success.headers = {
+                "x-ratelimit-remaining-tokens": "900000",
+                "x-ratelimit-reset-tokens": "5000ms",
+            }
+            mock_raw_success.parse.return_value = mock_response
+
             mock_client = Mock()
             # Первая попытка вызывает ошибку, вторая успешная
-            mock_client.embeddings.create.side_effect = [
+            mock_client.embeddings.with_raw_response.create.side_effect = [
                 Exception("Rate limit error"),
-                mock_response,
+                mock_raw_success,
             ]
             mock_openai.return_value = mock_client
 
@@ -368,14 +475,16 @@ class TestHelperFunctions:
         config = {
             "embedding_api_key": "test-key",
             "embedding_model": "text-embedding-3-small",
-            "embedding_tpm_limit": 350000,
+            "embedding_tpm_limit": 1000000,
             "max_retries": 2,
         }
 
         with patch("utils.llm_embeddings.OpenAI") as mock_openai:
             mock_client = Mock()
             # Все попытки вызывают ошибку
-            mock_client.embeddings.create.side_effect = Exception("Persistent API error")
+            mock_client.embeddings.with_raw_response.create.side_effect = Exception(
+                "Persistent API error"
+            )
             mock_openai.return_value = mock_client
 
             client = EmbeddingsClient(config)

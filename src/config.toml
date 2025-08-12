@@ -37,6 +37,9 @@ reasoning_effort    = "medium"
 reasoning_summary   = "auto"
 # verbosity         = "medium"      # Закомментирован = null
 
+# Model for TPM probe requests (optional, defaults to cheapest available)
+probe_model = "gpt-4.1-nano-2025-04-14"
+
 # Остальные параметры утилиты (НЕ УДАЛЯТЬ! Копировать текущие значения)
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
 tpm_safety_margin   = 0.15
@@ -48,7 +51,10 @@ poll_interval       = 10
 [dedup]
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
-embedding_tpm_limit = 350000                    # лимит для embedding моделей
+embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
+max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
+max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
+truncate_tokens     = 8000                      # Обрезка текстов (API лимит 8192)
 sim_threshold       = 0.97
 len_ratio_min       = 0.8
 faiss_M             = 32
@@ -88,7 +94,10 @@ reasoning_summary   = "auto"
 run                 = true
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
-embedding_tpm_limit = 350000
+embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
+max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
+max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
+truncate_tokens     = 8000                      # Обрезка текстов (API лимит 8192)
 sim_threshold       = 0.80
 max_pairs_per_node  = 20
 faiss_M             = 32

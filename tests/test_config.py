@@ -249,6 +249,126 @@ class TestSlicerValidation:
 
         Path(f.name).unlink()
 
+    def test_wrong_tokenizer(self):
+        """Test that tokenizer must be 'o200k_base'."""
+        config_with_wrong_tokenizer = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "gpt2"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_wrong_tokenizer)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="slicer.tokenizer must be 'o200k_base'"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_empty_allowed_extensions(self):
+        """Test that allowed_extensions cannot be empty."""
+        config_with_empty_extensions = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = []
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_empty_extensions)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="slicer.allowed_extensions cannot be empty"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
 
 class TestItext2kgValidation:
     """Тесты валидации секции [itext2kg]."""
@@ -576,6 +696,368 @@ class TestItext2kgValidation:
 
         Path(f.name).unlink()
 
+    def test_negative_timeout(self):
+        """Test that timeout must be positive."""
+        config_with_negative_timeout = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = -5
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_timeout)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="itext2kg.timeout must be positive"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_negative_max_retries(self):
+        """Test that max_retries must be non-negative."""
+        config_with_negative_retries = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = -1
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_retries)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="itext2kg.max_retries must be non-negative"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_response_chain_depth_type(self):
+        """Test that response_chain_depth must be an integer."""
+        config_with_invalid_depth_type = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+        response_chain_depth = "not_an_integer"
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_invalid_depth_type)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="response_chain_depth must be a non-negative integer"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_negative_response_chain_depth(self):
+        """Test that response_chain_depth must be non-negative."""
+        config_with_negative_depth = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+        response_chain_depth = -5
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_depth)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="response_chain_depth must be a non-negative integer"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_truncation_value(self):
+        """Test that truncation must be 'auto' or 'disabled'."""
+        config_with_invalid_truncation = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+        truncation = "invalid_value"
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_invalid_truncation)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="truncation must be 'auto' or 'disabled'"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_truncation_wrong_type(self):
+        """Test that truncation must be a string."""
+        config_with_wrong_type_truncation = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+        truncation = 123
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_wrong_type_truncation)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="truncation must be 'auto' or 'disabled'"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
 
 class TestRefinerValidation:
     """Тесты валидации секции [refiner]."""
@@ -755,6 +1237,307 @@ class TestRefinerValidation:
             with pytest.raises(
                 ConfigValidationError,
                 match="Parameter 'is_reasoning' is required in \\[refiner\\] section",
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_negative_timeout(self):
+        """Test that refiner timeout must be positive."""
+        config_with_negative_timeout = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 0
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_timeout)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="refiner.timeout must be positive"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_negative_max_retries(self):
+        """Test that refiner max_retries must be non-negative."""
+        config_with_negative_retries = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = -2
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_retries)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="refiner.max_retries must be non-negative"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_max_pairs_per_node_zero(self):
+        """Test that max_pairs_per_node must be positive."""
+        config_with_zero_pairs = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 0
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_zero_pairs)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="refiner.max_pairs_per_node must be positive"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_response_chain_depth(self):
+        """Test that refiner response_chain_depth must be a non-negative integer."""
+        config_with_invalid_depth = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        response_chain_depth = -3
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_invalid_depth)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError,
+                match="refiner.response_chain_depth must be a non-negative integer",
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_truncation(self):
+        """Test that refiner truncation must be 'auto' or 'disabled'."""
+        config_with_invalid_truncation = textwrap.dedent(
+            """
+        [slicer]
+        max_tokens = 40000
+        overlap = 0
+        soft_boundary = true
+        soft_boundary_max_shift = 500
+        tokenizer = "o200k_base"
+        allowed_extensions = ["json"]
+
+        [itext2kg]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [dedup]
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.97
+        len_ratio_min = 0.8
+        faiss_M = 32
+        faiss_efC = 200
+        faiss_metric = "INNER_PRODUCT"
+        k_neighbors = 5
+
+        [refiner]
+        is_reasoning = false
+        run = true
+        embedding_model = "text-embedding-3-small"
+        sim_threshold = 0.80
+        max_pairs_per_node = 20
+        model = "gpt-4o-mini"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        truncation = "always"
+        weight_low = 0.3
+        weight_mid = 0.6
+        weight_high = 0.9
+        """
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_invalid_truncation)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="refiner.truncation must be 'auto' or 'disabled'"
             ):
                 load_config(f.name)
 
@@ -1073,6 +1856,262 @@ class TestEnvironmentVariables:
                 os.environ["OPENAI_API_KEY"] = original_api_key
 
 
+class TestParametrizedValidation:
+    """Parametrized tests for repetitive validation checks."""
+
+    @pytest.mark.parametrize(
+        "section,field,value,error_pattern",
+        [
+            # itext2kg numeric validations
+            ("itext2kg", "timeout", 0, "must be positive"),
+            ("itext2kg", "timeout", -1, "must be positive"),
+            ("itext2kg", "tpm_limit", 0, "must be positive"),
+            ("itext2kg", "tpm_limit", -100, "must be positive"),
+            ("itext2kg", "max_completion", 0, "must be between 1 and 100000"),
+            ("itext2kg", "max_completion", 100001, "must be between 1 and 100000"),
+            ("itext2kg", "max_retries", -1, "must be non-negative"),
+            # refiner numeric validations
+            ("refiner", "timeout", 0, "must be positive"),
+            ("refiner", "timeout", -5, "must be positive"),
+            ("refiner", "tpm_limit", 0, "must be positive"),
+            ("refiner", "tpm_limit", -1000, "must be positive"),
+            ("refiner", "max_completion", 0, "must be between 1 and 100000"),
+            ("refiner", "max_completion", 200000, "must be between 1 and 100000"),
+            ("refiner", "max_retries", -2, "must be non-negative"),
+            ("refiner", "max_pairs_per_node", 0, "must be positive"),
+            ("refiner", "max_pairs_per_node", -5, "must be positive"),
+            # dedup numeric validations
+            ("dedup", "faiss_M", 0, "must be positive"),
+            ("dedup", "faiss_M", -1, "must be positive"),
+            ("dedup", "faiss_efC", 0, "must be positive"),
+            ("dedup", "faiss_efC", -100, "must be positive"),
+            ("dedup", "k_neighbors", 0, "must be positive"),
+            ("dedup", "k_neighbors", -3, "must be positive"),
+            # slicer numeric validations
+            ("slicer", "max_tokens", 0, "must be positive"),
+            ("slicer", "max_tokens", -1000, "must be positive"),
+            ("slicer", "overlap", -10, "must be non-negative"),
+            ("slicer", "soft_boundary_max_shift", -5, "must be non-negative"),
+        ],
+    )
+    def test_numeric_field_validation(self, section, field, value, error_pattern):
+        """Parametrized test for numeric field validation across sections."""
+        config = get_config_with_override(section, field, value)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match=error_pattern):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    @pytest.mark.parametrize(
+        "section,field,value,error_pattern",
+        [
+            # Range validations
+            ("dedup", "sim_threshold", -0.1, "must be between 0.0 and 1.0"),
+            ("dedup", "sim_threshold", 1.1, "must be between 0.0 and 1.0"),
+            ("dedup", "len_ratio_min", -0.5, "must be between 0.0 and 1.0"),
+            ("dedup", "len_ratio_min", 2.0, "must be between 0.0 and 1.0"),
+            ("refiner", "sim_threshold", -0.2, "must be between 0.0 and 1.0"),
+            ("refiner", "sim_threshold", 1.5, "must be between 0.0 and 1.0"),
+            ("refiner", "weight_low", -0.1, "must be between 0.0 and 1.0"),
+            ("refiner", "weight_mid", 1.2, "must be between 0.0 and 1.0"),
+            ("refiner", "weight_high", 2.0, "must be between 0.0 and 1.0"),
+        ],
+    )
+    def test_range_validation(self, section, field, value, error_pattern):
+        """Parametrized test for range validation."""
+        config = get_config_with_override(section, field, value)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match=error_pattern):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    @pytest.mark.parametrize(
+        "section,field,value,error_pattern",
+        [
+            # String enum validations
+            ("itext2kg", "log_level", "invalid", "must be one of"),
+            ("itext2kg", "log_level", "trace", "must be one of"),
+            ("dedup", "faiss_metric", "COSINE", "must be 'INNER_PRODUCT' or 'L2'"),
+            ("dedup", "faiss_metric", "EUCLIDEAN", "must be 'INNER_PRODUCT' or 'L2'"),
+            ("slicer", "tokenizer", "gpt2", "must be 'o200k_base'"),
+            ("slicer", "tokenizer", "cl100k_base", "must be 'o200k_base'"),
+        ],
+    )
+    def test_string_enum_validation(self, section, field, value, error_pattern):
+        """Parametrized test for string enum validation."""
+        config = get_config_with_override(section, field, value)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match=error_pattern):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+
+class TestExtremeValues:
+    """Tests for extreme values and boundary conditions."""
+
+    def test_very_large_max_tokens(self):
+        """Test very large max_tokens value."""
+        config = get_config_with_override("slicer", "max_tokens", 999999999)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            # Should not raise - just checking it handles large values
+            result = load_config(f.name)
+            assert result["slicer"]["max_tokens"] == 999999999
+
+        Path(f.name).unlink()
+
+    def test_max_completion_at_boundary(self):
+        """Test max_completion exactly at boundary values."""
+        # Test at lower boundary
+        config = get_config_with_override("itext2kg", "max_completion", 1)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            result = load_config(f.name)
+            assert result["itext2kg"]["max_completion"] == 1
+
+        Path(f.name).unlink()
+
+        # Test at upper boundary
+        config = get_config_with_override("itext2kg", "max_completion", 100000)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            result = load_config(f.name)
+            assert result["itext2kg"]["max_completion"] == 100000
+
+        Path(f.name).unlink()
+
+    def test_float_values_where_int_expected(self):
+        """Test float values where integers are expected."""
+        config = get_config_with_override("slicer", "max_tokens", 40000.5)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="must be int"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_weights_at_exact_boundaries(self):
+        """Test weight values at exact boundaries."""
+        config = (
+            get_minimal_valid_config()
+            .replace("weight_low = 0.3", "weight_low = 0.0")
+            .replace("weight_high = 0.9", "weight_high = 1.0")
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            result = load_config(f.name)
+            assert result["refiner"]["weight_low"] == 0.0
+            assert result["refiner"]["weight_high"] == 1.0
+
+        Path(f.name).unlink()
+
+    def test_zero_response_chain_depth(self):
+        """Test response_chain_depth = 0 (independent requests mode)."""
+        config = get_minimal_valid_config().replace(
+            "max_retries = 3", "max_retries = 3\n        response_chain_depth = 0"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            result = load_config(f.name)
+            assert result["itext2kg"]["response_chain_depth"] == 0
+
+        Path(f.name).unlink()
+
+    def test_very_large_tpm_limit(self):
+        """Test very large TPM limit value."""
+        config = get_config_with_override("itext2kg", "tpm_limit", 10000000)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config)
+            f.flush()
+
+            result = load_config(f.name)
+            assert result["itext2kg"]["tpm_limit"] == 10000000
+
+        Path(f.name).unlink()
+
+
+def get_config_with_override(section: str, field: str, value) -> str:
+    """Generate test config with single field override.
+
+    Args:
+        section: Configuration section name
+        field: Field name to override
+        value: New value for the field
+
+    Returns:
+        Modified configuration string
+    """
+    base_config = get_minimal_valid_config()
+
+    # Convert value to proper TOML format
+    if isinstance(value, str):
+        value_str = f'"{value}"'
+    elif isinstance(value, bool):
+        value_str = "true" if value else "false"
+    elif isinstance(value, list):
+        value_str = str(value)
+    else:
+        value_str = str(value)
+
+    # Find and replace the field in the specified section
+    lines = base_config.split("\n")
+    in_section = False
+    for i, line in enumerate(lines):
+        if line.strip() == f"[{section}]":
+            in_section = True
+        elif line.strip().startswith("[") and in_section:
+            # We've moved to another section, field not found
+            # Insert the field at the end of the previous section
+            lines.insert(i, f"        {field} = {value_str}")
+            break
+        elif in_section and line.strip().startswith(f"{field} ="):
+            # Replace existing field
+            indent = len(line) - len(line.lstrip())
+            lines[i] = " " * indent + f"{field} = {value_str}"
+            break
+    else:
+        # Field not found and we're at the end of the file
+        if in_section:
+            # Add to the current section
+            lines.append(f"        {field} = {value_str}")
+
+    return "\n".join(lines)
+
+
 def get_minimal_valid_config():
     """Возвращает минимальную валидную конфигурацию для тестов."""
     return textwrap.dedent(
@@ -1367,8 +2406,7 @@ class TestDedupValidation:
         config = get_minimal_valid_config()
         # Заменяем значение soft_boundary_max_shift на отрицательное
         config_with_negative_shift = config.replace(
-            "soft_boundary_max_shift = 200",
-            "soft_boundary_max_shift = -100"
+            "soft_boundary_max_shift = 200", "soft_boundary_max_shift = -100"
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -1388,8 +2426,7 @@ class TestDedupValidation:
         config = get_minimal_valid_config()
         # Добавляем temperature с некорректным значением
         config_with_negative_temp = config.replace(
-            "max_retries = 3",
-            "max_retries = 3\n        temperature = -0.5"
+            "max_retries = 3", "max_retries = 3\n        temperature = -0.5"
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -1404,8 +2441,7 @@ class TestDedupValidation:
         # Температура > 2
         config = get_minimal_valid_config()
         config_with_high_temp = config.replace(
-            "max_retries = 3",
-            "max_retries = 3\n        temperature = 2.5"
+            "max_retries = 3", "max_retries = 3\n        temperature = 2.5"
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -1421,10 +2457,7 @@ class TestDedupValidation:
         """Тест валидации некорректного sim_threshold (покрытие строк 221, 224)."""
         # sim_threshold < 0
         config = get_minimal_valid_config()
-        config_with_negative_sim = config.replace(
-            "sim_threshold = 0.97",
-            "sim_threshold = -0.1"
-        )
+        config_with_negative_sim = config.replace("sim_threshold = 0.97", "sim_threshold = -0.1")
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(config_with_negative_sim)
@@ -1439,10 +2472,7 @@ class TestDedupValidation:
 
         # sim_threshold > 1
         config = get_minimal_valid_config()
-        config_with_high_sim = config.replace(
-            "sim_threshold = 0.97",
-            "sim_threshold = 1.5"
-        )
+        config_with_high_sim = config.replace("sim_threshold = 0.97", "sim_threshold = 1.5")
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(config_with_high_sim)
@@ -1500,7 +2530,9 @@ class TestDedupValidation:
             f.write(config_invalid_weights)
             f.flush()
 
-            with pytest.raises(ConfigValidationError, match="refiner.weight_low must be between 0.0 and 1.0"):
+            with pytest.raises(
+                ConfigValidationError, match="refiner.weight_low must be between 0.0 and 1.0"
+            ):
                 load_config(f.name)
 
         Path(f.name).unlink()
@@ -1514,7 +2546,9 @@ class TestDedupValidation:
             f.write(config_invalid_mid)
             f.flush()
 
-            with pytest.raises(ConfigValidationError, match="refiner.weight_mid must be between 0.0 and 1.0"):
+            with pytest.raises(
+                ConfigValidationError, match="refiner.weight_mid must be between 0.0 and 1.0"
+            ):
                 load_config(f.name)
 
         Path(f.name).unlink()
@@ -1528,7 +2562,56 @@ class TestDedupValidation:
             f.write(config_invalid_high)
             f.flush()
 
-            with pytest.raises(ConfigValidationError, match="refiner.weight_high must be between 0.0 and 1.0"):
+            with pytest.raises(
+                ConfigValidationError, match="refiner.weight_high must be between 0.0 and 1.0"
+            ):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_negative_faiss_efc(self):
+        """Test that faiss_efC must be positive."""
+        config_with_negative_efc = get_minimal_valid_config().replace(
+            "faiss_efC = 200", "faiss_efC = -10"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_negative_efc)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="dedup.faiss_efC must be positive"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_zero_k_neighbors(self):
+        """Test that k_neighbors must be positive."""
+        config_with_zero_k = get_minimal_valid_config().replace(
+            "k_neighbors = 5", "k_neighbors = 0"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_zero_k)
+            f.flush()
+
+            with pytest.raises(ConfigValidationError, match="dedup.k_neighbors must be positive"):
+                load_config(f.name)
+
+        Path(f.name).unlink()
+
+    def test_invalid_faiss_metric(self):
+        """Test that faiss_metric must be valid."""
+        config_with_invalid_metric = get_minimal_valid_config().replace(
+            'faiss_metric = "INNER_PRODUCT"', 'faiss_metric = "COSINE"'
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write(config_with_invalid_metric)
+            f.flush()
+
+            with pytest.raises(
+                ConfigValidationError, match="dedup.faiss_metric must be 'INNER_PRODUCT' or 'L2'"
+            ):
                 load_config(f.name)
 
         Path(f.name).unlink()
@@ -1547,7 +2630,8 @@ class TestDedupValidation:
             f.flush()
 
             with pytest.raises(
-                ConfigValidationError, match="refiner weights must satisfy: weight_low < weight_mid < weight_high"
+                ConfigValidationError,
+                match="refiner weights must satisfy: weight_low < weight_mid < weight_high",
             ):
                 load_config(f.name)
 

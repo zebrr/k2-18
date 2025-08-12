@@ -44,38 +44,45 @@ class EmbeddingsClient:
         # API key - try embedding_api_key first, then api_key
         api_key = config.get("embedding_api_key") or config.get("api_key")
         if not api_key:
-            raise ValueError(
-                "API key not found in config (embedding_api_key or api_key)"
-            )
+            raise ValueError("API key not found in config (embedding_api_key or api_key)")
 
         self.client = OpenAI(api_key=api_key)
         self.model = config.get("embedding_model", "text-embedding-3-small")
 
         # TPM control
-        self.tpm_limit = config.get("embedding_tpm_limit", 350000)
+        self.tpm_limit = config.get("embedding_tpm_limit", 1000000)
         self.remaining_tokens = self.tpm_limit
         self.reset_time = time.time()
 
         # Retry parameters
         self.max_retries = config.get("max_retries", 3)
 
+        # Batch processing parameters from config
+        self.max_batch_tokens = config.get("max_batch_tokens", 100000)
+        self.max_texts_per_batch = config.get("max_texts_per_batch", 2048)
+        self.truncate_tokens = config.get("truncate_tokens", 8000)
+
         # Tokenizer for counting tokens (cl100k_base for embedding models)
         self.encoding = tiktoken.get_encoding("cl100k_base")
 
         # API limits
-        self.max_texts_per_request = 2048
+        self.max_texts_per_request = self.max_texts_per_batch
         self.max_tokens_per_text = 8192
 
         logger.info(
-            f"EmbeddingsClient initialized with model={self.model}, tpm_limit={self.tpm_limit}"
+            f"EmbeddingsClient initialized with model={self.model}, tpm_limit={self.tpm_limit}, "
+            f"max_batch_tokens={self.max_batch_tokens}, max_texts_per_batch={self.max_texts_per_batch}"
         )
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens in text."""
         return len(self.encoding.encode(text))
 
-    def _truncate_text(self, text: str, max_tokens: int = 8000) -> str:
+    def _truncate_text(self, text: str, max_tokens: Optional[int] = None) -> str:
         """Truncate text to specified number of tokens."""
+        if max_tokens is None:
+            max_tokens = self.truncate_tokens
+
         tokens = self.encoding.encode(text)
         if len(tokens) <= max_tokens:
             return text
@@ -84,9 +91,7 @@ class EmbeddingsClient:
         truncated_tokens = tokens[:max_tokens]
         return self.encoding.decode(truncated_tokens)
 
-    def _update_tpm_state(
-        self, tokens_used: int, headers: Optional[Dict[str, str]] = None
-    ):
+    def _update_tpm_state(self, tokens_used: int, headers: Optional[Dict[str, str]] = None):
         """
         Update TPM bucket state.
 
@@ -105,23 +110,40 @@ class EmbeddingsClient:
                 self.remaining_tokens = int(remaining)
 
             if reset_str:
-                # Format: "XXXms" - convert to seconds
-                reset_ms = int(reset_str.rstrip("ms"))
-                self.reset_time = current_time + (reset_ms / 1000)
+                # Format: "XXXms", "XXXs", or just number - convert to seconds
+                if reset_str.endswith("ms"):
+                    reset_ms = int(reset_str.rstrip("ms"))
+                    reset_seconds = reset_ms / 1000
+                elif reset_str.endswith("s"):
+                    # Format like "1.625s" or "0s"
+                    reset_seconds = float(reset_str.rstrip("s"))
+                else:
+                    # Just a number (assumed to be seconds)
+                    reset_seconds = float(reset_str)
+                
+                # If reset_seconds is 0 or very small, set a minimum of 1 second in future
+                # to maintain the invariant that reset_time is in the future
+                if reset_seconds <= 0.1:
+                    reset_seconds = 1.0
+                    
+                self.reset_time = current_time + reset_seconds
                 logger.debug(
-                    f"TPM state from headers: remaining={self.remaining_tokens}, reset_in={reset_ms/1000:.1f}s"
+                    f"TPM state from headers: remaining={self.remaining_tokens}, "
+                    f"reset_in={reset_seconds:.1f}s"
                 )
-        else:
-            # Simple token subtraction
-            if current_time >= self.reset_time:
-                # Minute has passed - restore limit
-                self.remaining_tokens = self.tpm_limit
-                self.reset_time = current_time + 60
+                return  # Exit early when headers are available
 
-            self.remaining_tokens -= tokens_used
-            logger.debug(
-                f"TPM state updated: remaining={self.remaining_tokens}, used={tokens_used}"
-            )
+        # Fallback: Simple token subtraction when headers not available
+        logger.debug("Headers not available, using fallback TPM tracking")
+        if current_time >= self.reset_time:
+            # Minute has passed - restore limit
+            self.remaining_tokens = self.tpm_limit
+            self.reset_time = current_time + 60
+
+        self.remaining_tokens -= tokens_used
+        logger.debug(
+            f"TPM state updated (fallback): remaining={self.remaining_tokens}, used={tokens_used}"
+        )
 
     def _wait_for_tokens(self, required_tokens: int, safety_margin: float = 0.15):
         """
@@ -163,7 +185,6 @@ class EmbeddingsClient:
         batches = []
         current_batch = []
         current_tokens = 0
-        max_batch_tokens = 100000  # Soft limit for performance
 
         for text in texts:
             # Check text length
@@ -172,18 +193,20 @@ class EmbeddingsClient:
             # If text is too long - truncate it
             if text_tokens > self.max_tokens_per_text:
                 logger.warning(
-                    f"Text with {text_tokens} tokens exceeds limit, truncating to 8000"
+                    f"Text with {text_tokens} tokens exceeds limit, "
+                    f"truncating to {self.truncate_tokens}"
                 )
                 utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
                 print(
-                    f"[{utc3_time}] EMBEDDINGS | ⚠️ Text truncated: {text_tokens} → 8000 tokens"
+                    f"[{utc3_time}] EMBEDDINGS | ⚠️ Text truncated: "
+                    f"{text_tokens} → {self.truncate_tokens} tokens"
                 )
-                text = self._truncate_text(text, 8000)
-                text_tokens = 8000
+                text = self._truncate_text(text, self.truncate_tokens)
+                text_tokens = self.truncate_tokens
 
             # Check if it fits in current batch
             if len(current_batch) >= self.max_texts_per_request or (
-                current_tokens + text_tokens > max_batch_tokens and current_batch
+                current_tokens + text_tokens > self.max_batch_tokens and current_batch
             ):
                 # Save current batch and start new one
                 batches.append(current_batch)
@@ -255,14 +278,26 @@ class EmbeddingsClient:
                         f"Processing batch {batch_idx + 1}/{len(batches)}, {len(batch)} texts"
                     )
 
-                    # API call
-                    response = self.client.embeddings.create(
+                    # API call with raw response to get headers
+                    raw_response = self.client.embeddings.with_raw_response.create(
                         input=batch, model=self.model, encoding_format="float"
                     )
 
-                    # Update TPM state from headers (if SDK provides them)
-                    # In new SDK headers may not be directly available
-                    self._update_tpm_state(batch_tokens)
+                    # Extract headers for TPM tracking
+                    headers = {
+                        "x-ratelimit-remaining-tokens": raw_response.headers.get(
+                            "x-ratelimit-remaining-tokens"
+                        ),
+                        "x-ratelimit-reset-tokens": raw_response.headers.get(
+                            "x-ratelimit-reset-tokens"
+                        ),
+                    }
+
+                    # Update TPM state with real headers
+                    self._update_tpm_state(batch_tokens, headers)
+
+                    # Get parsed response
+                    response = raw_response.parse()
 
                     # Extract vectors
                     embeddings = [item.embedding for item in response.data]
@@ -306,9 +341,7 @@ class EmbeddingsClient:
                         time.sleep(wait_time)
             else:
                 # All attempts exhausted
-                logger.error(
-                    f"Failed to get embeddings after {self.max_retries} attempts"
-                )
+                logger.error(f"Failed to get embeddings after {self.max_retries} attempts")
                 raise last_error
 
         # Convert to numpy array
@@ -331,9 +364,7 @@ class EmbeddingsClient:
 
         if len(batches) > 1:
             utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            print(
-                f"[{utc3_time}] EMBEDDINGS | ✅ Completed: {len(texts)} texts processed"
-            )
+            print(f"[{utc3_time}] EMBEDDINGS | ✅ Completed: {len(texts)} texts processed")
 
         return embeddings_array
 
@@ -353,9 +384,7 @@ def get_embeddings(texts: List[str], config: Dict[str, Any]) -> np.ndarray:
     return client.get_embeddings(texts)
 
 
-def cosine_similarity_batch(
-    embeddings1: np.ndarray, embeddings2: np.ndarray
-) -> np.ndarray:
+def cosine_similarity_batch(embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray:
     """
     Calculate cosine similarity between two sets of vectors.
 

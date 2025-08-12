@@ -15,8 +15,11 @@ Client initialization.
   - embedding_api_key (str, optional) - API key for embeddings (fallback to api_key)
   - api_key (str) - main API key
   - embedding_model (str) - model for embeddings (default "text-embedding-3-small")
-  - embedding_tpm_limit (int) - TPM limit (default 350000)
+  - embedding_tpm_limit (int) - TPM limit (default 1000000)
   - max_retries (int) - number of retry attempts (default 3)
+  - max_batch_tokens (int) - soft limit for tokens per batch (default 100000)
+  - max_texts_per_batch (int) - maximum texts in one request (default 2048)
+  - truncate_tokens (int) - truncation limit for long texts (default 8000)
 - **Raises**: ValueError - if API key not found
 
 #### EmbeddingsClient.get_embeddings(texts: List[str]) -> np.ndarray
@@ -57,15 +60,18 @@ Count tokens in text using cl100k_base tokenizer.
 Truncate text to specified number of tokens.
 
 #### _update_tpm_state(tokens_used: int, headers: Optional[Dict[str, str]] = None)
-Update TPM bucket state from response headers or by simple subtraction.
+Update TPM bucket state from response headers (preferred) or by simple subtraction (fallback).
+- **Uses real API headers when available**: x-ratelimit-remaining-tokens, x-ratelimit-reset-tokens
+- **Falls back to simple token subtraction** when headers are not available
 
 #### _wait_for_tokens(required_tokens: int, safety_margin: float = 0.15)
 Wait for token availability with safety margin.
 - **Terminal Output**: Informs user about waiting and limit reset
 
 #### _batch_texts(texts: List[str]) -> List[List[str]]
-Split texts into batches considering API limits (2048 texts, ~100K tokens).
-- **Terminal Output**: Warns about truncation of texts longer than 8192 tokens
+Split texts into batches considering API limits.
+- **Uses configurable limits**: max_texts_per_batch and max_batch_tokens from config
+- **Terminal Output**: Warns about truncation of texts longer than configured truncate_tokens
 
 ## Terminal Output
 
@@ -156,17 +162,23 @@ Module uses the following configuration parameters:
 - `embedding_api_key` - API key for embeddings (optional)
 - `api_key` - main API key (fallback)
 - `embedding_model` - OpenAI model for embeddings
-- `embedding_tpm_limit` - tokens per minute limit (350000 for embedding models)
+- `embedding_tpm_limit` - tokens per minute limit (1000000 for embedding models)
 - `max_retries` - number of retry attempts on errors
+- `max_batch_tokens` - soft limit for tokens per batch (100000)
+- `max_texts_per_batch` - maximum texts in one request (2048)
+- `truncate_tokens` - truncation limit for long texts (8000)
 
 ## Performance Notes
 
 - **Tokenizer**: Uses cl100k_base (NOT o200k_base!) as required by OpenAI Embeddings API
-- **Batching**: Automatic batching for optimal performance
-- **TPM control**: Built-in limit control with wait for reset
+- **Batching**: Automatic batching for optimal performance with configurable limits
+- **TPM control**: Uses real headers from API for accurate tracking (with_raw_response)
+  - Real-time tracking via x-ratelimit-remaining-tokens and x-ratelimit-reset-tokens headers
+  - Falls back to simple token subtraction when headers are not available
 - **Dimensions**: text-embedding-3-small returns vectors of dimension 1536
 - **Normalization**: Vectors are automatically normalized (norm = 1)
 - **Empty strings**: OpenAI API doesn't accept empty strings, module automatically filters them and returns zero vectors
+- **Actual TPM limit**: 1,000,000 tokens per minute (not 350,000 as previously documented)
 
 ## Usage Examples
 

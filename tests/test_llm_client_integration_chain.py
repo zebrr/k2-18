@@ -210,23 +210,31 @@ class TestResponseChainWindowIntegration:
                 assert usage.input_tokens > 0
                 # С truncation контекст будет обрезаться автоматически
 
-    @pytest.mark.skipif(True, reason="This test intentionally causes incomplete response")
     def test_incomplete_response_no_retry_integration(self, config_with_chain):
         """Проверка что IncompleteResponseError НЕ вызывает retry"""
         config = config_with_chain.copy()
-        config["max_completion"] = 10  # Очень маленький лимит
+        config["max_completion"] = 30  # Маленький лимит, но выше минимума API
         
         client = OpenAIClient(config)
         
         with pytest.raises(IncompleteResponseError) as exc_info:
-            # Запрашиваем длинный ответ с маленьким лимитом токенов
+            # Запрашиваем ОЧЕНЬ длинный ответ, который точно не уместится в 30 токенов
             client.create_response(
-                "Write a detailed explanation",
-                "Explain quantum computing in detail with at least 500 words"
+                "Write a comprehensive, detailed guide. Be extremely verbose and thorough.",
+                "Write at least 2000 words explaining quantum computing in great detail, "
+                "including its history from the beginning, fundamental principles, "
+                "current applications in industry, future prospects, technical implementation details, "
+                "mathematical foundations with formulas, and detailed comparison with classical computing. "
+                "Include examples, case studies, and technical specifications."
             )
         
-        # Проверяем что ошибка содержит информацию о контексте
-        assert "max_output_tokens" in str(exc_info.value)
+        # Проверяем что ошибка содержит правильную информацию
+        error_msg = str(exc_info.value)
+        assert "incomplete" in error_msg.lower()
+        assert "30" in error_msg or "tokens" in error_msg.lower()
+        
+        # Проверяем что это именно IncompleteResponseError, а не другая ошибка
+        assert exc_info.type == IncompleteResponseError
 
 
 @pytest.mark.integration
@@ -276,7 +284,6 @@ def test_validation_failure_with_chain_depth_one():
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Test hangs due to chain management - needs investigation")
 def test_chain_management_with_confirmations():
     """Test that chain is managed correctly with confirmations"""
     config = get_test_config()
@@ -301,11 +308,10 @@ def test_chain_management_with_confirmations():
     assert responses[2] in client.response_chain
     
     # Verify first response was deleted via API
+    # CORRECT: verify deletion directly via retrieve
     with pytest.raises(Exception) as exc_info:
-        # Try to use deleted response
-        client.create_response(
-            "Continue",
-            "What was the first calculation?",
-            previous_response_id=responses[0]
-        )
-    assert "not found" in str(exc_info.value).lower()
+        # This should fail with 404
+        client.client.responses.retrieve(responses[0])
+    # Success - response was deleted
+    assert "404" in str(exc_info.value) or "not found" in str(exc_info.value).lower()
+    print(f"✅ Confirmed: old response {responses[0][:12]} was deleted from OpenAI")

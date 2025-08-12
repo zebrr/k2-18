@@ -360,6 +360,28 @@ class OpenAIClient:
             self.response_chain = None
             chain_mode = "unlimited chain"
 
+        # Setup probe model and fallback chain
+        self.probe_model = config.get("probe_model", "gpt-4.1-nano-2025-04-14")
+        self.model = config["model"]
+
+        # Create fallback list (from cheapest to most expensive)
+        self.probe_fallback_models = [
+            "gpt-4.1-nano-2025-04-14",
+            "gpt-5-nano-2025-08-07",
+            "gpt-4.1-mini-2025-04-14",
+            self.model,  # Ultimate fallback: use main model
+        ]
+
+        # Remove duplicates while preserving order
+        seen = set()
+        self.probe_fallback_models = [
+            m for m in self.probe_fallback_models if not (m in seen or seen.add(m))
+        ]
+
+        # Cache for last known TPM limits (initialize)
+        self._cached_tpm_limit = config["tpm_limit"]
+        self._cached_tpm_remaining = config["tpm_limit"]
+
         # Two-phase confirmation fields
         self.last_confirmed_response_id = None  # Last CONFIRMED response
         self.unconfirmed_response_id = None  # Awaiting confirmation
@@ -604,41 +626,94 @@ class OpenAIClient:
 
     def _update_tpm_via_probe(self) -> None:
         """
-        Get current rate limit data via probe request.
+        Get current rate limit data via probe request with fallback chain.
 
-        Executes minimal synchronous request to cheapest model
-        to get response headers with limit information.
+        Tries probe_model first, then fallback models in order.
+        Fallback chain: cheapest nano models → mini models → main model.
+        Caches TPM limits for future use if all models fail.
 
         Note:
             In background mode (async) OpenAI doesn't return rate limit headers,
             so we use periodic probe requests for updates.
         """
-        try:
-            self.logger.debug("Executing TPM probe request")
+        self.logger.debug("Executing TPM probe request")
 
-            # Use with_raw_response to access headers
-            raw = self.client.responses.with_raw_response.create(
-                model="gpt-4.1-nano-2025-04-14",
-                input="2+2=?",  # Simple math question
-                max_output_tokens=20,  # Minimum 16, set 20 with buffer
-                temperature=0.1,  # Minimal temperature for determinism
-                background=False,  # IMPORTANT: synchronous mode!
-            )
+        # Try probe model first, then fallbacks
+        models_to_try = [self.probe_model] + self.probe_fallback_models
 
-            # Extract headers
-            headers = dict(raw.headers)
+        for model in models_to_try:
+            # Skip duplicates in the chain
+            if (
+                models_to_try.index(model) > 0
+                and model in models_to_try[: models_to_try.index(model)]
+            ):
+                continue
 
-            # Update TPM bucket
-            self.tpm_bucket.update_from_headers(headers)
+            try:
+                self.logger.debug(f"Trying probe with model: {model}")
 
-            self.logger.debug(
-                f"TPM probe successful: remaining={self.tpm_bucket.remaining_tokens}, "
-                f"reset_time={self.tpm_bucket.reset_time}"
-            )
+                # Use with_raw_response to access headers
+                raw = self.client.responses.with_raw_response.create(
+                    model=model,
+                    input="2+2=?",  # Simple math question
+                    max_output_tokens=20,  # Minimum 16, set 20 with buffer
+                    temperature=0.1,  # Minimal temperature for determinism
+                    background=False,  # IMPORTANT: synchronous mode!
+                    store=False,  # Don't store probe requests
+                )
 
-        except Exception as e:
-            self.logger.warning(f"TPM probe failed: {e}")
-            # Not critical - continue with current data
+                # Success - update probe model if we used fallback
+                if model != self.probe_model:
+                    self.logger.info(f"Probe model fallback: {self.probe_model} → {model}")
+                    self.probe_model = model
+
+                # Extract headers
+                headers = dict(raw.headers)
+
+                # Update TPM bucket
+                self.tpm_bucket.update_from_headers(headers)
+
+                # Cache for future fallback
+                if "x-ratelimit-limit-tokens" in headers:
+                    self._cached_tpm_limit = int(
+                        headers.get("x-ratelimit-limit-tokens", self._cached_tpm_limit)
+                    )
+                if "x-ratelimit-remaining-tokens" in headers:
+                    self._cached_tpm_remaining = int(
+                        headers.get("x-ratelimit-remaining-tokens", self._cached_tpm_remaining)
+                    )
+
+                # Clean up the response
+                parsed = raw.parse()
+                if parsed and hasattr(parsed, "id"):
+                    try:
+                        self.client.responses.delete(parsed.id)
+                    except Exception as del_err:
+                        self.logger.debug(f"Could not delete probe response: {del_err}")
+
+                self.logger.debug(
+                    f"TPM probe successful: remaining={self.tpm_bucket.remaining_tokens}, "
+                    f"reset_time={self.tpm_bucket.reset_time}"
+                )
+
+                return  # Success, exit
+
+            except Exception as e:
+                error_str = str(e).lower()
+                if "model" in error_str or "404" in error_str or "not found" in error_str:
+                    self.logger.warning(f"Probe model {model} unavailable: {e}")
+                    continue  # Try next model
+                else:
+                    # Other errors (network, auth) - don't continue fallback
+                    self.logger.error(f"Probe request failed: {e}")
+                    break
+
+        # All models failed - use cached limits
+        self.logger.warning(
+            f"All probe models failed, using cached TPM limits: {self._cached_tpm_limit}"
+        )
+        self.tpm_bucket.remaining_tokens = self._cached_tpm_remaining
+        self.tpm_bucket.initial_limit = self._cached_tpm_limit
 
     def _create_response_async(
         self,

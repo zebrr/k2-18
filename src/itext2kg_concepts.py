@@ -496,6 +496,10 @@ class SliceProcessor:
                 )
 
             try:
+                # Track if repair was performed
+                repair_performed = False
+                repair_id = None  # Initialize to avoid undefined variable
+
                 response_text, response_id, usage = self.llm_client.create_response(
                     instructions=self.extraction_prompt,
                     input_data=input_data,
@@ -535,6 +539,7 @@ class SliceProcessor:
                     self.llm_client.confirm_response()
                 elif not success:
                     # Repair attempt with clarifying prompt
+                    repair_performed = True  # Mark that repair is being performed
                     self.logger.info(
                         json.dumps(
                             {
@@ -662,7 +667,7 @@ class SliceProcessor:
 
                 # Update previous_response_id only after successful processing
                 # This ensures we rollback to last successful state on repair
-                if "repair_id" in locals() and repair_id:
+                if repair_performed and repair_id:
                     # If repair was successful, use repair_id
                     self.previous_response_id = repair_id
                 else:

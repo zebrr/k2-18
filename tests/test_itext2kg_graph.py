@@ -176,7 +176,12 @@ class TestSliceProcessor:
         assert processor._format_tokens(1234567) == "1.23M"
 
     def test_validate_node_positions(self, processor_with_mocks):
-        """Test node position validation logic."""
+        """Test node position validation logic - DEPRECATED.
+
+        Note: validate_node_positions is deprecated and always returns input unchanged.
+        Position validation is no longer needed after ID post-processing was implemented.
+        This test is kept for backward compatibility.
+        """
         processor, _ = processor_with_mocks
 
         # Test correct calculation
@@ -255,6 +260,20 @@ class TestSliceProcessor:
         ]
         result = processor.validate_node_positions(invalid_nodes4, 4993)
         assert result == invalid_nodes4  # Now always returns nodes (validation skipped)
+
+    def test_legacy_validation_preserved(self, processor_with_mocks):
+        """Test that legacy _validate_node_positions_legacy exists but is not used."""
+        processor, _ = processor_with_mocks
+
+        # Verify method exists
+        assert hasattr(processor, "_validate_node_positions_legacy")
+
+        # Verify it's not called in normal flow
+        # The validate_node_positions method should not call the legacy method
+        with patch.object(processor, "_validate_node_positions_legacy") as mock_legacy:
+            nodes = [{"id": "test:c:1000", "type": "Chunk", "text": "test"}]
+            processor.validate_node_positions(nodes, 1000)
+            mock_legacy.assert_not_called()
 
     def test_process_llm_response_valid_json(self, processor_with_mocks):
         """Test processing valid JSON response."""
@@ -651,6 +670,383 @@ class TestSliceProcessor:
         assert success is False
         assert processor.previous_response_id is None  # Not updated on failure
 
+    def test_confirm_response_called_on_success(self, processor_with_mocks, sample_slice, tmp_path):
+        """Test that confirm_response is called after successful validation."""
+        processor, mock_client = processor_with_mocks
+
+        # Create slice file
+        slice_file = tmp_path / "staging" / "slice_001.slice.json"
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        # Mock successful LLM response
+        mock_client.create_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",  # Temporary ID
+                                "type": "Chunk",
+                                "text": "Test chunk",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            ),
+            "resp_1",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        # Call _process_single_slice
+        success = processor._process_single_slice(slice_file)
+
+        # Assert confirm_response was called once
+        assert success is True
+        mock_client.confirm_response.assert_called_once()
+        assert processor.previous_response_id == "resp_1"
+
+    def test_confirm_not_called_on_json_error(self, processor_with_mocks, sample_slice, tmp_path):
+        """Test that confirm_response is NOT called when JSON validation fails."""
+        processor, mock_client = processor_with_mocks
+
+        # Create slice file
+        slice_file = tmp_path / "staging" / "slice_001.slice.json"
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        # Mock invalid JSON response
+        mock_client.create_response.return_value = (
+            "```json\n{invalid json",
+            "resp_1",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        # Mock repair failure to test confirm not called
+        mock_client.repair_response.side_effect = Exception("Repair failed")
+
+        # Call _process_single_slice
+        success = processor._process_single_slice(slice_file)
+
+        # Assert confirm_response was NOT called
+        assert success is False
+        mock_client.confirm_response.assert_not_called()
+        assert processor.previous_response_id is None
+
+    def test_confirm_called_after_successful_repair(
+        self, processor_with_mocks, sample_slice, tmp_path
+    ):
+        """Test that confirm_response is called for successful repair."""
+        processor, mock_client = processor_with_mocks
+
+        # Create slice file
+        slice_file = tmp_path / "staging" / "slice_001.slice.json"
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        # First response - invalid JSON
+        mock_client.create_response.return_value = (
+            "```json\n{invalid json",
+            "resp_1",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        # Repair response - valid JSON
+        mock_client.repair_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Repaired chunk",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            ),
+            "resp_2",
+            Mock(total_tokens=50, input_tokens=25, output_tokens=20, reasoning_tokens=5),
+        )
+
+        # Call _process_single_slice
+        success = processor._process_single_slice(slice_file)
+
+        # Assert confirm_response was called once (after repair)
+        assert success is True
+        mock_client.confirm_response.assert_called_once()
+        assert processor.previous_response_id == "resp_2"  # Uses repair_id
+
+    def test_repair_rollback_uses_previous_response_id(
+        self, processor_with_mocks, sample_slice, tmp_path
+    ):
+        """Test that repair uses previous_response_id for rollback."""
+        processor, mock_client = processor_with_mocks
+
+        # Set previous_response_id to simulate continuing from previous slice
+        processor.previous_response_id = "resp_old"
+
+        # Create slice file
+        slice_file = tmp_path / "staging" / "slice_002.slice.json"
+        sample_slice["id"] = "slice_002"
+        sample_slice["order"] = 2
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        # First response - invalid JSON
+        mock_client.create_response.return_value = (
+            "```json\n{invalid json",
+            "resp_bad",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        # Repair response - valid JSON
+        mock_client.repair_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Repaired chunk",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            ),
+            "resp_repaired",
+            Mock(total_tokens=50, input_tokens=25, output_tokens=20, reasoning_tokens=5),
+        )
+
+        # Call _process_single_slice
+        success = processor._process_single_slice(slice_file)
+
+        # Assert repair was called with rollback to previous_response_id
+        assert success is True
+        mock_client.repair_response.assert_called_once()
+
+        # Check that repair was called with the correct previous_response_id for rollback
+        call_args = mock_client.repair_response.call_args
+        assert call_args[1].get("previous_response_id") == "resp_old"  # Check rollback
+        assert processor.previous_response_id == "resp_repaired"  # Updated to repair_id
+
+    def test_save_bad_response_creates_file(self, processor_with_mocks, tmp_path):
+        """Test that _save_bad_response creates debug file."""
+        processor, _ = processor_with_mocks
+
+        # Call _save_bad_response
+        processor._save_bad_response(
+            slice_id="test_slice",
+            original_response='{"invalid": "json"',
+            error="JSON parse error",
+            repair_response='{"valid": "json"}',
+        )
+
+        # Check file exists in logs directory
+        bad_response_file = tmp_path / "logs" / "test_slice_bad.json"
+        assert bad_response_file.exists()
+
+        # Verify file content structure
+        with open(bad_response_file, encoding="utf-8") as f:
+            content = json.load(f)
+
+        assert content["slice_id"] == "test_slice"
+        assert content["error"] == "JSON parse error"
+        assert content["original_response"] == '{"invalid": "json"'
+        assert content["repair_response"] == '{"valid": "json"}'
+        assert "timestamp" in content
+
+    def test_html_cleanup_in_process_llm_response(self, processor_with_mocks):
+        """Test HTML attribute cleanup regex."""
+        processor, _ = processor_with_mocks
+
+        # Test that normal valid JSON works
+        response_with_html = """
+        {
+            "chunk_graph_patch": {
+                "nodes": [{
+                    "id": "chunk_1",
+                    "type": "Chunk",
+                    "text": "Text with link",
+                    "node_offset": 0,
+                    "difficulty": 3
+                }],
+                "edges": []
+            }
+        }
+        """
+
+        # First test normal valid JSON
+        success, parsed = processor._process_llm_response(response_with_html, "test_slice")
+        assert success is True
+        assert parsed is not None
+
+        # Now test the regex that cleans HTML attributes
+        # The actual regex in the code is: re.sub(r'href=\'\"([^"]+)\"\'', r'href="\1"', text)
+        import re
+
+        # Test string with problematic HTML that needs cleaning
+        problematic_html = "Text with <a href='\"https://example.com\"'>link</a>"
+        cleaned = re.sub(r'href=\'\"([^"]+)\"\'', r'href="\1"', problematic_html)
+
+        # Verify the regex successfully cleans the HTML
+        assert cleaned == 'Text with <a href="https://example.com">link</a>'
+        assert "href='\"" not in cleaned  # No more escaped quotes
+
+    def test_add_to_graph_direct(self, processor_with_mocks):
+        """Test _add_to_graph method directly."""
+        processor, _ = processor_with_mocks
+
+        # Prepare patch with nodes and edges (without chunk_graph_patch wrapper)
+        # Use concept from ConceptDictionary (test:p:stack or test:p:queue)
+        patch = {
+            "nodes": [
+                {
+                    "id": "test:c:1000",
+                    "type": "Chunk",
+                    "text": "Test chunk with stack",
+                    "node_offset": 0,
+                    "difficulty": 3,
+                },
+                {
+                    "id": "test:p:stack",  # Use existing concept from ConceptDictionary
+                    "type": "Concept",
+                    "definition": "LIFO data structure",
+                },
+            ],
+            "edges": [
+                {
+                    "source": "test:c:1000",
+                    "target": "test:p:stack",
+                    "type": "MENTIONS",
+                    "weight": 0.8,
+                }
+            ],
+        }
+
+        slice_data = SliceData(
+            id="test_slice",
+            order=1,
+            source_file="test.md",
+            slug="test",
+            text="Test text",
+            slice_token_start=1000,
+            slice_token_end=1500,
+        )
+
+        # Call _add_to_graph
+        processor._add_to_graph(patch, slice_data)
+
+        # Verify nodes added (both Chunk and Concept nodes)
+        assert len(processor.graph_nodes) == 2  # Both nodes are added
+        assert processor.graph_nodes[0]["id"] == "test:c:1000"
+        assert processor.graph_nodes[1]["id"] == "test:p:stack"
+
+        # Verify edges validated and added
+        assert len(processor.graph_edges) >= 1  # At least the explicit edge
+        # Find the explicit MENTIONS edge
+        explicit_edge = [e for e in processor.graph_edges if e["weight"] == 0.8]
+        assert len(explicit_edge) == 1
+        assert explicit_edge[0]["source"] == "test:c:1000"
+        assert explicit_edge[0]["target"] == "test:p:stack"
+
+        # Check if automatic MENTIONS edges were created
+        # Should find "stack" in chunk text and create MENTIONS edge
+        mentions_edges = [e for e in processor.graph_edges if e["type"] == "MENTIONS"]
+        assert len(mentions_edges) >= 1
+
+    def test_full_confirmation_flow_with_repair(self, processor_with_mocks, sample_slice, tmp_path):
+        """Test complete flow: initial fail -> repair -> confirm -> update response_id."""
+        processor, mock_client = processor_with_mocks
+
+        # Setup: processor has previous_response_id from previous slice
+        processor.previous_response_id = "resp_previous"
+
+        # Create slice file
+        slice_file = tmp_path / "staging" / "slice_003.slice.json"
+        sample_slice["id"] = "slice_003"
+        sample_slice["order"] = 3
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        # Track call order
+        call_order = []
+
+        # First response - invalid JSON
+        def mock_create_response(*args, **kwargs):
+            call_order.append("create_response")
+            return (
+                "```json\n{invalid json",
+                "resp_bad",
+                Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+            )
+
+        # Repair response - valid JSON
+        def mock_repair_response(*args, **kwargs):
+            call_order.append("repair_response")
+            # Verify rollback to previous_response_id
+            assert kwargs.get("previous_response_id") == "resp_previous"
+            return (
+                json.dumps(
+                    {
+                        "chunk_graph_patch": {
+                            "nodes": [
+                                {
+                                    "id": "chunk_1",
+                                    "type": "Chunk",
+                                    "text": "Repaired chunk",
+                                    "node_offset": 100,
+                                    "difficulty": 3,
+                                }
+                            ],
+                            "edges": [],
+                        }
+                    }
+                ),
+                "resp_repaired",
+                Mock(total_tokens=50, input_tokens=25, output_tokens=20, reasoning_tokens=5),
+            )
+
+        def mock_confirm_response(*args, **kwargs):
+            call_order.append("confirm_response")
+
+        mock_client.create_response.side_effect = mock_create_response
+        mock_client.repair_response.side_effect = mock_repair_response
+        mock_client.confirm_response.side_effect = mock_confirm_response
+
+        # Execute _process_single_slice
+        success = processor._process_single_slice(slice_file)
+
+        # Assert sequence:
+        assert success is True
+        assert call_order == [
+            "create_response",  # 1. First create_response called
+            # No confirm_response here (validation failed)
+            "repair_response",  # 3. repair_response called with rollback
+            "confirm_response",  # 4. confirm_response called (repair succeeded)
+        ]
+
+        # Verify previous_response_id updated to repair_id
+        assert processor.previous_response_id == "resp_repaired"
+
+        # Verify the repaired node was added to graph
+        assert len(processor.graph_nodes) > 0
+        # The temporary ID should have been replaced with position-based ID
+        chunk_nodes = [n for n in processor.graph_nodes if n["type"] == "Chunk"]
+        assert len(chunk_nodes) == 1
+        assert chunk_nodes[0]["id"].startswith("test:c:")  # Not "chunk_1"
+
     def test_run_no_slices(self, processor_with_mocks, tmp_path):
         """Test run with no slice files."""
         processor, _ = processor_with_mocks
@@ -708,7 +1104,7 @@ class TestSliceProcessor:
         assert "api_usage" in graph["_meta"]
         assert "graph_stats" in graph["_meta"]
         assert "processing_time" in graph["_meta"]
-        
+
         # Check data structure
         assert "nodes" in graph
         assert "edges" in graph

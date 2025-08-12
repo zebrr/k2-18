@@ -45,8 +45,11 @@ def config(api_key):
     return {
         "embedding_api_key": api_key,
         "embedding_model": "text-embedding-3-small",
-        "embedding_tpm_limit": 350000,
+        "embedding_tpm_limit": 1000000,
         "max_retries": 3,
+        "max_batch_tokens": 100000,
+        "max_texts_per_batch": 2048,
+        "truncate_tokens": 8000,
     }
 
 
@@ -62,9 +65,20 @@ def test_texts():
     return {
         "english_short": "The quick brown fox jumps over the lazy dog",
         "russian_short": "В лесу родилась ёлочка, в лесу она росла",
-        "english_medium": "Machine learning is a subset of artificial intelligence that focuses on the use of data and algorithms to imitate the way that humans learn, gradually improving its accuracy.",
-        "russian_medium": "Машинное обучение — это подмножество искусственного интеллекта, которое фокусируется на использовании данных и алгоритмов для имитации способа обучения человека, постепенно улучшая свою точность.",
-        "mixed": "Python является высокоуровневым языком программирования. It is widely used in data science and машинном обучении.",
+        "english_medium": (
+            "Machine learning is a subset of artificial intelligence that focuses on "
+            "the use of data and algorithms to imitate the way that humans learn, "
+            "gradually improving its accuracy."
+        ),
+        "russian_medium": (
+            "Машинное обучение — это подмножество искусственного интеллекта, которое "
+            "фокусируется на использовании данных и алгоритмов для имитации "
+            "способа обучения человека, постепенно улучшая свою точность."
+        ),
+        "mixed": (
+            "Python является высокоуровневым языком программирования. "
+            "It is widely used in data science and машинном обучении."
+        ),
         "code": "def hello_world():\n    print('Hello, World!')\n    return 42",
         "empty": "",
         "special_chars": "Специальные символы: @#$%^&*()_+{}[]|\\:;\"'<>,.?/~`±§",
@@ -128,13 +142,11 @@ class TestBatchProcessing:
         # Создаем 150 различных текстов
         texts = []
         for i in range(150):
-            texts.append(
-                f"This is test text number {i}. It contains unique information: {i * 17}"
-            )
+            texts.append(f"This is test text number {i}. It contains unique information: {i * 17}")
 
         start_time = time.time()
         embeddings = client.get_embeddings(texts)
-        duration = time.time() - start_time
+        _ = time.time() - start_time  # duration
 
         assert embeddings.shape == (150, 1536)
 
@@ -149,9 +161,7 @@ class TestBatchProcessing:
     def test_very_large_batch(self, client):
         """Тест обработки очень большого батча (2500+ текстов)."""
         # Создаем 2500 текстов - больше чем лимит в 2048
-        texts = [
-            f"Document {i}: Some content that varies by number {i}" for i in range(2500)
-        ]
+        texts = [f"Document {i}: Some content that varies by number {i}" for i in range(2500)]
 
         embeddings = client.get_embeddings(texts)
 
@@ -173,9 +183,7 @@ class TestLongTexts:
     def test_text_over_limit(self, client):
         """Тест обрезки текста превышающего 8192 токена."""
         # Создаем очень длинный текст
-        very_long_text = (
-            "This is a test sentence with more words to increase token count. " * 2000
-        )
+        very_long_text = "This is a test sentence with more words to increase token count. " * 2000
 
         # Не должно выбросить исключение - текст должен быть обрезан
         embeddings = client.get_embeddings([very_long_text])
@@ -349,7 +357,7 @@ class TestTPMLimits:
 
         start_time = time.time()
         embeddings = client.get_embeddings(texts)
-        duration = time.time() - start_time
+        _ = time.time() - start_time  # duration
 
         assert embeddings.shape == (50, 1536)
 
@@ -428,7 +436,103 @@ class TestPerformance:
         # Должно быть достаточно быстро (< 5 секунд для 20 текстов)
         assert duration < 5.0
 
-        texts_per_second = 20 / duration
+        _ = 20 / duration  # texts_per_second
+
+
+class TestHeadersTracking:
+    """Тесты отслеживания headers от API."""
+
+    def test_real_headers_tracking(self, client):
+        """Тест реального отслеживания TPM через headers."""
+        # Запоминаем начальное состояние
+        initial_remaining = client.remaining_tokens
+
+        # Делаем несколько запросов
+        texts_batch1 = ["First batch text"] * 5
+        embeddings1 = client.get_embeddings(texts_batch1)
+
+        # После первого запроса remaining_tokens должен уменьшиться
+        assert client.remaining_tokens < initial_remaining
+        first_remaining = client.remaining_tokens
+
+        # Делаем второй запрос
+        texts_batch2 = ["Second batch text"] * 5
+        embeddings2 = client.get_embeddings(texts_batch2)
+
+        # После второго запроса должен еще уменьшиться
+        assert client.remaining_tokens < first_remaining
+
+        # Проверяем что embeddings получены корректно
+        assert embeddings1.shape == (5, 1536)
+        assert embeddings2.shape == (5, 1536)
+
+    def test_tpm_reset_time_from_headers(self, client):
+        """Тест установки reset_time из headers."""
+        # Делаем запрос
+        texts = ["Test text for reset time"]
+        embeddings = client.get_embeddings(texts)
+
+        # reset_time должен быть установлен из headers (в будущем)
+        assert client.reset_time > time.time()
+
+        # Проверяем что embeddings получены
+        assert embeddings.shape == (1, 1536)
+
+    def test_exactly_8192_tokens(self, client):
+        """Тест текста с ровно 8192 токенами."""
+        # Создаем очень длинный текст
+        # "test " = примерно 1 токен, нужно ~8192 повторений
+        long_text = "test " * 8200  # Немного больше для гарантии
+
+        # Обрезаем до точного количества токенов
+        tokens = client.encoding.encode(long_text)
+        if len(tokens) > 8192:
+            tokens = tokens[:8192]
+            long_text = client.encoding.decode(tokens)
+
+        # Проверяем что текст не обрезается при ровно 8192 токенах
+        embeddings = client.get_embeddings([long_text])
+        assert embeddings.shape == (1, 1536)
+
+    def test_correct_model_usage(self, config):
+        """Тест использования модели из конфига."""
+        # Тестируем с другой моделью если она доступна
+        config["embedding_model"] = "text-embedding-3-small"  # Используем ту же модель
+        client = EmbeddingsClient(config)
+
+        # Проверяем что модель установлена правильно
+        assert client.model == "text-embedding-3-small"
+
+        # Делаем запрос чтобы убедиться что работает
+        embeddings = client.get_embeddings(["Test model usage"])
+        assert embeddings.shape == (1, 1536)
+
+    def test_batch_with_new_config_params(self, api_key):
+        """Тест батчинга с новыми параметрами конфигурации."""
+        config = {
+            "embedding_api_key": api_key,
+            "embedding_model": "text-embedding-3-small",
+            "embedding_tpm_limit": 1000000,
+            "max_retries": 3,
+            "max_batch_tokens": 50000,  # Уменьшенный лимит для теста
+            "max_texts_per_batch": 100,  # Уменьшенный лимит для теста
+            "truncate_tokens": 5000,  # Уменьшенный лимит для теста
+        }
+
+        client = EmbeddingsClient(config)
+
+        # Проверяем что параметры применились
+        assert client.max_batch_tokens == 50000
+        assert client.max_texts_per_batch == 100
+        assert client.truncate_tokens == 5000
+
+        # Создаем тексты которые потребуют несколько батчей
+        texts = ["Test text for batching"] * 150  # Больше чем max_texts_per_batch
+
+        embeddings = client.get_embeddings(texts)
+
+        # Должны получить все embeddings несмотря на батчинг
+        assert embeddings.shape == (150, 1536)
 
 
 if __name__ == "__main__":

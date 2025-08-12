@@ -61,6 +61,7 @@ Initialize client with configuration.
   - response_chain_depth (int, optional) - response chain depth (None=unlimited, 0=independent, >0=sliding window)
   - truncation (str, optional) - truncation strategy ("auto", "disabled", or None to omit)
   - poll_interval (int) - polling interval in seconds (default 5)
+  - probe_model (str, optional) - model for TPM probe requests (default: "gpt-4.1-nano-2025-04-14")
 - **Attributes**:
   - last_response_id (str) - ID of last successful response (for backward compatibility)
   - last_confirmed_response_id (str) - ID of last confirmed response for chains
@@ -71,6 +72,10 @@ Initialize client with configuration.
   - response_chain_depth (int|None) - chain management mode
   - response_chain (deque|None) - sliding window of response IDs (only if depth > 0)
   - truncation (str|None) - truncation strategy for API
+  - probe_model (str) - current model used for TPM probes
+  - probe_fallback_models (list) - fallback chain for probe failures
+  - _cached_tpm_limit (int) - cached TPM limit for ultimate fallback
+  - _cached_tpm_remaining (int) - cached remaining tokens for ultimate fallback
 - **Raises**: ValueError - if required parameter 'is_reasoning' is missing
 
 #### OpenAIClient.create_response(instructions: str, input_data: str, previous_response_id: Optional[str] = None, is_repair: bool = False) -> Tuple[str, str, ResponseUsage]
@@ -124,8 +129,12 @@ Delete response via OpenAI API.
 - **Note**: Used for managing response chain when sliding window exceeds depth
 
 ### OpenAIClient._update_tpm_via_probe() -> None
-Get current rate limit data via probe request.
-- **Logic**: Synchronous request to gpt-4.1-nano with "2+2=?" to get headers
+Get current rate limit data via probe request with fallback chain.
+- **Logic**: 
+  - Tries probe_model first, then fallback models in order
+  - Fallback chain: cheapest nano models → mini models → main model
+  - Caches TPM limits for future use
+  - Uses cached limits if all models fail
 - **Note**: Necessary because OpenAI doesn't return rate limit headers in background mode
 
 ### OpenAIClient._create_response_async(instructions, input_data, previous_response_id, is_repair) -> Tuple[str, str, ResponseUsage]
@@ -271,7 +280,7 @@ for data_chunk in data_chunks:
 
 ## Test Coverage
 
-- **test_llm_client**: 24+ tests
+- **test_llm_client**: 28+ tests
   - Initialization tests - verify config validation and required parameters
   - TPM bucket tests - token limit control and waiting logic
   - Parameter preparation tests - request params formatting for API
@@ -285,6 +294,9 @@ for data_chunk in data_chunks:
   - Truncation parameter - context management
   - Repair flag - responses not added to chain
   - Two-phase confirmation - unconfirmed/confirmed response management
+  - Probe failure with fallback - fallback chain when probe model unavailable
+  - All probes fail uses cache - cached TPM limits as ultimate fallback
+  - Probe model configuration - custom probe model from config
   
 - **test_llm_client_integration**: 10 active tests (3 skipped)
   - Simple response - basic API call verification
@@ -295,11 +307,12 @@ for data_chunk in data_chunks:
   - Reasoning model - o* models with reasoning tokens
   - Background mode verification - console output capture
 
-- **test_llm_client_integration_chain**: 5 tests (require API key)
+- **test_llm_client_integration_chain**: 6 tests (require API key)
   - Response chain window - sliding window management
   - Independent requests - no context preservation
   - Repair not in chain - repair responses excluded
   - Truncation parameter - automatic context truncation
+  - Chain management with confirmations - proper deletion of old responses
   - Two-phase confirmation - proper chain management
 
 ## Configuration Notes

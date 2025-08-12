@@ -25,22 +25,30 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from src.utils.tokenizer import count_tokens
+from src.utils.tokenizer import count_tokens, find_safe_token_boundary
 
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import tiktoken
 from bs4 import BeautifulSoup
+
 # External dependencies
 from unidecode import unidecode
 
 # Import project utilities
 from src.utils.config import load_config
+
 # Setup UTF-8 encoding for Windows console
 from src.utils.console_encoding import setup_console_encoding
-from src.utils.exit_codes import (EXIT_CONFIG_ERROR, EXIT_INPUT_ERROR,
-                                  EXIT_IO_ERROR, EXIT_RUNTIME_ERROR,
-                                  EXIT_SUCCESS, log_exit)
+from src.utils.exit_codes import (
+    EXIT_CONFIG_ERROR,
+    EXIT_INPUT_ERROR,
+    EXIT_IO_ERROR,
+    EXIT_RUNTIME_ERROR,
+    EXIT_SUCCESS,
+    log_exit,
+)
 
 setup_console_encoding()
 
@@ -62,9 +70,7 @@ def setup_logging(log_level: str = "info") -> None:
     level = level_map.get(log_level.lower(), logging.INFO)
 
     # Setup log format
-    formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)-8s | %(message)s", datefmt="%H:%M:%S"
-    )
+    formatter = logging.Formatter("[%(asctime)s] %(levelname)-8s | %(message)s", datefmt="%H:%M:%S")
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -102,26 +108,18 @@ def validate_config_parameters(config: Dict[str, Any]) -> None:
     # Check types and ranges
     max_tokens = slicer_config["max_tokens"]
     if not isinstance(max_tokens, int) or max_tokens <= 0:
-        raise ValueError(
-            f"slicer.max_tokens must be a positive integer, got: {max_tokens}"
-        )
+        raise ValueError(f"slicer.max_tokens must be a positive integer, got: {max_tokens}")
 
     overlap = slicer_config["overlap"]
     if not isinstance(overlap, int) or overlap < 0:
-        raise ValueError(
-            f"slicer.overlap must be a non-negative integer, got: {overlap}"
-        )
+        raise ValueError(f"slicer.overlap must be a non-negative integer, got: {overlap}")
 
     if overlap >= max_tokens:
-        raise ValueError(
-            f"slicer.overlap ({overlap}) must be less than max_tokens ({max_tokens})"
-        )
+        raise ValueError(f"slicer.overlap ({overlap}) must be less than max_tokens ({max_tokens})")
 
     soft_boundary_max_shift = slicer_config["soft_boundary_max_shift"]
     if not isinstance(soft_boundary_max_shift, int) or soft_boundary_max_shift < 0:
-        raise ValueError(
-            "slicer.soft_boundary_max_shift must be a non-negative integer"
-        )
+        raise ValueError("slicer.soft_boundary_max_shift must be a non-negative integer")
 
     # Special validation for overlap > 0
     if overlap > 0:
@@ -241,9 +239,7 @@ def load_and_validate_file(file_path: Path, allowed_extensions: List[str]) -> st
         InputError: For empty file or unsupported extension
     """
     # Check extension
-    if file_path.suffix.lstrip(".").lower() not in [
-        ext.lower() for ext in allowed_extensions
-    ]:
+    if file_path.suffix.lstrip(".").lower() not in [ext.lower() for ext in allowed_extensions]:
         raise InputError(f"Unsupported file extension: {file_path.suffix}")
 
     try:
@@ -302,8 +298,6 @@ def slice_text_with_window(
         return [(text, 0, total_tokens)]
 
     # Tokenize entire text for position handling
-    import tiktoken
-
     encoding = tiktoken.get_encoding("o200k_base")
     tokens = encoding.encode(text)
 
@@ -332,8 +326,6 @@ def slice_text_with_window(
             max_shift_tokens = max(1, soft_boundary_max_shift // 4)
 
             # Use new function to find safe boundary
-            from src.utils.tokenizer import find_safe_token_boundary
-
             safe_end = find_safe_token_boundary(
                 text=text,
                 tokens=tokens,
@@ -462,9 +454,7 @@ def process_file(
 
         # Create slice objects
         slices = []
-        for i, (slice_text, slice_token_start, slice_token_end) in enumerate(
-            slices_data
-        ):
+        for i, (slice_text, slice_token_start, slice_token_end) in enumerate(slices_data):
             slice_obj = {
                 "id": f"slice_{global_slice_counter:03d}",
                 "order": global_slice_counter,
@@ -498,7 +488,7 @@ def main(argv=None):
     )
 
     # No parameters yet - config is hardcoded
-    args = parser.parse_args(argv)
+    _ = parser.parse_args(argv)
 
     try:
         # Load configuration
@@ -565,9 +555,7 @@ def main(argv=None):
 
         for file_path in input_files:
             try:
-                slices, global_slice_counter = process_file(
-                    file_path, config, global_slice_counter
-                )
+                slices, global_slice_counter = process_file(file_path, config, global_slice_counter)
 
                 # Save slices
                 for slice_data in slices:
@@ -579,9 +567,7 @@ def main(argv=None):
                 logging.error(f"Input data error in file {file_path.name}: {e}")
                 return EXIT_INPUT_ERROR
             except IOError as e:
-                logging.error(
-                    f"I/O error when processing {file_path.name}: {e}"
-                )
+                logging.error(f"I/O error when processing {file_path.name}: {e}")
                 return EXIT_IO_ERROR
             except RuntimeError as e:
                 logging.error(f"Runtime error when processing {file_path.name}: {e}")
@@ -590,9 +576,7 @@ def main(argv=None):
                 logging.error(f"Unexpected error when processing {file_path.name}: {e}")
                 return EXIT_RUNTIME_ERROR
 
-        logging.info(
-            f"Processing completed: {total_slices} slices saved in {staging_dir}"
-        )
+        logging.info(f"Processing completed: {total_slices} slices saved in {staging_dir}")
         log_exit(logging.getLogger(), EXIT_SUCCESS)
         return EXIT_SUCCESS
 

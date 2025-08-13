@@ -385,12 +385,37 @@ class TestSliceProcessor:
         """Test processing Concept node."""
         processor, _ = processor_with_mocks
 
-        new_nodes = [{"id": "test:p:stack", "type": "Concept", "definition": "Wrong def"}]
+        new_nodes = [
+            {
+                "id": "test:p:stack",
+                "type": "Concept",
+                "text": "Stack concept text",
+                "node_offset": 100,
+                "definition": "Wrong def",
+            }
+        ]
 
         nodes_to_add = processor._process_chunk_nodes(new_nodes)
         assert len(nodes_to_add) == 1
         # Should use definition from ConceptDictionary
         assert nodes_to_add[0]["definition"] == "LIFO data structure"
+        # Should preserve text and node_offset from LLM response
+        assert nodes_to_add[0]["text"] == "Stack concept text"
+        assert nodes_to_add[0]["node_offset"] == 100
+
+    def test_process_chunk_nodes_concept_fallback(self, processor_with_mocks):
+        """Test processing Concept node with fallback values."""
+        processor, _ = processor_with_mocks
+
+        # Test when text and node_offset are missing
+        new_nodes = [{"id": "test:p:queue", "type": "Concept"}]
+
+        nodes_to_add = processor._process_chunk_nodes(new_nodes)
+        assert len(nodes_to_add) == 1
+        # Should use fallback values
+        assert nodes_to_add[0]["text"] == "Queue"  # Primary term from dictionary
+        assert nodes_to_add[0]["node_offset"] == 0  # Default value
+        assert nodes_to_add[0]["definition"] == "FIFO data structure"  # From dictionary
 
     def test_validate_edges_valid(self, processor_with_mocks):
         """Test validating valid edges."""

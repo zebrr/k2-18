@@ -23,12 +23,12 @@ from utils.exit_codes import EXIT_INPUT_ERROR, EXIT_RUNTIME_ERROR, EXIT_SUCCESS
 class TestRefinerMain(unittest.TestCase):
     """Интеграционные тесты основной функции."""
 
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.load_config")
     @patch("shutil.copy2")
     @patch("pathlib.Path.exists")
     def test_run_false(self, mock_exists, mock_copy, mock_load_config):
         """Тест с run=false - просто копирование файла."""
-        from refiner import main
+        from refiner_longrange import main
 
         # Конфигурация с run=false
         mock_load_config.return_value = {"refiner": {"run": False}}
@@ -41,15 +41,16 @@ class TestRefinerMain(unittest.TestCase):
         self.assertEqual(result, EXIT_SUCCESS)
         mock_copy.assert_called_once_with(
             Path("data/out/LearningChunkGraph_dedup.json"),
-            Path("data/out/LearningChunkGraph.json"),
+            Path("data/out/LearningChunkGraph_longrange.json"),
         )
 
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.setup_json_logging")
+    @patch("refiner_longrange.load_config")
     @patch("pathlib.Path.exists")
-    @patch("refiner.load_and_validate_graph")
-    def test_input_file_not_found(self, mock_load_graph, mock_exists, mock_load_config):
+    @patch("refiner_longrange.load_and_validate_graph")
+    def test_input_file_not_found(self, mock_load_graph, mock_exists, mock_load_config, mock_setup_logging):
         """Тест отсутствующего входного файла."""
-        from refiner import main
+        from refiner_longrange import main
 
         mock_load_config.return_value = {
             "refiner": {
@@ -75,6 +76,10 @@ class TestRefinerMain(unittest.TestCase):
         # load_and_validate_graph должна выбросить FileNotFoundError
         mock_load_graph.side_effect = FileNotFoundError("Input file not found")
 
+        # Mock logger to prevent creating real log files
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
+        
         result = main()
 
         self.assertEqual(result, EXIT_INPUT_ERROR)
@@ -87,44 +92,40 @@ class TestGraphLoadValidate(unittest.TestCase):
         self.sample_graph = {
             "nodes": [
                 {
-                    "id": "node1",
+                    "id": "test:c:0",
                     "type": "Chunk",
                     "text": "Test chunk 1",
-                    "local_start": 0,
                 },
                 {
-                    "id": "node2",
+                    "id": "test:c:100",
                     "type": "Chunk",
                     "text": "Test chunk 2",
-                    "local_start": 100,
                 },
                 {
-                    "id": "node3",
+                    "id": "test:c:300",
                     "type": "Concept",
                     "text": "Test concept",
-                    "local_start": 300,
                 },
                 {
-                    "id": "node4",
+                    "id": "test:q:200:0",
                     "type": "Assessment",
                     "text": "Test question",
-                    "local_start": 200,
                 },
             ],
             "edges": [
-                {"source": "node1", "target": "node2", "type": "PREREQUISITE"},
-                {"source": "node2", "target": "node3", "type": "MENTIONS"},
+                {"source": "test:c:0", "target": "test:c:100", "type": "PREREQUISITE"},
+                {"source": "test:c:100", "target": "test:c:300", "type": "MENTIONS"},
             ],
         }
 
     def test_load_and_validate_graph(self):
         """Тест загрузки и валидации графа из файла."""
-        from refiner import load_and_validate_graph
+        from refiner_longrange import load_and_validate_graph
 
         # Mock файла и Path
         with patch("builtins.open", mock_open(read_data=json.dumps(self.sample_graph))):
             with patch("pathlib.Path.exists", return_value=True):
-                with patch("refiner.validate_json") as mock_validate:
+                with patch("refiner_longrange.validate_json") as mock_validate:
                     graph = load_and_validate_graph(Path("test.json"))
 
         # Проверяем загрузку
@@ -136,7 +137,7 @@ class TestGraphLoadValidate(unittest.TestCase):
 
     def test_load_invalid_json(self):
         """Тест загрузки некорректного JSON."""
-        from refiner import load_and_validate_graph
+        from refiner_longrange import load_and_validate_graph
 
         with patch("builtins.open", mock_open(read_data="invalid json{{")):
             with patch("pathlib.Path.exists", return_value=True):
@@ -145,7 +146,7 @@ class TestGraphLoadValidate(unittest.TestCase):
 
     def test_file_not_found(self):
         """Тест с несуществующим файлом."""
-        from refiner import load_and_validate_graph
+        from refiner_longrange import load_and_validate_graph
 
         with patch("pathlib.Path.exists", return_value=False):
             with self.assertRaises(FileNotFoundError):
@@ -169,29 +170,26 @@ class TestEmbeddingsIntegration(unittest.TestCase):
 
         self.nodes = [
             {
-                "id": "node1",
+                "id": "test:c:0",
                 "type": "Chunk",
                 "text": "Python variables",
-                "local_start": 0,
             },
             {
-                "id": "node2",
+                "id": "test:c:100",
                 "type": "Chunk",
                 "text": "Python functions",
-                "local_start": 100,
             },
             {
-                "id": "node3",
+                "id": "test:q:200:0",
                 "type": "Assessment",
                 "text": "Test question",
-                "local_start": 200,
             },
         ]
 
-    @patch("refiner.get_embeddings")
+    @patch("refiner_longrange.get_embeddings")
     def test_get_node_embeddings_success(self, mock_get_embeddings):
         """Тест успешного получения embeddings через API."""
-        from refiner import get_node_embeddings
+        from refiner_longrange import get_node_embeddings
 
         # Mock возвращает векторы правильной размерности
         mock_embeddings = np.random.rand(3, 1536).astype(np.float32)
@@ -201,23 +199,23 @@ class TestEmbeddingsIntegration(unittest.TestCase):
 
         # Проверяем результат
         self.assertEqual(len(result), 3)
-        self.assertIn("node1", result)
-        self.assertEqual(result["node1"].shape, (1536,))
+        self.assertIn("test:c:0", result)
+        self.assertEqual(result["test:c:0"].shape, (1536,))
 
         # Проверяем вызов API
         mock_get_embeddings.assert_called_once_with(
             ["Python variables", "Python functions", "Test question"], self.config
         )
 
-    @patch("refiner.get_embeddings")
+    @patch("refiner_longrange.get_embeddings")
     def test_get_node_embeddings_empty_text(self, mock_get_embeddings):
         """Тест с пустыми текстами - фильтрация перед API."""
-        from refiner import get_node_embeddings
+        from refiner_longrange import get_node_embeddings
 
         nodes_with_empty = [
-            {"id": "node1", "text": "Valid text", "local_start": 0},
-            {"id": "node2", "text": "", "local_start": 100},  # Пустой
-            {"id": "node3", "text": "   ", "local_start": 200},  # Только пробелы
+            {"id": "test:c:0", "text": "Valid text"},
+            {"id": "test:c:100", "text": ""},  # Пустой
+            {"id": "test:c:200", "text": "   "},  # Только пробелы
         ]
 
         # Mock возвращает один вектор для одного валидного текста
@@ -227,17 +225,17 @@ class TestEmbeddingsIntegration(unittest.TestCase):
 
         # Должен быть только один embedding
         self.assertEqual(len(result), 1)
-        self.assertIn("node1", result)
-        self.assertNotIn("node2", result)
-        self.assertNotIn("node3", result)
+        self.assertIn("test:c:0", result)
+        self.assertNotIn("test:c:100", result)
+        self.assertNotIn("test:c:200", result)
 
         # Проверяем, что API был вызван только с валидным текстом
         mock_get_embeddings.assert_called_once_with(["Valid text"], self.config)
 
-    @patch("refiner.get_embeddings")
+    @patch("refiner_longrange.get_embeddings")
     def test_embeddings_api_error(self, mock_get_embeddings):
         """Тест обработки ошибок API embeddings."""
-        from refiner import get_node_embeddings
+        from refiner_longrange import get_node_embeddings
 
         # Mock выбрасывает исключение
         mock_get_embeddings.side_effect = Exception("API rate limit exceeded")
@@ -262,23 +260,23 @@ class TestFAISSIntegration(unittest.TestCase):
         }
 
         self.nodes = [
-            {"id": "n1", "type": "Chunk", "text": "Text 1", "local_start": 0},
-            {"id": "n2", "type": "Chunk", "text": "Text 2", "local_start": 100},
-            {"id": "n3", "type": "Chunk", "text": "Text 3", "local_start": 200},
-            {"id": "n4", "type": "Chunk", "text": "Text 4", "local_start": 300},
+            {"id": "test:c:0", "type": "Chunk", "text": "Text 1"},
+            {"id": "test:c:100", "type": "Chunk", "text": "Text 2"},
+            {"id": "test:c:200", "type": "Chunk", "text": "Text 3"},
+            {"id": "test:c:300", "type": "Chunk", "text": "Text 4"},
         ]
 
     def test_build_faiss_index_and_search(self):
         """Тест построения FAISS индекса и поиска."""
-        from refiner import build_similarity_index, generate_candidate_pairs
+        from refiner_longrange import build_similarity_index, generate_candidate_pairs
 
         # Создаем embeddings с известной структурой сходства
         base_vector = np.random.rand(1536).astype(np.float32)
         embeddings_dict = {
-            "n1": base_vector,
-            "n2": base_vector + 0.05 * np.random.rand(1536),  # Очень похож на n1
-            "n3": base_vector + 0.3 * np.random.rand(1536),  # Менее похож
-            "n4": np.random.rand(1536).astype(np.float32),  # Совсем другой
+            "test:c:0": base_vector,
+            "test:c:100": base_vector + 0.05 * np.random.rand(1536),  # Очень похож на n1
+            "test:c:200": base_vector + 0.3 * np.random.rand(1536),  # Менее похож
+            "test:c:300": np.random.rand(1536).astype(np.float32),  # Совсем другой
         }
 
         # Нормализуем для корректного cosine similarity
@@ -293,7 +291,7 @@ class TestFAISSIntegration(unittest.TestCase):
         # Проверяем индекс
         self.assertEqual(index.ntotal, 4)
         self.assertEqual(len(node_ids), 4)
-        self.assertEqual(node_ids, ["n1", "n2", "n3", "n4"])  # По local_start
+        self.assertEqual(node_ids, ["test:c:0", "test:c:100", "test:c:200", "test:c:300"])  # По позиции из ID
 
         # Генерируем кандидатов
         edges_index = {}  # Нет существующих рёбер
@@ -310,26 +308,26 @@ class TestFAISSIntegration(unittest.TestCase):
         # Проверяем, что n1 нашел n2 как похожий
         self.assertGreater(len(candidates), 0)
 
-        # Находим кандидатов для n1
+        # Находим кандидатов для test:c:0
         n1_candidates = None
         for pair in candidates:
-            if pair["source_node"]["id"] == "n1":
+            if pair["source_node"]["id"] == "test:c:0":
                 n1_candidates = pair["candidates"]
                 break
 
         self.assertIsNotNone(n1_candidates)
 
-        # n2 должен быть первым кандидатом (самый похожий)
+        # test:c:100 должен быть первым кандидатом (самый похожий)
         if n1_candidates:
-            self.assertEqual(n1_candidates[0]["node_id"], "n2")
+            self.assertEqual(n1_candidates[0]["node_id"], "test:c:100")
             self.assertGreater(n1_candidates[0]["similarity"], 0.9)  # Очень похожи
 
     def test_faiss_with_different_metrics(self):
         """Тест FAISS с разными метриками."""
-        from refiner import build_similarity_index
+        from refiner_longrange import build_similarity_index
 
         embeddings_dict = {
-            f"n{i}": np.random.rand(1536).astype(np.float32) for i in range(1, 5)
+            f"test:c:{i*100}": np.random.rand(1536).astype(np.float32) for i in range(4)
         }
 
         # INNER_PRODUCT
@@ -349,7 +347,7 @@ class TestFAISSIntegration(unittest.TestCase):
 
     def test_faiss_empty_embeddings(self):
         """Тест с пустыми embeddings."""
-        from refiner import build_similarity_index
+        from refiner_longrange import build_similarity_index
 
         empty_embeddings = {}
 
@@ -393,47 +391,44 @@ class TestRefinerFullPipeline(unittest.TestCase):
         self.graph_data = {
             "nodes": [
                 {
-                    "id": "n1",
+                    "id": "test:c:0",
                     "type": "Chunk",
                     "text": "Python variables",
                     "node_offset": 0,
-                    "local_start": 0,
                 },
                 {
-                    "id": "n2",
+                    "id": "test:c:1000",
                     "type": "Chunk",
                     "text": "Python functions",
                     "node_offset": 0,
-                    "local_start": 1000,
                 },
                 {
-                    "id": "n3",
+                    "id": "test:c:2000",
                     "type": "Chunk",
                     "text": "Python classes",
                     "node_offset": 0,
-                    "local_start": 2000,
                 },
                 {
                     "id": "concept1",
                     "type": "Concept",
                     "text": "Variables",
                     "node_offset": 0,
-                    "local_start": 3000,
                 },
             ],
-            "edges": [{"source": "n1", "target": "concept1", "type": "MENTIONS"}],
+            "edges": [{"source": "test:c:0", "target": "concept1", "type": "MENTIONS"}],
         }
 
-    @patch("refiner.OpenAIClient")
-    @patch("refiner.get_embeddings")
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.setup_json_logging")
+    @patch("refiner_longrange.OpenAIClient")
+    @patch("refiner_longrange.get_embeddings")
+    @patch("refiner_longrange.load_config")
     @patch("builtins.open", new_callable=mock_open)
     @patch("pathlib.Path.exists")
     def test_pipeline_no_candidates(
-        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client
+        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client, mock_setup_logging
     ):
         """Тест pipeline когда нет подходящих кандидатов (высокий порог)."""
-        from refiner import main
+        from refiner_longrange import main
 
         # Настройка моков
         mock_exists.return_value = True
@@ -446,9 +441,9 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # Совершенно разные embeddings
         mock_embeddings.return_value = np.array(
             [
-                np.array([1.0] + [0.0] * 1535),  # n1
-                np.array([0.0, 1.0] + [0.0] * 1534),  # n2
-                np.array([0.0, 0.0, 1.0] + [0.0] * 1533),  # n3
+                np.array([1.0] + [0.0] * 1535),  # test:c:0
+                np.array([0.0, 1.0] + [0.0] * 1534),  # test:c:1000
+                np.array([0.0, 0.0, 1.0] + [0.0] * 1533),  # test:c:2000
             ],
             dtype=np.float32,
         )
@@ -456,9 +451,13 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # OpenAI клиент не должен вызываться
         mock_llm_instance = MagicMock()
         mock_openai_client.return_value = mock_llm_instance
+        
+        # Mock logger to prevent creating real log files
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
 
-        with patch("refiner.validate_json") as mock_val_json:
-            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+        with patch("refiner_longrange.validate_json") as mock_val_json:
+            with patch("refiner_longrange.validate_graph_invariants") as mock_val_inv:
                 mock_val_json.return_value = None
                 mock_val_inv.return_value = None
                 result = main()
@@ -468,16 +467,17 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # LLM не должен был вызываться
         mock_llm_instance.create_response.assert_not_called()
 
-    @patch("refiner.OpenAIClient")
-    @patch("refiner.get_embeddings")
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.setup_json_logging")
+    @patch("refiner_longrange.OpenAIClient")
+    @patch("refiner_longrange.get_embeddings")
+    @patch("refiner_longrange.load_config")
     @patch("builtins.open", new_callable=mock_open)
     @patch("pathlib.Path.exists")
     def test_pipeline_with_analysis(
-        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client
+        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client, mock_setup_logging
     ):
         """Тест полного pipeline с LLM анализом."""
-        from refiner import main
+        from refiner_longrange import main
 
         # Настройка моков
         mock_exists.return_value = True
@@ -488,9 +488,9 @@ class TestRefinerFullPipeline(unittest.TestCase):
         base = np.random.rand(1536)
         embeddings = np.array(
             [
-                base,  # n1
-                base + 0.1 * np.random.rand(1536),  # n2 похож на n1
-                base + 0.1 * np.random.rand(1536),  # n3 похож на n1 и n2
+                base,  # test:c:0
+                base + 0.1 * np.random.rand(1536),  # test:c:1000 похож на test:c:0
+                base + 0.1 * np.random.rand(1536),  # test:c:2000 похож на test:c:0 и test:c:1000
             ],
             dtype=np.float32,
         )
@@ -500,35 +500,39 @@ class TestRefinerFullPipeline(unittest.TestCase):
             embeddings[i] /= np.linalg.norm(embeddings[i])
 
         mock_embeddings.return_value = embeddings
+        
+        # Mock logger to prevent creating real log files
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
 
         # Настройка мока LLM
         mock_llm_instance = MagicMock()
 
-        # Первый вызов - анализ n1
+        # Первый вызов - анализ test:c:0
         mock_llm_instance.create_response.side_effect = [
             (
                 json.dumps(
                     [
                         {
-                            "source": "n1",
-                            "target": "n2",
+                            "source": "test:c:0",
+                            "target": "test:c:1000",
                             "type": "PREREQUISITE",
                             "weight": 0.8,
                             "conditions": "",
                         },
-                        {"source": "n1", "target": "n3", "type": None},  # Нет связи
+                        {"source": "test:c:0", "target": "test:c:2000", "type": None},  # Нет связи
                     ]
                 ),
                 "response_id_1",
                 {"total_tokens": 500},
             ),
-            # Второй вызов - анализ n2 (если будет)
+            # Второй вызов - анализ test:c:1000 (если будет)
             (
                 json.dumps(
                     [
                         {
-                            "source": "n2",
-                            "target": "n3",
+                            "source": "test:c:1000",
+                            "target": "test:c:2000",
                             "type": "ELABORATES",
                             "weight": 0.7,
                             "conditions": "",
@@ -551,8 +555,8 @@ class TestRefinerFullPipeline(unittest.TestCase):
 
         mock_file.return_value.write.side_effect = track_write
 
-        with patch("refiner.validate_json") as mock_val_json:
-            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+        with patch("refiner_longrange.validate_json") as mock_val_json:
+            with patch("refiner_longrange.validate_graph_invariants") as mock_val_inv:
                 mock_val_json.return_value = None
                 mock_val_inv.return_value = None
                 result = main()
@@ -565,21 +569,22 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # Проверяем, что граф был сохранен
         self.assertTrue(
             any(
-                "LearningChunkGraph.json" in str(call)
+                "LearningChunkGraph_longrange.json" in str(call)
                 for call in mock_file.call_args_list
             )
         )
 
-    @patch("refiner.OpenAIClient")
-    @patch("refiner.get_embeddings")
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.setup_json_logging")
+    @patch("refiner_longrange.OpenAIClient")
+    @patch("refiner_longrange.get_embeddings")
+    @patch("refiner_longrange.load_config")
     @patch("builtins.open", new_callable=mock_open)
     @patch("pathlib.Path.exists")
     def test_pipeline_with_repair_retry(
-        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client
+        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client, mock_setup_logging
     ):
         """Тест pipeline с repair-retry при битом JSON от LLM."""
-        from refiner import main
+        from refiner_longrange import main
 
         # Настройка базовых моков
         mock_exists.return_value = True
@@ -592,6 +597,10 @@ class TestRefinerFullPipeline(unittest.TestCase):
             embeddings[i] = embeddings[i] + i * 0.01
             embeddings[i] /= np.linalg.norm(embeddings[i])
         mock_embeddings.return_value = embeddings
+        
+        # Mock logger to prevent creating real log files
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
 
         # Настройка мока LLM
         mock_llm_instance = MagicMock()
@@ -608,8 +617,8 @@ class TestRefinerFullPipeline(unittest.TestCase):
             json.dumps(
                 [
                     {
-                        "source": "n1",
-                        "target": "n2",
+                        "source": "test:c:0",
+                        "target": "test:c:1000",
                         "type": "PREREQUISITE",
                         "weight": 0.8,
                         "conditions": "",
@@ -622,8 +631,8 @@ class TestRefinerFullPipeline(unittest.TestCase):
 
         mock_openai_client.return_value = mock_llm_instance
 
-        with patch("refiner.validate_json") as mock_val_json:
-            with patch("refiner.validate_graph_invariants") as mock_val_inv:
+        with patch("refiner_longrange.validate_json") as mock_val_json:
+            with patch("refiner_longrange.validate_graph_invariants") as mock_val_inv:
                 mock_val_json.return_value = None
                 mock_val_inv.return_value = None
                 with patch("pathlib.Path.mkdir"):  # Для создания logs/
@@ -635,21 +644,26 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # Проверяем, что repair был вызван
         mock_llm_instance.repair_response.assert_called()
 
-    @patch("refiner.OpenAIClient")
-    @patch("refiner.get_embeddings")
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.setup_json_logging")
+    @patch("refiner_longrange.OpenAIClient")
+    @patch("refiner_longrange.get_embeddings")
+    @patch("refiner_longrange.load_config")
     @patch("builtins.open", new_callable=mock_open)
     @patch("pathlib.Path.exists")
     def test_pipeline_api_error(
-        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client
+        self, mock_exists, mock_file, mock_config, mock_embeddings, mock_openai_client, mock_setup_logging
     ):
         """Тест обработки API ошибок."""
-        from refiner import main
+        from refiner_longrange import main
 
         # Настройка моков
         mock_exists.return_value = True
         mock_file.return_value.read.return_value = json.dumps(self.graph_data)
         mock_config.return_value = self.config
+        
+        # Mock logger to prevent creating real log files
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
 
         # Ошибка при получении embeddings
         mock_embeddings.side_effect = Exception("RateLimitError: Too many requests")
@@ -663,21 +677,21 @@ class TestRefinerFullPipeline(unittest.TestCase):
 class TestLoggingIntegration(unittest.TestCase):
     """Тесты логирования в файлы."""
 
-    @patch("refiner.OpenAIClient")
-    @patch("refiner.get_embeddings")
-    @patch("refiner.load_config")
+    @patch("refiner_longrange.OpenAIClient")
+    @patch("refiner_longrange.get_embeddings")
+    @patch("refiner_longrange.load_config")
     @patch("pathlib.Path.exists")
     def test_json_logging_setup(
         self, mock_exists, mock_config, mock_embeddings, mock_openai_client
     ):
         """Тест настройки JSON логирования."""
-        from refiner import setup_json_logging
+        from refiner_longrange import setup_json_logging
 
         mock_exists.return_value = True
 
         # Минимальный граф
         graph_data = {
-            "nodes": [{"id": "n1", "type": "Chunk", "text": "Test", "local_start": 0}],
+            "nodes": [{"id": "test:c:0", "type": "Chunk", "text": "Test"}],
             "edges": [],
         }
 
@@ -719,8 +733,8 @@ class TestLoggingIntegration(unittest.TestCase):
 
                 mock_handler.side_effect = track_handler
 
-                with patch("refiner.validate_json") as mock_val_json:
-                    with patch("refiner.validate_graph_invariants") as mock_val_inv:
+                with patch("refiner_longrange.validate_json") as mock_val_json:
+                    with patch("refiner_longrange.validate_graph_invariants") as mock_val_inv:
                         mock_val_json.return_value = None
                         mock_val_inv.return_value = None
                         # Вызываем setup_json_logging напрямую

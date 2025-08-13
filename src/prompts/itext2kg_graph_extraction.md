@@ -74,7 +74,7 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
 For nodes in this slice use the following IDs:
 - **Chunks**: `chunk_1`, `chunk_2`, `chunk_3`...
 - **Assessments**: `assessment_1`, `assessment_2`...
-- **Concepts**: use exact concept_id from `ConceptDictionary`
+- **Concepts**: use exact `concept_id` from `ConceptDictionary`
 
 ## Reasoning Steps
 
@@ -96,7 +96,8 @@ Extract nodes first using **exactly** these types and criteria:
 
 2. **Concept Nodes**: Create `Concept` nodes for concepts from `ConceptDictionary` that are relevant to this slice:
     * Only for concepts explicitly mentioned or discussed in the slice text.
-    * Use the exact `concept_id` from `ConceptDictionary`.
+    * For `id` use the exact `concept_id` from `ConceptDictionary`.
+    * For `text` copy `term.primary` field from ConceptDictionary.
     * Copy `definition` from `ConceptDictionary` as is (do not modify).
     * Create each Concept node only once per slice, even if mentioned multiple times.
 

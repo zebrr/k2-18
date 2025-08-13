@@ -29,7 +29,7 @@ class TestSlicerLargeFiles:
     """Тесты slicer.py для больших файлов."""
 
     @pytest.fixture
-    def temp_project_dir(self):
+    def temp_project_dir(self, monkeypatch):
         """Создает временную структуру проекта для тестов."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -41,15 +41,9 @@ class TestSlicerLargeFiles:
             staging_dir.mkdir(parents=True)
 
             # Меняем рабочую директорию для slicer.py
-            original_cwd = Path.cwd()
-            import os
-
-            os.chdir(temp_path)
+            monkeypatch.chdir(temp_path)
 
             yield temp_path, raw_dir, staging_dir
-
-            # Восстанавливаем рабочую директорию
-            os.chdir(original_cwd)
 
     @pytest.mark.slow
     @pytest.mark.timeout(60)  # Таймаут 60 секунд

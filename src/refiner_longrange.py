@@ -52,6 +52,38 @@ logging.basicConfig(
 logger = logging.getLogger("refiner")
 
 
+def extract_global_position(node_id: str) -> int:
+    """
+    Extract global position from Chunk or Assessment node ID.
+
+    Note: This function is only called for nodes that passed through
+    filter, which guarantees only Chunk and Assessment types.
+    Concept nodes never reach this function.
+
+    ID formats:
+    - Chunk: {slug}:c:{position}
+    - Assessment: {slug}:q:{position}:{index}
+
+    Args:
+        node_id: Node identifier (must be Chunk or Assessment)
+
+    Returns:
+        Global position in tokens
+
+    Raises:
+        ValueError: If ID format is unexpected (indicates a bug)
+    """
+    parts = node_id.split(":")
+
+    if len(parts) >= 3 and parts[1] in ["c", "q"]:
+        try:
+            return int(parts[2])
+        except ValueError as e:
+            raise ValueError(f"Cannot parse position from ID: {node_id}") from e
+
+    raise ValueError(f"Unexpected node ID format: {node_id}")
+
+
 def setup_json_logging(config: Dict) -> logging.Logger:
     """
     Set up JSON Lines logging for refiner.
@@ -72,7 +104,7 @@ def setup_json_logging(config: Dict) -> logging.Logger:
 
     # Generate log file name
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_file = log_dir / f"refiner_{timestamp}.log"
+    log_file = log_dir / f"refiner_longrange_{timestamp}.log"
 
     # Create custom formatter for JSON Lines
     class JSONLineFormatter(logging.Formatter):
@@ -150,7 +182,7 @@ def setup_json_logging(config: Dict) -> logging.Logger:
     logger.info(
         "Refiner started",
         extra={
-            "event": "refiner_start",
+            "event": "refiner_longrange_start",
             "config": {
                 "model": config["model"],
                 "tpm_limit": config["tpm_limit"],
@@ -190,7 +222,7 @@ def log_edge_operation(logger: logging.Logger, operation: str, edge: Dict, **kwa
         logger.debug(message, extra=extra)
 
 
-def validate_refiner_config(config: Dict) -> None:
+def validate_refiner_longrange_config(config: Dict) -> None:
     """
     Validate refiner configuration parameters.
 
@@ -254,7 +286,8 @@ def validate_refiner_config(config: Dict) -> None:
 
         if config.get("reasoning_summary") not in ["auto", "concise", "detailed", None]:
             raise ValueError(
-                f"reasoning_summary must be auto/concise/detailed, got {config.get('reasoning_summary')}"
+                f"reasoning_summary must be auto/concise/detailed, "
+                f"got {config.get('reasoning_summary')}"
             )
 
 
@@ -277,15 +310,15 @@ def load_and_validate_graph(input_path: Path) -> Dict:
     with open(input_path, encoding="utf-8") as f:
         graph_data = json.load(f)
 
-    # Extract graph structure (handle both old and new format)
+    # Validate graph structure
     if "nodes" in graph_data and "edges" in graph_data:
-        # Could be old format or new format with _meta
-        graph = {"nodes": graph_data["nodes"], "edges": graph_data["edges"]}
+        # Keep entire structure including _meta if present
+        graph = graph_data
     else:
         raise ValueError("Invalid graph structure: missing nodes or edges")
 
-    # Schema validation
-    validate_json(graph, "LearningChunkGraph")
+    # Schema validation (validate only nodes and edges)
+    validate_json({"nodes": graph["nodes"], "edges": graph["edges"]}, "LearningChunkGraph")
 
     return graph
 
@@ -397,8 +430,8 @@ def build_similarity_index(
     Returns:
         (faiss_index, node_ids_list) - index and list of IDs in order of addition
     """
-    # Sort nodes by local_start for determinism
-    sorted_nodes = sorted(nodes, key=lambda n: (n.get("local_start", 0), n["id"]))
+    # Sort nodes by global position for determinism
+    sorted_nodes = sorted(nodes, key=lambda n: (extract_global_position(n["id"]), n["id"]))
 
     # Collect embeddings in correct order
     embeddings_list = []
@@ -487,7 +520,7 @@ def generate_candidate_pairs(
 
         candidates_for_a = []
 
-        for j, (sim, idx) in enumerate(zip(similarities[0], indices[0])):
+        for _j, (sim, idx) in enumerate(zip(similarities[0], indices[0])):
             if idx == i:  # Skip the node itself
                 continue
 
@@ -497,11 +530,11 @@ def generate_candidate_pairs(
             node_id_b = node_ids_list[idx]
             node_b = nodes_by_id[node_id_b]
 
-            # Check local_start order
-            local_start_a = node_a.get("local_start", 0)
-            local_start_b = node_b.get("local_start", 0)
+            # Check global position order
+            position_a = extract_global_position(node_id_a)
+            position_b = extract_global_position(node_id_b)
 
-            if local_start_a >= local_start_b:
+            if position_a >= position_b:
                 continue  # Process only pairs where A < B
 
             # Check that pair hasn't been processed yet
@@ -556,7 +589,7 @@ def generate_candidate_pairs(
     return candidate_pairs
 
 
-def load_refiner_prompt(config: Dict) -> str:
+def load_refiner_longrange_prompt(config: Dict) -> str:
     """
     Load and prepare prompt for connection analysis.
 
@@ -569,7 +602,7 @@ def load_refiner_prompt(config: Dict) -> str:
     Raises:
         FileNotFoundError: If prompt file is not found
     """
-    prompt_path = Path(__file__).parent / "prompts" / "refiner_relation.md"
+    prompt_path = Path(__file__).parent / "prompts" / "refiner_longrange.md"
 
     if not prompt_path.exists():
         raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
@@ -605,7 +638,7 @@ def analyze_candidate_pairs(
     """
     # Load prompt
     try:
-        prompt = load_refiner_prompt(config)
+        prompt = load_refiner_longrange_prompt(config)
         logger.info("Loaded refiner prompt with weight substitutions")
     except FileNotFoundError as e:
         logger.error(f"Failed to load prompt: {e}")
@@ -615,11 +648,14 @@ def analyze_candidate_pairs(
     llm_config = {
         "api_key": config["api_key"],
         "model": config["model"],
+        "is_reasoning": config.get("is_reasoning", False),  # Required parameter
         "tpm_limit": config["tpm_limit"],
         "tpm_safety_margin": config.get("tpm_safety_margin", 0.15),
         "max_completion": config["max_completion"],
         "timeout": config.get("timeout", 45),
         "max_retries": config.get("max_retries", 3),
+        "max_context_tokens": config.get("max_context_tokens"),
+        "max_context_tokens_test": config.get("max_context_tokens_test"),
     }
 
     # Add parameters for regular models
@@ -631,6 +667,13 @@ def analyze_candidate_pairs(
         llm_config["reasoning_effort"] = config["reasoning_effort"]
     if config.get("reasoning_summary"):
         llm_config["reasoning_summary"] = config["reasoning_summary"]
+
+    # Add response chain management parameters
+    if "response_chain_depth" in config:
+        llm_config["response_chain_depth"] = config["response_chain_depth"]
+
+    if "truncation" in config:
+        llm_config["truncation"] = config["truncation"]
 
     llm_client = OpenAIClient(llm_config)
 
@@ -828,8 +871,7 @@ def validate_llm_edges(
     Returns:
         List of valid edges
     """
-    # Collect all node IDs for checking
-    all_node_ids = {node["id"] for node in graph["nodes"]}
+    # Collect candidate IDs for checking
     candidate_ids = {c["node_id"] for c in candidates}
 
     # Valid edge types
@@ -952,7 +994,7 @@ def update_graph_with_new_edges(
         # Scenario 1: New edge (no such source+target)
         if key not in edge_index:
             # Add with marking
-            new_edge["conditions"] = "added_by=refiner_v1"
+            new_edge["conditions"] = "added_by=refiner_longrange_v1"
             graph["edges"].append(new_edge)
             stats["added"] += 1
 
@@ -998,14 +1040,12 @@ def update_graph_with_new_edges(
             else:
                 # Scenario 3: Type replacement (same source+target, different type)
                 # Find edge with maximum weight among existing
-                max_weight_idx = None
                 max_weight = -1
 
                 for idx in existing_indices:
                     edge_weight = graph["edges"][idx].get("weight", 0.5)
                     if edge_weight > max_weight:
                         max_weight = edge_weight
-                        max_weight_idx = idx
 
                 # Replace only if new weight >= old
                 if weight >= max_weight:
@@ -1022,7 +1062,7 @@ def update_graph_with_new_edges(
                             f"({old_edge['type']}, w={old_edge.get('weight', 0.5):.2f})"
                         )
                     # Add new edge with marking
-                    new_edge["conditions"] = "fixed_by=refiner_v1"
+                    new_edge["conditions"] = "fixed_by=refiner_longrange_v1"
                     graph["edges"].append(new_edge)
                     stats["replaced"] += 1
 
@@ -1073,6 +1113,35 @@ def update_graph_with_new_edges(
     return stats
 
 
+def add_refiner_meta(graph: Dict, config: Dict, stats: Dict) -> None:
+    """
+    Add refiner_longrange metadata to graph.
+
+    Args:
+        graph: Graph to update
+        config: Refiner configuration
+        stats: Statistics from update process
+    """
+    from datetime import datetime
+
+    if "_meta" not in graph:
+        graph["_meta"] = {}
+    graph["_meta"]["refiner_longrange"] = {
+        "processed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "config": {
+            "model": config["model"],
+            "sim_threshold": config["sim_threshold"],
+            "max_pairs_per_node": config["max_pairs_per_node"],
+            "weights": {
+                "low": config["weight_low"],
+                "mid": config["weight_mid"],
+                "high": config["weight_high"],
+            },
+        },
+        "stats": stats,
+    }
+
+
 def main():
     """Main function."""
     logger = None  # Initialize variable
@@ -1099,10 +1168,10 @@ def main():
         # Check run flag BEFORE setting up logging
         if not refiner_config.get("run", True):
             # Simple logging for run=false case
-            print("Refiner is disabled (run=false), copying file without changes")
+            print("Refiner longrange is disabled (run=false), copying file without changes")
 
             input_path = Path("data/out/LearningChunkGraph_dedup.json")
-            output_path = Path("data/out/LearningChunkGraph.json")
+            output_path = Path("data/out/LearningChunkGraph_longrange.json")
 
             if not input_path.exists():
                 print(f"ERROR: Input file not found: {input_path}")
@@ -1117,14 +1186,14 @@ def main():
 
         # Configuration validation
         try:
-            validate_refiner_config(refiner_config)
+            validate_refiner_longrange_config(refiner_config)
         except ValueError as e:
             logger.error(f"Configuration error: {e}")
             return EXIT_CONFIG_ERROR
 
         # File paths
         input_path = Path("data/out/LearningChunkGraph_dedup.json")
-        output_path = Path("data/out/LearningChunkGraph.json")
+        output_path = Path("data/out/LearningChunkGraph_longrange.json")
 
         # Load and validate graph
         try:
@@ -1213,8 +1282,16 @@ def main():
                             f"{update_stats['replaced']} replaced",
                             extra={"event": "graph_updated", "stats": update_stats},
                         )
+                        # Add refiner metadata
+                        add_refiner_meta(graph, refiner_config, update_stats)
                     else:
                         logger.info("No new edges found by LLM analysis")
+                        # Add minimal metadata even if no changes
+                        add_refiner_meta(
+                            graph,
+                            refiner_config,
+                            {"added": 0, "updated": 0, "replaced": 0, "self_loops_removed": 0},
+                        )
 
                 except Exception as e:
                     logger.error(f"LLM analysis failed: {e}")
@@ -1255,7 +1332,7 @@ def main():
         logger.info(
             "Refiner completed successfully",
             extra={
-                "event": "refiner_complete",
+                "event": "refiner_longrange_complete",
                 "edges_added": (update_stats.get("added", 0) if "update_stats" in locals() else 0),
                 "edges_updated": (
                     update_stats.get("updated", 0) if "update_stats" in locals() else 0
@@ -1277,7 +1354,7 @@ def main():
             logger.error(
                 f"Unexpected error: {e}",
                 exc_info=True,
-                extra={"event": "refiner_error", "error": str(e)},
+                extra={"event": "refiner_longrange_error", "error": str(e)},
             )
         else:
             # If logger not initialized, use print

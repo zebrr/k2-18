@@ -47,8 +47,16 @@ Two-phase confirmation mechanism for response management:
 ### Node Processing
 - **Chunk nodes**: Keep longer text version on duplicates
 - **Assessment nodes**: Ignore duplicates with WARNING
-- **Concept nodes**: Add as-is, always use definition from ConceptDictionary
+- **Concept nodes**: Add with `text` and `node_offset` from LLM response, use definition from ConceptDictionary
 - **Missing difficulty**: Set to default value (3) with WARNING
+
+### Node Deduplication
+- **Automatic deduplication**: Removes duplicate nodes from each patch before merging
+- **Concept nodes**: Silently removed (expected behavior when concept appears in multiple slices)
+- **Chunk/Assessment duplicates**: Logged as WARNING (indicates LLM anomaly)
+- **Edge preservation**: All edges remain valid after deduplication (reference by ID)
+- **Statistics tracking**: Metadata includes deduplication counters and anomalies
+- **Global validation**: Final graph validated for ID uniqueness before save
 
 ### Edge Validation
 - Drop PREREQUISITE self-loops
@@ -336,6 +344,17 @@ Automatically create MENTIONS edges.
        - If found and not exists: add MENTIONS edge
 - **Side effects**: Adds edges to graph_edges
 - **Note**: All automatic edges have weight=1.0
+
+### SliceProcessor._deduplicate_patch_nodes(graph, patch, slice_id) -> dict
+Removes duplicate nodes from patch before merging into graph.
+- **Purpose**: Maintain node ID uniqueness across graph
+- **Algorithm**: Set-based duplicate detection, keeps first occurrence
+- **Side effects**: Updates quality_issues statistics, logs warnings for anomalies
+
+### SliceProcessor._validate_node_uniqueness(graph) -> tuple[bool, list]
+Validates that all node IDs in graph are unique.
+- **Purpose**: Final integrity check before saving
+- **Returns**: (is_valid, list_of_duplicate_ids)
 
 ### SliceProcessor._validate_graph_intermediate() -> bool
 Validate graph invariants after each slice.

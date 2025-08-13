@@ -7,9 +7,17 @@ from unittest.mock import MagicMock, patch
 import faiss
 import numpy as np
 
-from src.dedup import (UnionFind, build_faiss_index, cluster_duplicates,
-                       filter_nodes_for_dedup, find_duplicates, rewrite_graph,
-                       save_dedup_map)
+from src.dedup import (
+    UnionFind,
+    build_faiss_index,
+    cluster_duplicates,
+    extract_global_position,
+    filter_nodes_for_dedup,
+    find_duplicates,
+    rewrite_graph,
+    save_dedup_map,
+    update_metadata,
+)
 
 
 class TestUnionFind:
@@ -66,6 +74,48 @@ class TestUnionFind:
         cluster_sets = [set(cluster) for cluster in clusters.values()]
         assert {"a", "b", "c"} in cluster_sets
         assert {"d", "e"} in cluster_sets
+
+
+class TestExtractGlobalPosition:
+    """Тесты для извлечения глобальной позиции из ID узла"""
+
+    def test_chunk_id(self):
+        """Проверка извлечения позиции из Chunk ID"""
+        assert extract_global_position("handbook:c:100") == 100
+        assert extract_global_position("handbook:c:5505") == 5505
+        assert extract_global_position("textbook:c:0") == 0
+
+    def test_assessment_id(self):
+        """Проверка извлечения позиции из Assessment ID"""
+        assert extract_global_position("handbook:q:200:1") == 200
+        assert extract_global_position("handbook:q:1000:3") == 1000
+        assert extract_global_position("textbook:q:0:0") == 0
+
+    def test_invalid_formats(self):
+        """Проверка обработки некорректных форматов ID"""
+        import pytest
+
+        # Concept ID - не должен обрабатываться этой функцией
+        with pytest.raises(ValueError, match="Unexpected node ID format"):
+            extract_global_position("handbook:p:sorting")
+
+        # Некорректный формат
+        with pytest.raises(ValueError, match="Unexpected node ID format"):
+            extract_global_position("invalid")
+
+        # Пустой ID
+        with pytest.raises(ValueError, match="Unexpected node ID format"):
+            extract_global_position("")
+
+    def test_malformed_position(self):
+        """Проверка обработки некорректной позиции"""
+        import pytest
+
+        with pytest.raises(ValueError, match="Cannot parse position"):
+            extract_global_position("handbook:c:not_a_number")
+
+        with pytest.raises(ValueError, match="Cannot parse position"):
+            extract_global_position("handbook:q:abc:1")
 
 
 class TestFilterNodes:
@@ -158,11 +208,11 @@ class TestFindDuplicates:
     def test_no_duplicates(self):
         """Проверка когда нет дубликатов"""
         nodes = [
-            {"id": "n1", "text": "First unique text", "local_start": 0},
+            {"id": "handbook:c:0", "text": "First unique text", "node_offset": 0},
             {
-                "id": "n2",
+                "id": "handbook:c:100",
                 "text": "Second completely different text",
-                "local_start": 100,
+                "node_offset": 100,
             },
         ]
 
@@ -192,11 +242,11 @@ class TestFindDuplicates:
     def test_find_duplicate_pair(self):
         """Проверка нахождения пары дубликатов"""
         nodes = [
-            {"id": "n1", "text": "This is a test text about Python", "local_start": 0},
+            {"id": "handbook:c:0", "text": "This is a test text about Python", "node_offset": 0},
             {
-                "id": "n2",
+                "id": "handbook:c:100",
                 "text": "This is a test text about Python!",
-                "local_start": 100,
+                "node_offset": 100,
             },
         ]
 
@@ -223,18 +273,18 @@ class TestFindDuplicates:
 
         assert len(duplicates) == 1
         master_id, dup_id, sim = duplicates[0]
-        assert master_id == "n1"  # Меньший local_start
-        assert dup_id == "n2"
+        assert master_id == "handbook:c:0"  # Меньший global position
+        assert dup_id == "handbook:c:100"
         assert sim > 0.9
 
     def test_length_ratio_filter(self):
         """Проверка фильтрации по length ratio"""
         nodes = [
-            {"id": "n1", "text": "Short", "local_start": 0},
+            {"id": "handbook:c:0", "text": "Short", "node_offset": 0},
             {
-                "id": "n2",
+                "id": "handbook:c:100",
                 "text": "This is a much longer text that should not match",
-                "local_start": 100,
+                "node_offset": 100,
             },
         ]
 
@@ -267,16 +317,18 @@ class TestClusterDuplicates:
 
     def test_empty_duplicates(self):
         """Проверка с пустым списком дубликатов"""
-        dedup_map = cluster_duplicates([])
+        dedup_map, num_clusters = cluster_duplicates([])
         assert dedup_map == {}
+        assert num_clusters == 0
 
     def test_single_pair(self):
         """Проверка с одной парой дубликатов"""
         duplicates = [("master1", "dup1", 0.98)]
-        dedup_map = cluster_duplicates(duplicates)
+        dedup_map, num_clusters = cluster_duplicates(duplicates)
 
         assert len(dedup_map) == 1
         assert dedup_map["dup1"] == "master1"
+        assert num_clusters == 1
 
     def test_transitive_duplicates(self):
         """Проверка транзитивных дубликатов A→B→C"""
@@ -284,11 +336,12 @@ class TestClusterDuplicates:
             ("A", "B", 0.98),
             ("B", "C", 0.97),
         ]
-        dedup_map = cluster_duplicates(duplicates)
+        dedup_map, num_clusters = cluster_duplicates(duplicates)
 
         assert len(dedup_map) == 2
         assert dedup_map["B"] == "A"
         assert dedup_map["C"] == "A"
+        assert num_clusters == 1
 
     def test_multiple_clusters(self):
         """Проверка нескольких независимых кластеров"""
@@ -297,12 +350,13 @@ class TestClusterDuplicates:
             ("C", "D", 0.97),
             ("D", "E", 0.96),
         ]
-        dedup_map = cluster_duplicates(duplicates)
+        dedup_map, num_clusters = cluster_duplicates(duplicates)
 
         assert len(dedup_map) == 3
         assert dedup_map["B"] == "A"
         assert dedup_map["D"] == "C"
         assert dedup_map["E"] == "C"
+        assert num_clusters == 2
 
 
 class TestRewriteGraph:
@@ -318,11 +372,15 @@ class TestRewriteGraph:
             "edges": [{"source": "n1", "target": "n2", "type": "PREREQUISITE"}],
         }
 
-        new_graph = rewrite_graph(graph, {})
+        new_graph, stats = rewrite_graph(graph, {})
 
         assert len(new_graph["nodes"]) == 2
         assert len(new_graph["edges"]) == 1
         assert new_graph == graph
+        assert stats["nodes_removed_duplicates"] == 0
+        assert stats["nodes_removed_empty"] == 0
+        assert stats["nodes_removed_total"] == 0
+        assert stats["edges_updated"] == 0
 
     def test_remove_duplicate_nodes(self):
         """Проверка удаления узлов-дубликатов"""
@@ -336,13 +394,16 @@ class TestRewriteGraph:
         }
 
         dedup_map = {"n2": "n1"}
-        new_graph = rewrite_graph(graph, dedup_map)
+        new_graph, stats = rewrite_graph(graph, dedup_map)
 
         assert len(new_graph["nodes"]) == 2
         node_ids = [n["id"] for n in new_graph["nodes"]]
         assert "n1" in node_ids
         assert "n2" not in node_ids
         assert "n3" in node_ids
+        assert stats["nodes_removed_duplicates"] == 1
+        assert stats["nodes_removed_empty"] == 0
+        assert stats["nodes_removed_total"] == 1
 
     def test_update_edges(self):
         """Проверка обновления рёбер"""
@@ -359,7 +420,7 @@ class TestRewriteGraph:
         }
 
         dedup_map = {"n2": "n1"}
-        new_graph = rewrite_graph(graph, dedup_map)
+        new_graph, stats = rewrite_graph(graph, dedup_map)
 
         assert len(new_graph["nodes"]) == 2
         assert len(new_graph["edges"]) == 2
@@ -372,6 +433,8 @@ class TestRewriteGraph:
         edge2 = new_graph["edges"][1]
         assert edge2["source"] == "n3"
         assert edge2["target"] == "n1"  # n2 → n1
+
+        assert stats["edges_updated"] == 2
 
     def test_remove_duplicate_edges(self):
         """Проверка удаления дублированных рёбер"""
@@ -388,12 +451,15 @@ class TestRewriteGraph:
         }
 
         dedup_map = {"n2": "n1"}
-        new_graph = rewrite_graph(graph, dedup_map)
+        new_graph, stats = rewrite_graph(graph, dedup_map)
 
         # Оба ребра станут n1→n3, останется только одно
         assert len(new_graph["edges"]) == 1
         assert new_graph["edges"][0]["source"] == "n1"
         assert new_graph["edges"][0]["target"] == "n3"
+        # Второе ребро обновлено (n2->n3 стало n1->n3), но удалено как дубликат
+        # Первое ребро не требовало обновления
+        assert stats["edges_updated"] == 0  # Обновлений не было, т.к. измененное ребро было удалено как дубликат
 
     def test_remove_dangling_edges(self):
         """Проверка удаления висячих рёбер"""
@@ -412,10 +478,11 @@ class TestRewriteGraph:
             ],
         }
 
-        new_graph = rewrite_graph(graph, {})
+        new_graph, stats = rewrite_graph(graph, {})
 
         # Второе ребро должно быть удалено
         assert len(new_graph["edges"]) == 1
+        assert stats["edges_updated"] == 0
         assert new_graph["edges"][0]["target"] == "n2"
 
 
@@ -471,3 +538,117 @@ class TestSaveDedupMap:
         assert "dup1" in write_content
         assert "master1" in write_content
         assert "0.98" in write_content
+
+
+class TestUpdateMetadata:
+    """Тесты для обновления метаданных"""
+
+    def test_create_new_metadata(self):
+        """Проверка создания новых метаданных"""
+        config = {
+            "sim_threshold": 0.95,
+            "len_ratio_min": 0.8,
+            "k_neighbors": 5,
+            "embedding_model": "text-embedding-3-small",
+        }
+
+        statistics = {
+            "nodes_analyzed": 150,
+            "embeddings_created": 150,
+            "potential_duplicates": 23,
+            "clusters_formed": 8,
+            "nodes_removed_duplicates": 15,
+            "nodes_removed_empty": 3,
+            "nodes_removed_total": 18,
+            "edges_updated": 42,
+            "nodes_before": 189,
+            "nodes_after": 171,
+            "edges_before": 312,
+            "edges_after": 287,
+        }
+
+        metadata = update_metadata(None, config, statistics, 17.24)
+
+        # Проверяем качественные показатели
+        assert "quality_issues" in metadata
+        assert metadata["quality_issues"]["duplicate_nodes_removed"] == 15
+
+        # Проверяем секцию дедупликации
+        assert "deduplication" in metadata
+        dedup = metadata["deduplication"]
+
+        # Проверяем конфигурацию
+        assert dedup["config"]["similarity_threshold"] == 0.95
+        assert dedup["config"]["length_ratio_threshold"] == 0.8
+        assert dedup["config"]["top_k"] == 5
+        assert dedup["config"]["model"] == "text-embedding-3-small"
+
+        # Проверяем статистику
+        assert dedup["statistics"]["nodes_analyzed"] == 150
+        assert dedup["statistics"]["embeddings_created"] == 150
+        assert dedup["statistics"]["potential_duplicates"] == 23
+        assert dedup["statistics"]["clusters_formed"] == 8
+        assert dedup["statistics"]["nodes_removed"]["duplicates"] == 15
+        assert dedup["statistics"]["nodes_removed"]["empty"] == 3
+        assert dedup["statistics"]["nodes_removed"]["total"] == 18
+        assert dedup["statistics"]["edges_updated"] == 42
+        assert dedup["statistics"]["processing_time_seconds"] == 17.24
+
+        # Проверяем before/after
+        assert dedup["before_after"]["nodes_before"] == 189
+        assert dedup["before_after"]["nodes_after"] == 171
+        assert dedup["before_after"]["edges_before"] == 312
+        assert dedup["before_after"]["edges_after"] == 287
+
+        # Проверяем временную метку
+        assert "performed_at" in dedup
+
+    def test_update_existing_metadata(self):
+        """Проверка обновления существующих метаданных"""
+        existing_meta = {
+            "generated_at": "2024-01-15 10:45:00",
+            "generator": "itext2kg_graph",
+            "config": {
+                "model": "o4-mini-2025-04-16",
+                "temperature": 0.6,
+            },
+            "quality_issues": {
+                "some_other_issue": 5,
+            },
+        }
+
+        config = {
+            "sim_threshold": 0.97,
+            "len_ratio_min": 0.8,
+            "k_neighbors": 5,
+        }
+
+        statistics = {
+            "nodes_removed_duplicates": 10,
+            "nodes_removed_empty": 2,
+            "nodes_removed_total": 12,
+            "nodes_analyzed": 100,
+            "embeddings_created": 100,
+            "potential_duplicates": 15,
+            "clusters_formed": 5,
+            "edges_updated": 20,
+            "nodes_before": 150,
+            "nodes_after": 138,
+            "edges_before": 200,
+            "edges_after": 180,
+        }
+
+        metadata = update_metadata(existing_meta, config, statistics, 10.5)
+
+        # Проверяем, что существующие поля сохранились
+        assert metadata["generated_at"] == "2024-01-15 10:45:00"
+        assert metadata["generator"] == "itext2kg_graph"
+        assert metadata["config"]["model"] == "o4-mini-2025-04-16"
+
+        # Проверяем, что quality_issues обновлён
+        assert metadata["quality_issues"]["some_other_issue"] == 5
+        assert metadata["quality_issues"]["duplicate_nodes_removed"] == 10
+
+        # Проверяем секцию дедупликации
+        assert "deduplication" in metadata
+        assert metadata["deduplication"]["statistics"]["nodes_removed"]["duplicates"] == 10

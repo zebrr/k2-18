@@ -21,7 +21,7 @@ class TestRefinerConfig(unittest.TestCase):
 
     def test_valid_config(self):
         """Тест валидной конфигурации."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "embedding_model": "text-embedding-3-small",
@@ -39,11 +39,11 @@ class TestRefinerConfig(unittest.TestCase):
         }
 
         # Не должно быть исключений
-        validate_refiner_config(config)
+        validate_refiner_longrange_config(config)
 
     def test_missing_required_param(self):
         """Тест отсутствующего обязательного параметра."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "sim_threshold": 0.8,
@@ -51,13 +51,13 @@ class TestRefinerConfig(unittest.TestCase):
         }
 
         with self.assertRaises(ValueError) as cm:
-            validate_refiner_config(config)
+            validate_refiner_longrange_config(config)
 
         self.assertIn("Missing required parameter", str(cm.exception))
 
     def test_empty_api_key(self):
         """Тест пустого API ключа."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "embedding_model": "text-embedding-3-small",
@@ -75,13 +75,13 @@ class TestRefinerConfig(unittest.TestCase):
         }
 
         with self.assertRaises(ValueError) as cm:
-            validate_refiner_config(config)
+            validate_refiner_longrange_config(config)
 
         self.assertIn("api_key cannot be empty", str(cm.exception))
 
     def test_invalid_threshold(self):
         """Тест некорректного порога similarity."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "embedding_model": "text-embedding-3-small",
@@ -99,13 +99,13 @@ class TestRefinerConfig(unittest.TestCase):
         }
 
         with self.assertRaises(ValueError) as cm:
-            validate_refiner_config(config)
+            validate_refiner_longrange_config(config)
 
         self.assertIn("sim_threshold must be in [0,1]", str(cm.exception))
 
     def test_invalid_weights_order(self):
         """Тест некорректного порядка весов."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "embedding_model": "text-embedding-3-small",
@@ -123,13 +123,13 @@ class TestRefinerConfig(unittest.TestCase):
         }
 
         with self.assertRaises(ValueError) as cm:
-            validate_refiner_config(config)
+            validate_refiner_longrange_config(config)
 
         self.assertIn("Weights must satisfy", str(cm.exception))
 
     def test_reasoning_model_params(self):
         """Тест параметров для reasoning моделей."""
-        from refiner import validate_refiner_config
+        from refiner_longrange import validate_refiner_longrange_config
 
         # Корректные параметры для o-модели
         config = {
@@ -149,15 +149,55 @@ class TestRefinerConfig(unittest.TestCase):
             "reasoning_summary": "auto",
         }
 
-        validate_refiner_config(config)
+        validate_refiner_longrange_config(config)
 
         # Некорректный reasoning_effort
         config["reasoning_effort"] = "super-high"
 
         with self.assertRaises(ValueError) as cm:
-            validate_refiner_config(config)
+            validate_refiner_longrange_config(config)
 
         self.assertIn("reasoning_effort must be", str(cm.exception))
+
+
+class TestExtractGlobalPosition(unittest.TestCase):
+    """Тесты функции extract_global_position."""
+
+    def test_chunk_id(self):
+        """Тест извлечения позиции из Chunk ID."""
+        from refiner_longrange import extract_global_position
+        
+        # Test Chunk ID format
+        self.assertEqual(extract_global_position("handbook:c:220"), 220)
+        self.assertEqual(extract_global_position("chapter01:c:0"), 0)
+        self.assertEqual(extract_global_position("text:c:99999"), 99999)
+    
+    def test_assessment_id(self):
+        """Тест извлечения позиции из Assessment ID."""
+        from refiner_longrange import extract_global_position
+        
+        # Test Assessment ID format  
+        self.assertEqual(extract_global_position("handbook:q:500:1"), 500)
+        self.assertEqual(extract_global_position("chapter02:q:1000:0"), 1000)
+        self.assertEqual(extract_global_position("test:q:42:5"), 42)
+    
+    def test_invalid_id(self):
+        """Тест обработки невалидных ID."""
+        from refiner_longrange import extract_global_position
+        
+        # Test invalid IDs
+        with self.assertRaises(ValueError) as cm:
+            extract_global_position("invalid_id")
+        self.assertIn("Unexpected node ID format", str(cm.exception))
+        
+        with self.assertRaises(ValueError) as cm:
+            extract_global_position("handbook:x:100")
+        self.assertIn("Unexpected node ID format", str(cm.exception))
+        
+        # Test invalid position
+        with self.assertRaises(ValueError) as cm:
+            extract_global_position("handbook:c:abc")
+        self.assertIn("Cannot parse position", str(cm.exception))
 
 
 class TestGraphProcessing(unittest.TestCase):
@@ -179,7 +219,7 @@ class TestGraphProcessing(unittest.TestCase):
 
     def test_extract_target_nodes(self):
         """Тест извлечения целевых узлов."""
-        from refiner import extract_target_nodes
+        from refiner_longrange import extract_target_nodes
 
         target_nodes = extract_target_nodes(self.sample_graph)
 
@@ -195,7 +235,7 @@ class TestGraphProcessing(unittest.TestCase):
 
     def test_build_edges_index(self):
         """Тест построения индекса рёбер."""
-        from refiner import build_edges_index
+        from refiner_longrange import build_edges_index
 
         edges_index = build_edges_index(self.sample_graph)
 
@@ -210,7 +250,7 @@ class TestGraphProcessing(unittest.TestCase):
 
     def test_empty_target_nodes(self):
         """Тест с пустым списком целевых узлов."""
-        from refiner import extract_target_nodes
+        from refiner_longrange import extract_target_nodes
 
         empty_graph = {
             "nodes": [{"id": "node1", "type": "Concept", "text": "Only concepts"}],
@@ -238,34 +278,31 @@ class TestCandidateGeneration(unittest.TestCase):
         # Тестовые узлы
         self.nodes = [
             {
-                "id": "node1",
+                "id": "test:c:0",
                 "type": "Chunk",
                 "text": "Python variables",
-                "local_start": 0,
             },
             {
-                "id": "node2",
+                "id": "test:c:100",
                 "type": "Chunk",
                 "text": "Python functions",
-                "local_start": 100,
             },
             {
-                "id": "node3",
+                "id": "test:q:200:0",
                 "type": "Assessment",
                 "text": "Test question",
-                "local_start": 200,
             },
         ]
 
     def test_build_similarity_index(self):
         """Тест построения FAISS индекса."""
-        from refiner import build_similarity_index
+        from refiner_longrange import build_similarity_index
 
         # Создаем тестовые embeddings
         embeddings_dict = {
-            "node1": np.random.rand(1536).astype(np.float32),
-            "node2": np.random.rand(1536).astype(np.float32),
-            "node3": np.random.rand(1536).astype(np.float32),
+            "test:c:0": np.random.rand(1536).astype(np.float32),
+            "test:c:100": np.random.rand(1536).astype(np.float32),
+            "test:q:200:0": np.random.rand(1536).astype(np.float32),
         }
 
         index, node_ids = build_similarity_index(
@@ -276,19 +313,19 @@ class TestCandidateGeneration(unittest.TestCase):
         self.assertEqual(index.ntotal, 3)
         self.assertEqual(len(node_ids), 3)
 
-        # Проверяем порядок (по local_start)
-        self.assertEqual(node_ids, ["node1", "node2", "node3"])
+        # Проверяем порядок (по позиции извлеченной из ID)
+        self.assertEqual(node_ids, ["test:c:0", "test:c:100", "test:q:200:0"])
 
     def test_generate_candidate_pairs(self):
         """Тест генерации пар кандидатов."""
-        from refiner import build_similarity_index, generate_candidate_pairs
+        from refiner_longrange import build_similarity_index, generate_candidate_pairs
 
-        # Создаем похожие embeddings (высокая корреляция между node1 и node2)
+        # Создаем похожие embeddings (высокая корреляция между первым и вторым узлом)
         base_vector = np.random.rand(1536).astype(np.float32)
         embeddings_dict = {
-            "node1": base_vector,
-            "node2": base_vector + np.random.rand(1536) * 0.1,  # Похожий
-            "node3": np.random.rand(1536).astype(np.float32),  # Случайный
+            "test:c:0": base_vector,
+            "test:c:100": base_vector + np.random.rand(1536) * 0.1,  # Похожий
+            "test:q:200:0": np.random.rand(1536).astype(np.float32),  # Случайный
         }
 
         # Нормализуем для корректного cosine similarity
@@ -325,16 +362,20 @@ class TestCandidateGeneration(unittest.TestCase):
         )
         for candidate in first_pair["candidates"]:
             target_node = next(n for n in self.nodes if n["id"] == candidate["node_id"])
-            self.assertLess(source_node["local_start"], target_node["local_start"])
+            from refiner_longrange import extract_global_position
+            self.assertLess(
+                extract_global_position(source_node["id"]),
+                extract_global_position(target_node["id"])
+            )
 
     def test_generate_candidate_pairs_with_existing_edges(self):
         """Тест с существующими рёбрами."""
-        from refiner import build_similarity_index, generate_candidate_pairs
+        from refiner_longrange import build_similarity_index, generate_candidate_pairs
 
         # Похожие embeddings
         embeddings_dict = {
-            "node1": np.ones(1536, dtype=np.float32),
-            "node2": np.ones(1536, dtype=np.float32) * 0.99,
+            "test:c:0": np.ones(1536, dtype=np.float32),
+            "test:c:100": np.ones(1536, dtype=np.float32) * 0.99,
         }
 
         for k in embeddings_dict:
@@ -347,9 +388,9 @@ class TestCandidateGeneration(unittest.TestCase):
 
         # Добавляем существующее ребро
         edges_index = {
-            "node1": {
-                "node2": [
-                    {"source": "node1", "target": "node2", "type": "PREREQUISITE"}
+            "test:c:0": {
+                "test:c:100": [
+                    {"source": "test:c:0", "target": "test:c:100", "type": "PREREQUISITE"}
                 ]
             }
         }
@@ -384,11 +425,11 @@ class TestPromptLoading(unittest.TestCase):
     @patch("pathlib.Path.exists", return_value=True)
     def test_load_refiner_prompt(self, mock_exists, mock_file):
         """Тест загрузки и подстановки весов в промпт."""
-        from refiner import load_refiner_prompt
+        from refiner_longrange import load_refiner_longrange_prompt
 
         config = {"weight_low": 0.3, "weight_mid": 0.6, "weight_high": 0.9}
 
-        result = load_refiner_prompt(config)
+        result = load_refiner_longrange_prompt(config)
 
         # Проверяем подстановку
         self.assertIn("0.3", result)
@@ -401,12 +442,12 @@ class TestPromptLoading(unittest.TestCase):
     @patch("pathlib.Path.exists", return_value=False)
     def test_load_refiner_prompt_not_found(self, mock_exists):
         """Тест с отсутствующим файлом промпта."""
-        from refiner import load_refiner_prompt
+        from refiner_longrange import load_refiner_longrange_prompt
 
         config = {"weight_low": 0.3, "weight_mid": 0.6, "weight_high": 0.9}
 
         with self.assertRaises(FileNotFoundError):
-            load_refiner_prompt(config)
+            load_refiner_longrange_prompt(config)
 
 
 class TestLLMEdgeValidation(unittest.TestCase):
@@ -425,7 +466,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_validate_valid_edges(self):
         """Тест валидации корректных рёбер."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [
             {
@@ -448,7 +489,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_skip_null_type(self):
         """Тест пропуска записей с type: null."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [
             {"source": "n1", "target": "n2", "type": None},
@@ -464,7 +505,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_invalid_source(self):
         """Тест с некорректным source."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [
             {"source": "wrong_id", "target": "n2", "type": "PREREQUISITE"}
@@ -478,7 +519,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_target_not_in_candidates(self):
         """Тест с target не из кандидатов."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [
             {
@@ -496,7 +537,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_prerequisite_self_loop(self):
         """Тест PREREQUISITE self-loop."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [{"source": "n1", "target": "n1", "type": "PREREQUISITE"}]
 
@@ -511,7 +552,7 @@ class TestLLMEdgeValidation(unittest.TestCase):
 
     def test_weight_validation(self):
         """Тест валидации весов."""
-        from refiner import validate_llm_edges
+        from refiner_longrange import validate_llm_edges
 
         edges_response = [
             {
@@ -542,7 +583,7 @@ class TestGraphUpdate(unittest.TestCase):
     """Тесты для функции update_graph_with_new_edges."""
 
     def setUp(self):
-        from refiner import update_graph_with_new_edges
+        from refiner_longrange import update_graph_with_new_edges
 
         self.update_graph_with_new_edges = update_graph_with_new_edges
         self.logger = logging.getLogger("test")
@@ -579,7 +620,7 @@ class TestGraphUpdate(unittest.TestCase):
         self.assertEqual(new_edge["source"], "n1")
         self.assertEqual(new_edge["target"], "n3")
         self.assertEqual(new_edge["type"], "EXAMPLE_OF")
-        self.assertEqual(new_edge["conditions"], "added_by=refiner_v1")
+        self.assertEqual(new_edge["conditions"], "added_by=refiner_longrange_v1")
 
     def test_update_existing_edge_weight(self):
         """Тест сценария 2: Обновление веса существующего ребра."""
@@ -627,7 +668,7 @@ class TestGraphUpdate(unittest.TestCase):
 
         self.assertIsNotNone(n1_n2_edge)
         self.assertEqual(n1_n2_edge["type"], "PARALLEL")
-        self.assertEqual(n1_n2_edge["conditions"], "fixed_by=refiner_v1")
+        self.assertEqual(n1_n2_edge["conditions"], "fixed_by=refiner_longrange_v1")
 
     def test_no_replace_lower_weight(self):
         """Тест: не заменяем ребро если новый вес меньше."""
@@ -690,6 +731,90 @@ class TestGraphUpdate(unittest.TestCase):
 
         # Проверяем финальное количество рёбер
         self.assertEqual(len(graph["edges"]), 4)  # 2 было + 2 добавлено
+
+
+class TestMetaHandling(unittest.TestCase):
+    """Тесты для обработки _meta секции."""
+
+    def test_add_refiner_meta(self):
+        """Тест добавления метаданных refiner_longrange."""
+        from refiner_longrange import add_refiner_meta
+        
+        graph = {
+            "nodes": [],
+            "edges": []
+        }
+        
+        config = {
+            "model": "gpt-4o",
+            "sim_threshold": 0.8,
+            "max_pairs_per_node": 20,
+            "weight_low": 0.3,
+            "weight_mid": 0.6,
+            "weight_high": 0.9
+        }
+        
+        stats = {
+            "added": 5,
+            "updated": 2,
+            "replaced": 1,
+            "self_loops_removed": 0
+        }
+        
+        add_refiner_meta(graph, config, stats)
+        
+        # Проверяем, что _meta добавлена
+        self.assertIn("_meta", graph)
+        self.assertIn("refiner_longrange", graph["_meta"])
+        
+        # Проверяем содержимое метаданных
+        meta = graph["_meta"]["refiner_longrange"]
+        self.assertIn("processed_at", meta)
+        self.assertIn("config", meta)
+        self.assertIn("stats", meta)
+        
+        # Проверяем конфигурацию
+        self.assertEqual(meta["config"]["model"], "gpt-4o")
+        self.assertEqual(meta["config"]["sim_threshold"], 0.8)
+        self.assertEqual(meta["config"]["weights"]["low"], 0.3)
+        
+        # Проверяем статистику
+        self.assertEqual(meta["stats"]["added"], 5)
+        self.assertEqual(meta["stats"]["updated"], 2)
+    
+    def test_preserve_existing_meta(self):
+        """Тест сохранения существующих метаданных."""
+        from refiner_longrange import add_refiner_meta
+        
+        graph = {
+            "nodes": [],
+            "edges": [],
+            "_meta": {
+                "existing_tool": {
+                    "data": "should be preserved"
+                }
+            }
+        }
+        
+        config = {
+            "model": "gpt-4o",
+            "sim_threshold": 0.8,
+            "max_pairs_per_node": 20,
+            "weight_low": 0.3,
+            "weight_mid": 0.6,
+            "weight_high": 0.9
+        }
+        
+        stats = {"added": 1, "updated": 0, "replaced": 0, "self_loops_removed": 0}
+        
+        add_refiner_meta(graph, config, stats)
+        
+        # Проверяем, что старые метаданные сохранены
+        self.assertIn("existing_tool", graph["_meta"])
+        self.assertEqual(graph["_meta"]["existing_tool"]["data"], "should be preserved")
+        
+        # И новые добавлены
+        self.assertIn("refiner_longrange", graph["_meta"])
 
 
 if __name__ == "__main__":

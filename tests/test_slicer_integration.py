@@ -27,7 +27,7 @@ class TestSlicerIntegration:
     """Интеграционные тесты для slicer.py."""
 
     @pytest.fixture
-    def temp_project_dir(self):
+    def temp_project_dir(self, monkeypatch):
         """Создает временную структуру проекта для тестов."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -45,15 +45,9 @@ class TestSlicerIntegration:
                     shutil.copy2(fixture_file, raw_dir)
 
             # Меняем рабочую директорию для slicer.py
-            original_cwd = Path.cwd()
-            import os
-
-            os.chdir(temp_path)
+            monkeypatch.chdir(temp_path)
 
             yield temp_path
-
-            # Восстанавливаем рабочую директорию
-            os.chdir(original_cwd)
 
     def test_full_workflow_no_overlap(self, temp_project_dir):
         """Тест полного workflow без перекрытий."""

@@ -20,8 +20,9 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -31,11 +32,16 @@ import numpy as np
 
 # Import project utilities
 from src.utils.config import load_config
+
 # Set UTF-8 encoding for Windows console
 from src.utils.console_encoding import setup_console_encoding
-from src.utils.exit_codes import (EXIT_API_LIMIT_ERROR, EXIT_CONFIG_ERROR,
-                                  EXIT_INPUT_ERROR, EXIT_RUNTIME_ERROR,
-                                  EXIT_SUCCESS)
+from src.utils.exit_codes import (
+    EXIT_API_LIMIT_ERROR,
+    EXIT_CONFIG_ERROR,
+    EXIT_INPUT_ERROR,
+    EXIT_RUNTIME_ERROR,
+    EXIT_SUCCESS,
+)
 from src.utils.llm_embeddings import get_embeddings
 from src.utils.validation import validate_json
 
@@ -91,6 +97,39 @@ class UnionFind:
                 clusters[root] = []
             clusters[root].append(x)
         return clusters
+
+
+def extract_global_position(node_id: str) -> int:
+    """
+    Extract global position from Chunk or Assessment node ID.
+
+    Note: This function is only called for nodes that passed through
+    filter_nodes_for_dedup, which guarantees only Chunk and Assessment types.
+    Concept nodes never reach this function.
+
+    ID formats:
+    - Chunk: {slug}:c:{position}
+    - Assessment: {slug}:q:{position}:{index}
+
+    Args:
+        node_id: Node identifier (must be Chunk or Assessment)
+
+    Returns:
+        Global position in tokens
+
+    Raises:
+        ValueError: If ID format is unexpected (indicates a bug)
+    """
+    parts = node_id.split(":")
+
+    if len(parts) >= 3 and parts[1] in ["c", "q"]:
+        try:
+            return int(parts[2])
+        except ValueError as e:
+            raise ValueError(f"Cannot parse position from ID: {node_id}") from e
+
+    # This should never happen for filtered nodes - indicates a bug
+    raise ValueError(f"Unexpected node ID format in dedup: {node_id}")
 
 
 def filter_nodes_for_dedup(nodes: List[Dict]) -> List[Dict]:
@@ -166,12 +205,16 @@ def find_duplicates(
             if len_ratio < config["len_ratio_min"]:
                 continue
 
-            # Determine master and duplicate by local_start, then by id
-            if node["local_start"] < neighbor["local_start"]:
+            # Extract global positions from IDs
+            node_pos = extract_global_position(node["id"])
+            neighbor_pos = extract_global_position(neighbor["id"])
+
+            # Determine master by global position
+            if node_pos < neighbor_pos:
                 master, duplicate = node, neighbor
-            elif node["local_start"] > neighbor["local_start"]:
+            elif node_pos > neighbor_pos:
                 master, duplicate = neighbor, node
-            else:  # local_start are equal
+            else:  # positions are equal
                 if node["id"] < neighbor["id"]:
                     master, duplicate = node, neighbor
                 else:
@@ -185,15 +228,17 @@ def find_duplicates(
     return duplicates
 
 
-def cluster_duplicates(duplicates: List[Tuple[str, str, float]]) -> Dict[str, str]:
+def cluster_duplicates(duplicates: List[Tuple[str, str, float]]) -> Tuple[Dict[str, str], int]:
     """
     Cluster duplicates using Union-Find
 
     Returns:
-        Dictionary {duplicate_id: master_id}
+        Tuple of (dedup_map, num_clusters) where:
+        - dedup_map: Dictionary {duplicate_id: master_id}
+        - num_clusters: Number of clusters formed
     """
     if not duplicates:
-        return {}
+        return {}, 0
 
     uf = UnionFind()
 
@@ -232,16 +277,17 @@ def cluster_duplicates(duplicates: List[Tuple[str, str, float]]) -> Dict[str, st
                 if node_id != master_id:
                     dedup_map[node_id] = master_id
 
-    logger.info(
-        f"Formed {len(clusters)} clusters, {len(dedup_map)} nodes marked as duplicates"
-    )
-    return dedup_map
+    logger.info(f"Formed {len(clusters)} clusters, {len(dedup_map)} nodes marked as duplicates")
+    return dedup_map, len(clusters)
 
 
-def rewrite_graph(graph: Dict, dedup_map: Dict[str, str]) -> Dict:
+def rewrite_graph(graph: Dict, dedup_map: Dict[str, str]) -> Tuple[Dict, Dict]:
     """
     Rewrite graph replacing duplicate IDs with master IDs
-    and removing nodes with empty text
+    and removing nodes with empty text.
+
+    Returns:
+        Tuple of (new_graph, statistics)
     """
     # Create new graph
     new_graph = {"nodes": [], "edges": []}
@@ -265,9 +311,7 @@ def rewrite_graph(graph: Dict, dedup_map: Dict[str, str]) -> Dict:
         # Add node to new graph
         new_graph["nodes"].append(node)
 
-    logger.info(
-        f"Removed {removed_duplicates} duplicate nodes, {removed_empty} empty nodes"
-    )
+    logger.info(f"Removed {removed_duplicates} duplicate nodes, {removed_empty} empty nodes")
 
     # Update edges
     seen_edges = set()  # For removing duplicate edges
@@ -299,11 +343,17 @@ def rewrite_graph(graph: Dict, dedup_map: Dict[str, str]) -> Dict:
         new_edge["target"] = target
         new_graph["edges"].append(new_edge)
 
-    logger.info(
-        f"Updated {updated_edges_count} edges, final count: {len(new_graph['edges'])}"
-    )
+    logger.info(f"Updated {updated_edges_count} edges, final count: {len(new_graph['edges'])}")
 
-    return new_graph
+    # Collect statistics
+    stats = {
+        "nodes_removed_duplicates": removed_duplicates,
+        "nodes_removed_empty": removed_empty,
+        "nodes_removed_total": removed_duplicates + removed_empty,
+        "edges_updated": updated_edges_count,
+    }
+
+    return new_graph, stats
 
 
 def save_dedup_map(dedup_map: Dict[str, str], duplicates: List[Tuple[str, str, float]]):
@@ -333,6 +383,69 @@ def save_dedup_map(dedup_map: Dict[str, str], duplicates: List[Tuple[str, str, f
     logger.info(f"Saved duplicate mapping to {csv_path}")
 
 
+def update_metadata(
+    existing_meta: Optional[Dict],
+    config: Dict,
+    statistics: Dict,
+    processing_time: float,
+) -> Dict:
+    """
+    Update or create metadata with deduplication information.
+
+    Args:
+        existing_meta: Existing metadata from input graph (if any)
+        config: Deduplication configuration
+        statistics: Deduplication statistics
+        processing_time: Time spent on deduplication
+
+    Returns:
+        Updated metadata dictionary
+    """
+    # Start with existing metadata or create new
+    metadata = existing_meta.copy() if existing_meta else {}
+
+    # Update quality_issues section
+    if "quality_issues" not in metadata:
+        metadata["quality_issues"] = {}
+
+    metadata["quality_issues"]["duplicate_nodes_removed"] = statistics.get(
+        "nodes_removed_duplicates", 0
+    )
+
+    # Add deduplication section
+    metadata["deduplication"] = {
+        "performed_at": datetime.now().isoformat(),
+        "config": {
+            "similarity_threshold": config.get("sim_threshold", 0.97),
+            "length_ratio_threshold": config.get("len_ratio_min", 0.8),
+            "top_k": config.get("k_neighbors", 5),
+            "min_similarity": config.get("sim_threshold", 0.97),
+            "model": config.get("embedding_model", "text-embedding-3-small"),
+        },
+        "statistics": {
+            "nodes_analyzed": statistics.get("nodes_analyzed", 0),
+            "embeddings_created": statistics.get("embeddings_created", 0),
+            "potential_duplicates": statistics.get("potential_duplicates", 0),
+            "clusters_formed": statistics.get("clusters_formed", 0),
+            "nodes_removed": {
+                "duplicates": statistics.get("nodes_removed_duplicates", 0),
+                "empty": statistics.get("nodes_removed_empty", 0),
+                "total": statistics.get("nodes_removed_total", 0),
+            },
+            "edges_updated": statistics.get("edges_updated", 0),
+            "processing_time_seconds": processing_time,
+        },
+        "before_after": {
+            "nodes_before": statistics.get("nodes_before", 0),
+            "nodes_after": statistics.get("nodes_after", 0),
+            "edges_before": statistics.get("edges_before", 0),
+            "edges_after": statistics.get("edges_after", 0),
+        },
+    }
+
+    return metadata
+
+
 def main():
     """Main function"""
     start_time = time.time()
@@ -358,16 +471,23 @@ def main():
     try:
         # Load graph
         logger.info("Loading knowledge graph...")
-        with open(input_path, "r", encoding="utf-8") as f:
+        with open(input_path, encoding="utf-8") as f:
             graph_data = json.load(f)
 
-        # Extract graph structure (handle both old and new format)
+        # Extract graph structure (handle both old and new format with _meta)
         if "nodes" in graph_data and "edges" in graph_data:
-            # Could be old format or new format with _meta
             graph = {"nodes": graph_data["nodes"], "edges": graph_data["edges"]}
+            # Preserve metadata if present
+            metadata = graph_data.get("_meta")
         else:
             logger.error("Invalid graph structure: missing nodes or edges")
             return EXIT_INPUT_ERROR
+
+        # Initialize statistics
+        statistics = {
+            "nodes_before": len(graph["nodes"]),
+            "edges_before": len(graph["edges"]),
+        }
 
         # Validate input graph
         try:
@@ -378,23 +498,46 @@ def main():
 
         # Filter nodes for deduplication
         nodes_to_dedup = filter_nodes_for_dedup(graph["nodes"])
+        statistics["nodes_analyzed"] = len(nodes_to_dedup)
 
         if len(nodes_to_dedup) < 2:
-            logger.info(
-                "Not enough nodes for deduplication, copying graph without changes"
+            logger.info("Not enough nodes for deduplication, copying graph without changes")
+
+            # Update statistics for no deduplication case
+            statistics.update(
+                {
+                    "nodes_after": len(graph["nodes"]),
+                    "edges_after": len(graph["edges"]),
+                    "embeddings_created": 0,
+                    "potential_duplicates": 0,
+                    "clusters_formed": 0,
+                    "nodes_removed_duplicates": 0,
+                    "nodes_removed_empty": 0,
+                    "nodes_removed_total": 0,
+                    "edges_updated": 0,
+                }
             )
+
+            # Update metadata
+            elapsed_time = time.time() - start_time
+            metadata = update_metadata(metadata, dedup_config, statistics, elapsed_time)
+
+            # Prepare output data with metadata
+            output_data = {"_meta": metadata, **graph}
+
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(graph, f, ensure_ascii=False, indent=2)
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
             # Save empty dedup_map
             save_dedup_map({}, [])
             return EXIT_SUCCESS
 
-        # Sort nodes by local_start for determinism
-        nodes_to_dedup.sort(key=lambda n: (n.get("local_start", 0), n["id"]))
+        # Sort nodes by global position from ID for determinism
+        nodes_to_dedup.sort(key=lambda n: (extract_global_position(n["id"]), n["id"]))
 
         # Get embeddings
         logger.info(f"Getting embeddings for {len(nodes_to_dedup)} nodes...")
         texts = [node["text"] for node in nodes_to_dedup]
+        statistics["embeddings_created"] = len(texts)
 
         try:
             embeddings = get_embeddings(texts, dedup_config)
@@ -413,22 +556,59 @@ def main():
         # Search for duplicates
         logger.info("Searching for duplicates...")
         duplicates = find_duplicates(nodes_to_dedup, embeddings, index, dedup_config)
+        statistics["potential_duplicates"] = len(duplicates)
 
         if not duplicates:
-            logger.info("No duplicates found, copying graph without changes")
+            logger.info("No duplicates found, removing only empty nodes")
+
+            # Still need to check for empty nodes
+            dedup_map = {}
+            new_graph, rewrite_stats = rewrite_graph(graph, dedup_map)
+
+            # Update statistics
+            statistics.update(
+                {
+                    "nodes_after": len(new_graph["nodes"]),
+                    "edges_after": len(new_graph["edges"]),
+                    "clusters_formed": 0,
+                    **rewrite_stats,
+                }
+            )
+
+            # Update metadata
+            elapsed_time = time.time() - start_time
+            metadata = update_metadata(metadata, dedup_config, statistics, elapsed_time)
+
+            # Prepare output data with metadata
+            output_data = {"_meta": metadata, **new_graph}
+
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(graph, f, ensure_ascii=False, indent=2)
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
             # Save empty dedup_map
             save_dedup_map({}, [])
+
+            logger.info(f"Nodes were: {len(graph['nodes'])}, became: {len(new_graph['nodes'])}")
+            logger.info(f"Edges were: {len(graph['edges'])}, became: {len(new_graph['edges'])}")
+
             return EXIT_SUCCESS
 
         # Cluster duplicates
         logger.info("Clustering duplicates...")
-        dedup_map = cluster_duplicates(duplicates)
+        dedup_map, num_clusters = cluster_duplicates(duplicates)
+        statistics["clusters_formed"] = num_clusters
 
         # Rewrite graph
         logger.info("Rewriting graph...")
-        new_graph = rewrite_graph(graph, dedup_map)
+        new_graph, rewrite_stats = rewrite_graph(graph, dedup_map)
+
+        # Update statistics
+        statistics.update(
+            {
+                "nodes_after": len(new_graph["nodes"]),
+                "edges_after": len(new_graph["edges"]),
+                **rewrite_stats,
+            }
+        )
 
         # Validate output graph
         try:
@@ -439,20 +619,23 @@ def main():
 
         # Save results
         logger.info("Saving results...")
+
+        # Update metadata with deduplication information
+        elapsed_time = time.time() - start_time
+        metadata = update_metadata(metadata, dedup_config, statistics, elapsed_time)
+
+        # Prepare output data with metadata
+        output_data = {"_meta": metadata, **new_graph}
+
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(new_graph, f, ensure_ascii=False, indent=2)
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
 
         # Save duplicate mapping
         save_dedup_map(dedup_map, duplicates)
 
-        elapsed_time = time.time() - start_time
         logger.info(f"Deduplication completed in {elapsed_time:.2f} seconds")
-        logger.info(
-            f"Nodes were: {len(graph['nodes'])}, became: {len(new_graph['nodes'])}"
-        )
-        logger.info(
-            f"Edges were: {len(graph['edges'])}, became: {len(new_graph['edges'])}"
-        )
+        logger.info(f"Nodes were: {len(graph['nodes'])}, became: {len(new_graph['nodes'])}")
+        logger.info(f"Edges were: {len(graph['edges'])}, became: {len(new_graph['edges'])}")
 
         return EXIT_SUCCESS
 

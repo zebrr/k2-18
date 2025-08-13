@@ -95,6 +95,9 @@ class SliceProcessor:
         self.logger = self._setup_logger()
         self.stats = ProcessingStats()
 
+        # Initialize quality issues tracking for deduplication
+        self.quality_issues = {"duplicate_concepts_removed": 0, "anomalous_duplicates": []}
+
         # Load ConceptDictionary
         self.concept_dict = self._load_concept_dictionary()
 
@@ -518,9 +521,16 @@ class SliceProcessor:
                     concept_node = {
                         "id": concept_id,
                         "type": "Concept",
-                        "definition": concept_from_dict["definition"],
+                        "text": node.get(
+                            "text", concept_from_dict["term"]["primary"]
+                        ),  # Take from LLM response or fallback to primary term
+                        "node_offset": node.get(
+                            "node_offset", 0
+                        ),  # Take from LLM response or default to 0
+                        "definition": concept_from_dict[
+                            "definition"
+                        ],  # Always use definition from ConceptDictionary
                     }
-                    # Note: Concept nodes don't require node_offset
                     nodes_to_add.append(concept_node)
                     self.logger.debug(
                         f"Added Concept node {concept_id} with definition from dictionary"
@@ -729,6 +739,64 @@ class SliceProcessor:
             f"Post-processing: replaced {len(id_mapping)} temporary IDs with final position-based IDs"
         )
 
+    def _deduplicate_patch_nodes(self, graph: Dict, patch: Dict, slice_id: str) -> Dict:
+        """
+        Remove duplicate nodes from patch before merging.
+
+        Rules:
+        - Silently remove duplicate Concept nodes (expected behavior)
+        - Log WARNING for duplicate Chunk/Assessment nodes (anomaly)
+        - Keep first occurrence, remove subsequent duplicates
+        - Track statistics for metadata
+
+        Args:
+            graph: Current graph state (nodes list)
+            patch: New patch to be deduplicated
+            slice_id: Current slice identifier for logging
+
+        Returns:
+            Modified patch with duplicates removed
+        """
+        # Build set of existing node IDs from graph
+        existing_ids = set()
+        for node in self.graph_nodes:
+            existing_ids.add(node.get("id", ""))
+
+        # Process patch nodes
+        deduplicated_nodes = []
+        concepts_removed = 0
+        anomalous_duplicates = []
+
+        for node in patch.get("nodes", []):
+            node_id = node.get("id", "")
+            node_type = node.get("type", "")
+
+            if node_id in existing_ids:
+                # Duplicate found
+                if node_type == "Concept":
+                    # Expected behavior for concepts - remove silently
+                    concepts_removed += 1
+                    self.logger.debug(f"Removed duplicate Concept node: {node_id}")
+                else:
+                    # Anomaly for Chunk/Assessment - log warning
+                    self.logger.warning(
+                        f"Unexpected duplicate {node_type} node: {node_id} in slice {slice_id}"
+                    )
+                    anomalous_duplicates.append(
+                        {"node_id": node_id, "node_type": node_type, "slice_id": slice_id}
+                    )
+            else:
+                # Not a duplicate, keep it
+                deduplicated_nodes.append(node)
+                existing_ids.add(node_id)  # Add to set for checking within patch
+
+        # Update statistics
+        self.quality_issues["duplicate_concepts_removed"] += concepts_removed
+        self.quality_issues["anomalous_duplicates"].extend(anomalous_duplicates)
+
+        # Return modified patch
+        return {**patch, "nodes": deduplicated_nodes}
+
     def _add_to_graph(self, patch: Dict, slice_data: SliceData) -> None:
         """
         Add patch to graph with full processing.
@@ -737,6 +805,9 @@ class SliceProcessor:
             patch: Graph patch from LLM
             slice_data: Current slice data
         """
+        # DEDUPLICATION - clean patch before merging
+        patch = self._deduplicate_patch_nodes({"nodes": self.graph_nodes}, patch, slice_data.id)
+
         # Process nodes with duplicate handling
         new_nodes = patch.get("nodes", [])
 
@@ -784,6 +855,35 @@ class SliceProcessor:
 
         # Additional invariant checks can be added here
         return True
+
+    def _validate_node_uniqueness(self, graph: Dict) -> Tuple[bool, List]:
+        """
+        Validate that all node IDs in the graph are unique.
+
+        Args:
+            graph: Graph dictionary with nodes list
+
+        Returns:
+            (is_valid, list_of_duplicates)
+        """
+        node_ids = {}
+        duplicates = []
+
+        # Check all nodes
+        for node in graph.get("nodes", []):
+            node_id = node.get("id", "")
+            node_type = node.get("type", "")
+
+            if node_id in node_ids:
+                # Duplicate found
+                duplicates.append(
+                    {"id": node_id, "type": node_type, "first_occurrence_type": node_ids[node_id]}
+                )
+            else:
+                node_ids[node_id] = node_type
+
+        is_valid = len(duplicates) == 0
+        return is_valid, duplicates
 
     def _save_bad_response(
         self,
@@ -1105,6 +1205,13 @@ class SliceProcessor:
             print(f"[{timestamp}] FAILED   | ❌ All slices failed processing")
             return EXIT_RUNTIME_ERROR
 
+        # Validate node uniqueness before saving
+        graph_data = {"nodes": self.graph_nodes, "edges": self.graph_edges}
+        is_unique, duplicates = self._validate_node_uniqueness(graph_data)
+        if not is_unique:
+            self.logger.error(f"Graph contains duplicate node IDs: {duplicates}")
+            # Continue but mark in metadata
+
         # Save results
         output_path = OUTPUT_DIR / "LearningChunkGraph_raw.json"
         try:
@@ -1167,6 +1274,14 @@ class SliceProcessor:
                         "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
                         "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                         "duration_minutes": round(duration_minutes, 2),
+                    },
+                    "quality_issues": {
+                        "duplicate_concepts_removed": self.quality_issues[
+                            "duplicate_concepts_removed"
+                        ],
+                        "anomalous_duplicates": self.quality_issues["anomalous_duplicates"],
+                        "graph_has_duplicates": not is_unique,
+                        "remaining_duplicates": duplicates if not is_unique else [],
                     },
                 }
             }

@@ -299,6 +299,7 @@ class TestNodeDeduplication:
         assert result["nodes"] == []
         assert result["edges"] == []
 
+    @pytest.mark.timeout(120)
     def test_integration_with_add_to_graph(self, processor):
         """Test deduplication integration in _add_to_graph method."""
         # Setup processor state

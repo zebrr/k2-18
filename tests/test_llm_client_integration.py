@@ -66,7 +66,7 @@ def integration_config(api_key):
     if test_config["is_reasoning"]:
         test_config["reasoning_effort"] = config["itext2kg"].get("reasoning_effort")
         test_config["reasoning_summary"] = config["itext2kg"].get("reasoning_summary")
-    
+
     # Verbosity может быть для любых моделей
     test_config["verbosity"] = config["itext2kg"].get("verbosity")
 
@@ -76,6 +76,7 @@ def integration_config(api_key):
 class TestOpenAIClientIntegration:
     """Интеграционные тесты с реальным API"""
 
+    @pytest.mark.timeout(60)
     def test_simple_response(self, integration_config):
         """Тест простого запроса-ответа"""
         client = OpenAIClient(integration_config)
@@ -100,7 +101,7 @@ class TestOpenAIClientIntegration:
         # В async режиме reset_time обновляется через probe
         # assert client.tpm_bucket.reset_time is not None
 
-
+    @pytest.mark.timeout(120)
     def test_json_response(self, integration_config):
         """Тест получения JSON ответа"""
         client = OpenAIClient(integration_config)
@@ -120,7 +121,7 @@ class TestOpenAIClientIntegration:
         except json.JSONDecodeError:
             pytest.fail(f"Response is not valid JSON: {response_text}")
 
-
+    @pytest.mark.timeout(120)
     def test_response_chain(self, integration_config):
         """Тест цепочки ответов с контекстом"""
         client = OpenAIClient(integration_config)
@@ -147,7 +148,7 @@ class TestOpenAIClientIntegration:
         assert id2 != id1
         assert client.last_response_id == id2
 
-
+    @pytest.mark.timeout(120)
     def test_tpm_limiting(self, integration_config):
         """Тест ограничения TPM с проактивным ожиданием"""
         # Устанавливаем маленький лимит для теста
@@ -163,11 +164,9 @@ class TestOpenAIClientIntegration:
             instructions="Answer in one word only.", input_data="Say hello"
         )
 
-
         # Эмулируем низкий остаток токенов для теста ожидания
         client.tpm_bucket.remaining_tokens = 100  # Очень мало
         client.tpm_bucket.reset_time = int(time.time() + 2)  # Reset через 2 секунды
-
 
         # Второй запрос должен подождать
         start_time = time.time()
@@ -176,10 +175,10 @@ class TestOpenAIClientIntegration:
         )
         wait_time = time.time() - start_time
 
-
         # Проверяем что ждали
         assert wait_time > 2.0, f"Should have waited >2s, but waited {wait_time:.1f}s"
 
+    @pytest.mark.timeout(60)
     def test_error_handling(self, integration_config):
         """Тест обработки ошибок"""
         # Используем невалидный ключ
@@ -199,7 +198,7 @@ class TestOpenAIClientIntegration:
             or "invalid" in str(exc_info.value).lower()
         )
 
-
+    @pytest.mark.timeout(120)
     def test_reasoning_model(self, integration_config):
         """Тест reasoning модели"""
         # Проверяем что используется reasoning модель
@@ -219,13 +218,13 @@ class TestOpenAIClientIntegration:
         assert "56088" in response_text or "56,088" in response_text
         assert usage.reasoning_tokens > 0  # Должны быть reasoning токены
 
-
+    @pytest.mark.timeout(60)
     def test_headers_update(self, integration_config):
         """Test that TPM is updated via probe mechanism."""
         client = OpenAIClient(integration_config)
 
         # Initial state
-        initial_remaining = client.tpm_bucket.remaining_tokens
+        # initial_remaining = client.tpm_bucket.remaining_tokens
 
         # Make a request (will trigger probe internally)
         response_text, response_id, usage = client.create_response(
@@ -239,7 +238,7 @@ class TestOpenAIClientIntegration:
         # reset_time может остаться None если лимиты не достигнуты
         # или обновиться если probe получил эту информацию
 
-
+    @pytest.mark.timeout(60)
     def test_background_mode_verification(self, integration_config, capsys):
         """Тест проверки работы в background режиме"""
         client = OpenAIClient(integration_config)
@@ -256,9 +255,9 @@ class TestOpenAIClientIntegration:
         assert "] QUEUE" in captured.out or "] PROGRESS" in captured.out
         assert response_id[:8] in captured.out  # Первые 8 символов ID должны быть в выводе
 
-
     @pytest.mark.slow
     @pytest.mark.timeout(90)
+    @pytest.mark.timeout(120)
     def test_incomplete_response_handling(self, integration_config):
         """Тест обработки incomplete ответа - теперь без retry (сразу exception)"""
         # Пропускаем для reasoning моделей - они требуют слишком много токенов
@@ -272,7 +271,7 @@ class TestOpenAIClientIntegration:
 
         # Теперь IncompleteResponseError должна быть выброшена сразу без retry
         from src.utils.llm_client import IncompleteResponseError
-        
+
         with pytest.raises(IncompleteResponseError) as exc_info:
             client.create_response(
                 instructions="Be concise",
@@ -282,6 +281,7 @@ class TestOpenAIClientIntegration:
         # Проверяем что исключение содержит нужную информацию
         assert "incomplete" in str(exc_info.value).lower()
 
+    @pytest.mark.timeout(60)
     def test_timeout_cancellation(self, integration_config):
         """Тест отмены запроса при timeout"""
         # Устанавливаем очень маленький timeout
@@ -301,9 +301,9 @@ class TestOpenAIClientIntegration:
         error_msg = str(exc_info.value)
         assert "exceeded" in error_msg and "2s" in error_msg
 
-
     @pytest.mark.slow
     @pytest.mark.timeout(45)
+    @pytest.mark.timeout(60)
     def test_console_progress_output(self, integration_config, capsys):
         """Тест вывода прогресса в консоль"""
         # Используем max_completion из конфига (уже установлен в fixture)
@@ -343,8 +343,8 @@ class TestOpenAIClientIntegration:
         # Response ID должен быть в выводе (первые 8 символов)
         assert response_id[:8] in captured.out
 
-
     @pytest.mark.skip(reason="Test hangs due to insufficient token limit for reasoning models")
+    @pytest.mark.timeout(120)
     def test_incomplete_with_reasoning_model(self, integration_config):
         """Тест incomplete для reasoning модели (нужно больше токенов)"""
         if not integration_config.get("is_reasoning", False):
@@ -368,6 +368,7 @@ class TestOpenAIClientIntegration:
             # Проверяем что это именно incomplete ошибка
             assert "incomplete" in str(e).lower()
 
+    @pytest.mark.timeout(60)
     def test_tpm_probe_mechanism(self, integration_config, caplog):
         """Test that TPM probe mechanism works correctly."""
         import logging
@@ -377,7 +378,7 @@ class TestOpenAIClientIntegration:
         client = OpenAIClient(integration_config)
 
         # Запоминаем начальное состояние
-        initial_remaining = client.tpm_bucket.remaining_tokens
+        # initial_remaining = client.tpm_bucket.remaining_tokens
 
         # Делаем запрос (внутри будет probe)
         response_text, response_id, usage = client.create_response("Reply with one word", "Hello")
@@ -394,7 +395,8 @@ class TestOpenAIClientIntegration:
         update_logs = [r for r in caplog.records if "TPM probe successful" in r.message]
         assert len(update_logs) > 0, "Should log successful probe"
 
-
+    @pytest.mark.timeout(180)
+    @pytest.mark.slow
     def test_context_accumulation_integration(self, integration_config):
         """Test that context accumulation works correctly in real API calls"""
         client = OpenAIClient(integration_config)
@@ -434,7 +436,6 @@ class TestOpenAIClientIntegration:
 
         # Each subsequent request should have more context
         assert usage3.input_tokens > usage2.input_tokens
-
 
 
 if __name__ == "__main__":

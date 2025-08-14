@@ -94,7 +94,7 @@
           },
           "conditions": { 
             "type": "string",
-            "description": "Optional conditions or context for this edge"
+            "description": "Optional semantic rationale for this edge. Describes WHY this relationship exists using domain concepts, NOT node IDs"
           }
         }
       }

@@ -459,14 +459,14 @@ class TestSliceProcessor:
 
         # Check saved content
         saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
-        
+
         # Check metadata exists
         assert "_meta" in saved_data
-        assert saved_data["_meta"]["generator"] == "itext2kg_concepts"
-        assert "api_usage" in saved_data["_meta"]
-        assert "concepts_stats" in saved_data["_meta"]
-        assert "processing_time" in saved_data["_meta"]
-        
+        assert "itext2kg_concepts" in saved_data["_meta"]
+        assert "api_usage" in saved_data["_meta"]["itext2kg_concepts"]
+        assert "concepts_stats" in saved_data["_meta"]["itext2kg_concepts"]
+        assert "processing_time" in saved_data["_meta"]["itext2kg_concepts"]
+
         # Check data is still there
         assert len(saved_data["concepts"]) == 1
         assert saved_data["concepts"][0]["concept_id"] == "test:p:stack"
@@ -487,7 +487,7 @@ class TestSliceProcessor:
                 "concept_id": "test:p:queue",
                 "term": {"primary": "Queue", "aliases": []},
                 "definition": "FIFO data structure",
-            }
+            },
         ]
         processor.stats.processed_slices = 5
         processor.stats.total_slices = 10
@@ -503,34 +503,34 @@ class TestSliceProcessor:
             result = processor._finalize_and_save()
 
         assert result == EXIT_SUCCESS
-        
+
         # Check saved metadata
         saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
-        meta = saved_data["_meta"]
-        
+        meta = saved_data["_meta"]["itext2kg_concepts"]
+
         # Check config
         assert meta["config"]["model"] == "test-model"
         assert isinstance(meta["config"]["slice_size"], int)
         assert isinstance(meta["config"]["overlap"], int)
-        
+
         # Check source stats
         assert meta["source"]["total_slices"] == 10
         assert meta["source"]["processed_slices"] == 5
         assert meta["source"]["total_tokens"] == 50000
         assert meta["source"]["slug"] == "test"
-        
+
         # Check API usage
         assert meta["api_usage"]["total_requests"] == 5
         assert meta["api_usage"]["total_input_tokens"] == 10000
         assert meta["api_usage"]["total_output_tokens"] == 5000
         assert meta["api_usage"]["total_tokens"] == 15000
-        
+
         # Check concepts stats
         assert meta["concepts_stats"]["total_concepts"] == 2
         assert meta["concepts_stats"]["concepts_with_aliases"] == 1
         assert meta["concepts_stats"]["total_aliases"] == 2
         assert meta["concepts_stats"]["avg_aliases_per_concept"] == 1.0
-        
+
         # Check processing time
         assert "start" in meta["processing_time"]
         assert "end" in meta["processing_time"]

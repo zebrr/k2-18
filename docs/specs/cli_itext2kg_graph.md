@@ -69,7 +69,8 @@ Safety net for MENTIONS edges the LLM might miss:
 - Case-insensitive whole word matching
 - Search primary term and all aliases
 - Skip existing MENTIONS edges
-- Weight always 1.0
+- Weight configurable via `auto_mentions_weight` (default 0.35)
+- Edges marked with `conditions="auto_generated"` for transparency
 
 ### Context Management
 - Full ConceptDictionary passed with each slice
@@ -175,6 +176,7 @@ Section `[itext2kg]` in config.toml:
 - **poll_interval** (int, >0, default=5) - polling interval for async requests
 - **response_chain_depth** (int, optional) - depth of response chain (None=unlimited, 0=independent, >0=sliding window)
 - **truncation** (str, optional) - truncation strategy ("auto", "disabled", or comment out to omit)
+- **auto_mentions_weight** (float, 0-1, default=0.35) - weight for automatically generated MENTIONS edges
 
 ## Error Handling & Exit Codes
 
@@ -537,46 +539,54 @@ The output file contains extensive metadata alongside the graph data:
 ```json
 {
   "_meta": {
-    "generated_at": "2024-01-15 10:45:00",
-    "generator": "itext2kg_graph",
-    "config": {
-      "model": "o4-mini-2025-04-16",
-      "temperature": 0.6,
-      "max_output_tokens": 25000,
-      "reasoning_effort": "medium",
-      "overlap": 500,
-      "slice_size": 5000
-    },
-    "source": {
-      "total_slices": 157,
-      "processed_slices": 157,
-      "total_tokens": 85000,
-      "slug": "algo101",
-      "concepts_used": 42
-    },
-    "api_usage": {
-      "total_requests": 157,
-      "total_input_tokens": 450000,
-      "total_output_tokens": 125000,
-      "total_tokens": 575000
-    },
-    "graph_stats": {
-      "total_nodes": 523,
-      "chunks": 400,
-      "concepts": 42,
-      "assessments": 81,
-      "total_edges": 1247,
-      "edge_types": {
-        "MENTIONS": 850,
-        "PREREQUISITE": 200,
-        "ELABORATES": 150,
-        "TESTS": 47
+    "itext2kg_graph": {
+      "generated_at": "2024-01-15 10:45:00",
+      "config": {
+        "model": "o4-mini-2025-04-16",
+        "temperature": 0.6,
+        "max_output_tokens": 25000,
+        "reasoning_effort": "medium",
+        "overlap": 500,
+        "slice_size": 5000,
+        "auto_mentions_weight": 0.35
+      },
+      "source": {
+        "total_slices": 157,
+        "processed_slices": 157,
+        "total_tokens": 85000,
+        "slug": "algo101",
+        "concepts_used": 42
+      },
+      "api_usage": {
+        "total_requests": 157,
+        "total_input_tokens": 450000,
+        "total_output_tokens": 125000,
+        "total_tokens": 575000
+      },
+      "graph_stats": {
+        "total_nodes": 523,
+        "chunks": 400,
+        "concepts": 42,
+        "assessments": 81,
+        "total_edges": 1247,
+        "edge_types": {
+          "MENTIONS": 850,
+          "PREREQUISITE": 200,
+          "ELABORATES": 150,
+          "TESTS": 47
+        }
+      },
+      "processing_time": {
+        "start": "2024-01-15 10:30:00",
+        "end": "2024-01-15 10:45:00",
+        "duration_minutes": 15.0
+      },
+      "quality_issues": {
+        "duplicate_concepts_removed": 12,
+        "anomalous_duplicates": 2,
+        "graph_has_duplicates": false,
+        "remaining_duplicates": []
       }
-    },
-    "processing_time": {
-      "start": "2024-01-15 10:30:00",
-      "end": "2024-01-15 10:45:00",
-      "duration_minutes": 15.0
     }
   },
   "nodes": [
@@ -607,7 +617,8 @@ The output file contains extensive metadata alongside the graph data:
       "source": "algo101:c:1000",
       "target": "algo101:p:stack",
       "type": "MENTIONS",
-      "weight": 1.0
+      "weight": 0.35,
+      "conditions": "auto_generated"  // Auto-generated edge marked for transparency
     },
     {
       "source": "algo101:c:1000",

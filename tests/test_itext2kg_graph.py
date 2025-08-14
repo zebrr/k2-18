@@ -489,6 +489,11 @@ class TestSliceProcessor:
         edge_pairs = [(e["source"], e["target"]) for e in processor.graph_edges]
         assert ("test:c:1000", "test:p:stack") in edge_pairs
         assert ("test:c:2000", "test:p:stack") in edge_pairs
+        
+        # Check weight and conditions
+        for edge in processor.graph_edges:
+            assert edge["weight"] == 0.35  # Default from config
+            assert edge["conditions"] == "auto_generated"
 
     def test_add_mentions_edges_no_duplicates(self, processor_with_mocks):
         """Test that existing MENTIONS edges are not duplicated."""
@@ -496,7 +501,7 @@ class TestSliceProcessor:
 
         # Add existing MENTIONS edge
         processor.graph_edges = [
-            {"source": "test:c:1000", "target": "test:p:stack", "type": "MENTIONS", "weight": 1.0}
+            {"source": "test:c:1000", "target": "test:p:stack", "type": "MENTIONS", "weight": 0.35}
         ]
 
         chunks = [{"id": "test:c:1000", "type": "Chunk", "text": "Stack is used here"}]
@@ -1125,10 +1130,12 @@ class TestSliceProcessor:
 
         # Check metadata exists
         assert "_meta" in graph
-        assert graph["_meta"]["generator"] == "itext2kg_graph"
-        assert "api_usage" in graph["_meta"]
-        assert "graph_stats" in graph["_meta"]
-        assert "processing_time" in graph["_meta"]
+        assert "itext2kg_graph" in graph["_meta"]
+        assert "api_usage" in graph["_meta"]["itext2kg_graph"]
+        assert "graph_stats" in graph["_meta"]["itext2kg_graph"]
+        assert "processing_time" in graph["_meta"]["itext2kg_graph"]
+        assert "config" in graph["_meta"]["itext2kg_graph"]
+        assert "auto_mentions_weight" in graph["_meta"]["itext2kg_graph"]["config"]
 
         # Check data structure
         assert "nodes" in graph

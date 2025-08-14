@@ -325,9 +325,10 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
         "max_completion": int,
         "timeout": int,
         "max_retries": int,
-        "weight_low": float,
-        "weight_mid": float,
-        "weight_high": float,
+        # Веса удалены - теперь они прописаны в промптах fw/bw
+        # "weight_low": float,
+        # "weight_mid": float,
+        # "weight_high": float,
     }
 
     _validate_required_fields(section, required_fields, "refiner")
@@ -360,18 +361,9 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
     if section["max_retries"] < 0:
         raise ConfigValidationError("refiner.max_retries must be non-negative")
 
-    # Проверяем веса
-    weights = [section["weight_low"], section["weight_mid"], section["weight_high"]]
-
-    for i, weight in enumerate(weights):
-        if not (0.0 <= weight <= 1.0):
-            weight_names = ["weight_low", "weight_mid", "weight_high"]
-            raise ConfigValidationError(f"refiner.{weight_names[i]} must be between 0.0 and 1.0")
-
-    if not (section["weight_low"] < section["weight_mid"] < section["weight_high"]):
-        raise ConfigValidationError(
-            "refiner weights must satisfy: weight_low < weight_mid < weight_high"
-        )
+    # Веса больше не проверяем - они теперь в промптах
+    # weights = [section["weight_low"], section["weight_mid"], section["weight_high"]]
+    # ...проверки весов удалены...
     
     # Validate optional response_chain_depth
     if "response_chain_depth" in section:

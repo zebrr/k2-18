@@ -109,8 +109,10 @@ Each node is analyzed with its candidate pairs in the following format:
 ### LLM Analysis
 - **Sequential processing**: with previous_response_id preservation between nodes
 - **Context preservation**: LLM sees analysis history of previous nodes
-- **Auto-detection**: reasoning models detected by "o*" prefix
-- **Retry logic**: one repair-retry on invalid JSON
+- **Client initialization**: Full config passed to OpenAIClient without manual filtering
+- **Parameter selection**: OpenAIClient handles parameter selection based on is_reasoning flag
+- **Two-phase confirmation**: Properly implemented with confirm_response() after validation
+- **Retry logic**: one repair-retry on invalid JSON with proper response chain management
 - **Rate limiting**: TPM control via response headers
 - **Prompt template**: loaded from file with weight substitutions
 
@@ -123,6 +125,8 @@ Each node is analyzed with its candidate pairs in the following format:
   - `"auto"` - automatic truncation by API when context exceeds limit
   - `"disabled"` - no truncation
   - Commented out - parameter not sent to API
+- **All parameters passed**: Context management parameters are passed to OpenAIClient
+- **Client handles logic**: OpenAIClient handles response_chain_depth, truncation internally
 - **Model selection**: Based on context size via `max_context_tokens` and `max_context_tokens_test`
   - If context < max_context_tokens → use main model
   - Otherwise → use test model (if configured)

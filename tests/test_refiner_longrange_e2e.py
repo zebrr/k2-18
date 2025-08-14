@@ -508,6 +508,17 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # Настройка мока LLM
         mock_llm_instance = MagicMock()
 
+        # Создаем mock объекты ResponseUsage
+        mock_usage_1 = MagicMock()
+        mock_usage_1.input_tokens = 250
+        mock_usage_1.output_tokens = 250
+        mock_usage_1.total_tokens = 500
+        
+        mock_usage_2 = MagicMock()
+        mock_usage_2.input_tokens = 200
+        mock_usage_2.output_tokens = 200
+        mock_usage_2.total_tokens = 400
+
         # Первый вызов - анализ test:c:0
         mock_llm_instance.create_response.side_effect = [
             (
@@ -524,7 +535,7 @@ class TestRefinerFullPipeline(unittest.TestCase):
                     ]
                 ),
                 "response_id_1",
-                {"total_tokens": 500},
+                mock_usage_1,
             ),
             # Второй вызов - анализ test:c:1000 (если будет)
             (
@@ -540,7 +551,7 @@ class TestRefinerFullPipeline(unittest.TestCase):
                     ]
                 ),
                 "response_id_2",
-                {"total_tokens": 400},
+                mock_usage_2,
             ),
         ]
 
@@ -605,11 +616,22 @@ class TestRefinerFullPipeline(unittest.TestCase):
         # Настройка мока LLM
         mock_llm_instance = MagicMock()
 
+        # Создаем mock объект ResponseUsage
+        mock_usage_1 = MagicMock()
+        mock_usage_1.input_tokens = 50
+        mock_usage_1.output_tokens = 50
+        mock_usage_1.total_tokens = 100
+        
+        mock_usage_2 = MagicMock()
+        mock_usage_2.input_tokens = 75
+        mock_usage_2.output_tokens = 75
+        mock_usage_2.total_tokens = 150
+
         # Первый вызов возвращает битый JSON
         mock_llm_instance.create_response.return_value = (
             "This is not valid JSON { broken",
             "response_id_1",
-            {"total_tokens": 100},
+            mock_usage_1,
         )
 
         # repair_response возвращает корректный JSON
@@ -626,7 +648,7 @@ class TestRefinerFullPipeline(unittest.TestCase):
                 ]
             ),
             "response_id_1_repair",
-            {"total_tokens": 150},
+            mock_usage_2,
         )
 
         mock_openai_client.return_value = mock_llm_instance

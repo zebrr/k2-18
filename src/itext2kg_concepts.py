@@ -901,42 +901,43 @@ class SliceProcessor:
             slicer_config = self.full_config.get("slicer", {})
             metadata = {
                 "_meta": {
-                    "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "generator": "itext2kg_concepts",
-                    "config": {
-                        "model": config.get("model"),
-                        "temperature": config.get("temperature"),
-                        "max_output_tokens": config.get("max_completion"),
-                        "reasoning_effort": config.get("reasoning_effort"),
-                        "overlap": slicer_config.get("overlap", 0),
-                        "slice_size": slicer_config.get("max_tokens", 5000),
-                    },
-                    "source": {
-                        "total_slices": self.stats.total_slices,
-                        "processed_slices": self.stats.processed_slices,
-                        "total_tokens": self.total_source_tokens,
-                        "slug": self.source_slug if hasattr(self, "source_slug") else "unknown",
-                    },
-                    "api_usage": {
-                        "total_requests": self.api_usage["total_requests"],
-                        "total_input_tokens": self.api_usage["total_input_tokens"],
-                        "total_output_tokens": self.api_usage["total_output_tokens"],
-                        "total_tokens": (
-                            self.api_usage["total_input_tokens"]
-                            + self.api_usage["total_output_tokens"]
-                        ),
-                    },
-                    "concepts_stats": {
-                        "total_concepts": total_concepts,
-                        "concepts_with_aliases": concepts_with_aliases,
-                        "total_aliases": total_aliases,
-                        "avg_aliases_per_concept": avg_aliases,
-                    },
-                    "processing_time": {
-                        "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "duration_minutes": round(duration_minutes, 2),
-                    },
+                    "itext2kg_concepts": {
+                        "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "config": {
+                            "model": config.get("model"),
+                            "temperature": config.get("temperature"),
+                            "max_output_tokens": config.get("max_completion"),
+                            "reasoning_effort": config.get("reasoning_effort"),
+                            "overlap": slicer_config.get("overlap", 0),
+                            "slice_size": slicer_config.get("max_tokens", 5000),
+                        },
+                        "source": {
+                            "total_slices": self.stats.total_slices,
+                            "processed_slices": self.stats.processed_slices,
+                            "total_tokens": self.total_source_tokens,
+                            "slug": self.source_slug if hasattr(self, "source_slug") else "unknown",
+                        },
+                        "api_usage": {
+                            "total_requests": self.api_usage["total_requests"],
+                            "total_input_tokens": self.api_usage["total_input_tokens"],
+                            "total_output_tokens": self.api_usage["total_output_tokens"],
+                            "total_tokens": (
+                                self.api_usage["total_input_tokens"]
+                                + self.api_usage["total_output_tokens"]
+                            ),
+                        },
+                        "concepts_stats": {
+                            "total_concepts": total_concepts,
+                            "concepts_with_aliases": concepts_with_aliases,
+                            "total_aliases": total_aliases,
+                            "avg_aliases_per_concept": avg_aliases,
+                        },
+                        "processing_time": {
+                            "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "duration_minutes": round(duration_minutes, 2),
+                        },
+                    }
                 }
             }
 

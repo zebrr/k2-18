@@ -63,16 +63,16 @@ class TestConfigIntegration:
         assert refiner["tpm_limit"] > 0
         assert 1 <= refiner["max_completion"] <= 100000  # Обновлено согласно валидации
 
-        # Проверяем порядок весов
-        assert refiner["weight_low"] < refiner["weight_mid"] < refiner["weight_high"]
-        assert all(
-            0.0 <= w <= 1.0
-            for w in [
-                refiner["weight_low"],
-                refiner["weight_mid"],
-                refiner["weight_high"],
-            ]
-        )
+        # Веса больше не в конфиге - перенесены в промпты
+        # assert refiner["weight_low"] < refiner["weight_mid"] < refiner["weight_high"]
+        # assert all(
+        #     0.0 <= w <= 1.0
+        #     for w in [
+        #         refiner["weight_low"],
+        #         refiner["weight_mid"],
+        #         refiner["weight_high"],
+        #     ]
+        # )
 
     def test_config_file_exists(self):
         """Тест проверки существования файла config.toml."""

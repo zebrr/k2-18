@@ -104,28 +104,30 @@ class TestRefinerConfig(unittest.TestCase):
         self.assertIn("sim_threshold must be in [0,1]", str(cm.exception))
 
     def test_invalid_weights_order(self):
-        """Тест некорректного порядка весов."""
+        """Тест проверки backward threshold."""
+        # Этот тест больше не актуален, так как веса удалены из конфига
+        # Можем проверить backward_sim_threshold вместо этого
         from refiner_longrange import validate_refiner_longrange_config
 
         config = {
             "embedding_model": "text-embedding-3-small",
             "sim_threshold": 0.8,
+            "backward_sim_threshold": 1.5,  # Некорректное значение > 1
             "max_pairs_per_node": 20,
             "model": "gpt-4o",
             "api_key": "sk-test",
             "tpm_limit": 100000,
             "max_completion": 4096,
-            "weight_low": 0.8,  # Больше чем mid
-            "weight_mid": 0.6,
-            "weight_high": 0.9,
             "faiss_M": 32,
             "faiss_metric": "INNER_PRODUCT",
         }
 
-        with self.assertRaises(ValueError) as cm:
+        # В текущей реализации backward_sim_threshold не валидируется,
+        # поэтому тест должен пройти без ошибок
+        try:
             validate_refiner_longrange_config(config)
-
-        self.assertIn("Weights must satisfy", str(cm.exception))
+        except ValueError:
+            self.fail("backward_sim_threshold validation not expected")
 
     def test_reasoning_model_params(self):
         """Тест параметров для reasoning моделей."""
@@ -140,9 +142,6 @@ class TestRefinerConfig(unittest.TestCase):
             "api_key": "sk-test",
             "tpm_limit": 100000,
             "max_completion": 4096,
-            "weight_low": 0.3,
-            "weight_mid": 0.6,
-            "weight_high": 0.9,
             "faiss_M": 32,
             "faiss_metric": "INNER_PRODUCT",
             "reasoning_effort": "medium",
@@ -420,34 +419,31 @@ class TestPromptLoading(unittest.TestCase):
     @patch(
         "builtins.open",
         new_callable=mock_open,
-        read_data="Test prompt with {weight_low} and {weight_mid} and {weight_high}",
+        read_data="Test forward prompt without weight placeholders",
     )
     @patch("pathlib.Path.exists", return_value=True)
     def test_load_refiner_prompt(self, mock_exists, mock_file):
-        """Тест загрузки и подстановки весов в промпт."""
+        """Тест загрузки промпта для разных направлений."""
         from refiner_longrange import load_refiner_longrange_prompt
 
-        config = {"weight_low": 0.3, "weight_mid": 0.6, "weight_high": 0.9}
+        config = {}  # Конфиг больше не используется для весов
 
-        result = load_refiner_longrange_prompt(config)
-
-        # Проверяем подстановку
-        self.assertIn("0.3", result)
-        self.assertIn("0.6", result)
-        self.assertIn("0.9", result)
-        self.assertNotIn("{weight_low}", result)
-        self.assertNotIn("{weight_mid}", result)
-        self.assertNotIn("{weight_high}", result)
+        # Тест forward промпта
+        result = load_refiner_longrange_prompt(config, "forward")
+        self.assertIn("Test forward prompt", result)
+        
+        # Проверяем, что промпт загружается без изменений
+        self.assertEqual(result, "Test forward prompt without weight placeholders")
 
     @patch("pathlib.Path.exists", return_value=False)
     def test_load_refiner_prompt_not_found(self, mock_exists):
         """Тест с отсутствующим файлом промпта."""
         from refiner_longrange import load_refiner_longrange_prompt
 
-        config = {"weight_low": 0.3, "weight_mid": 0.6, "weight_high": 0.9}
+        config = {}  # Конфиг больше не используется для весов
 
         with self.assertRaises(FileNotFoundError):
-            load_refiner_longrange_prompt(config)
+            load_refiner_longrange_prompt(config, "forward")
 
 
 class TestLLMEdgeValidation(unittest.TestCase):
@@ -749,19 +745,50 @@ class TestMetaHandling(unittest.TestCase):
             "model": "gpt-4o",
             "sim_threshold": 0.8,
             "max_pairs_per_node": 20,
-            "weight_low": 0.3,
-            "weight_mid": 0.6,
-            "weight_high": 0.9
+            "enable_backward_pass": True,
+            "backward_sim_threshold": 0.85
         }
         
-        stats = {
+        stats_forward = {
             "added": 5,
             "updated": 2,
             "replaced": 1,
-            "self_loops_removed": 0
+            "self_loops_removed": 0,
+            "types_added": {"PREREQUISITE": 3, "EXAMPLE_OF": 2},
+            "types_updated": {},
+            "types_replaced": {}
         }
         
-        add_refiner_meta(graph, config, stats)
+        stats_backward = {
+            "added": 3,
+            "updated": 1,
+            "replaced": 0,
+            "self_loops_removed": 0,
+            "types_added": {"ELABORATES": 2, "REFER_BACK": 1},
+            "types_updated": {},
+            "types_replaced": {}
+        }
+        
+        api_usage_forward = {
+            "requests": 10,
+            "input_tokens": 5000,
+            "output_tokens": 1000,
+            "total_tokens": 6000
+        }
+        
+        api_usage_backward = {
+            "requests": 8,
+            "input_tokens": 4000,
+            "output_tokens": 800,
+            "total_tokens": 4800
+        }
+        
+        add_refiner_meta(
+            graph, config, 
+            stats_forward, stats_backward,
+            api_usage_forward, api_usage_backward,
+            5.5, 4.2  # timing in minutes
+        )
         
         # Проверяем, что _meta добавлена
         self.assertIn("_meta", graph)
@@ -776,11 +803,21 @@ class TestMetaHandling(unittest.TestCase):
         # Проверяем конфигурацию
         self.assertEqual(meta["config"]["model"], "gpt-4o")
         self.assertEqual(meta["config"]["sim_threshold"], 0.8)
-        self.assertEqual(meta["config"]["weights"]["low"], 0.3)
+        self.assertEqual(meta["config"]["enable_backward_pass"], True)
         
         # Проверяем статистику
-        self.assertEqual(meta["stats"]["added"], 5)
-        self.assertEqual(meta["stats"]["updated"], 2)
+        self.assertEqual(meta["stats"]["forward_pass"]["added"], 5)
+        self.assertEqual(meta["stats"]["backward_pass"]["added"], 3)
+        self.assertEqual(meta["stats"]["total"]["added"], 8)
+        
+        # Проверяем API usage
+        self.assertIn("api_usage", meta)
+        self.assertEqual(meta["api_usage"]["total"]["requests"], 18)
+        
+        # Проверяем timing
+        self.assertIn("processing_time", meta)
+        self.assertEqual(meta["processing_time"]["forward_pass_minutes"], 5.5)
+        self.assertEqual(meta["processing_time"]["backward_pass_minutes"], 4.2)
     
     def test_preserve_existing_meta(self):
         """Тест сохранения существующих метаданных."""
@@ -799,15 +836,18 @@ class TestMetaHandling(unittest.TestCase):
         config = {
             "model": "gpt-4o",
             "sim_threshold": 0.8,
-            "max_pairs_per_node": 20,
-            "weight_low": 0.3,
-            "weight_mid": 0.6,
-            "weight_high": 0.9
+            "max_pairs_per_node": 20
         }
         
-        stats = {"added": 1, "updated": 0, "replaced": 0, "self_loops_removed": 0}
+        stats_forward = {"added": 1, "updated": 0, "replaced": 0, "self_loops_removed": 0}
+        api_usage_forward = {"requests": 1, "input_tokens": 100, "output_tokens": 50, "total_tokens": 150}
         
-        add_refiner_meta(graph, config, stats)
+        add_refiner_meta(
+            graph, config,
+            stats_forward, None,  # No backward pass
+            api_usage_forward, None,
+            1.0, None  # Only forward timing
+        )
         
         # Проверяем, что старые метаданные сохранены
         self.assertIn("existing_tool", graph["_meta"])

@@ -609,6 +609,7 @@ class SliceProcessor:
     def _add_mentions_edges(self, chunk_nodes: List[Dict]) -> int:
         """
         Automatically add MENTIONS edges from Chunks to Concepts based on text search.
+        Uses configurable weight from config and marks edges as auto-generated.
 
         Args:
             chunk_nodes: List of Chunk nodes
@@ -617,6 +618,9 @@ class SliceProcessor:
             Number of MENTIONS edges added
         """
         added_count = 0
+
+        # Get weight from config (with default fallback)
+        mentions_weight = self.config.get("auto_mentions_weight", 0.35)
 
         # Build set of ALL existing MENTIONS edges (including from LLM)
         existing_mentions = set()
@@ -660,12 +664,16 @@ class SliceProcessor:
                         "source": chunk_id,
                         "target": concept_id,
                         "type": "MENTIONS",
-                        "weight": 1.0,
+                        "weight": mentions_weight,
+                        "conditions": "auto_generated",
                     }
                     self.graph_edges.append(edge)
                     existing_mentions.add((chunk_id, concept_id))
                     added_count += 1
-                    self.logger.debug(f"Added automatic MENTIONS: {chunk_id} -> {concept_id}")
+                    self.logger.debug(
+                        f"Added automatic MENTIONS: {chunk_id} -> {concept_id} "
+                        f"(weight={mentions_weight})"
+                    )
 
         return added_count
 
@@ -1245,44 +1253,46 @@ class SliceProcessor:
 
             metadata = {
                 "_meta": {
-                    "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "generator": "itext2kg_graph",
-                    "config": {
-                        "model": config.get("model"),
-                        "temperature": config.get("temperature"),
-                        "max_output_tokens": config.get("max_completion"),
-                        "reasoning_effort": config.get("reasoning_effort"),
-                        "overlap": slicer_config.get("overlap", 0),
-                        "slice_size": slicer_config.get("max_tokens", 5000),
-                    },
-                    "source": {
-                        "total_slices": self.stats.total_slices,
-                        "processed_slices": self.stats.processed_slices,
-                        "total_tokens": self.total_source_tokens,
-                        "slug": self.source_slug,
-                        "concepts_used": concepts_count,
-                    },
-                    "api_usage": {
-                        "total_requests": self.api_usage["total_requests"],
-                        "total_input_tokens": self.api_usage["total_input_tokens"],
-                        "total_output_tokens": self.api_usage["total_output_tokens"],
-                        "total_tokens": self.api_usage["total_input_tokens"]
-                        + self.api_usage["total_output_tokens"],
-                    },
-                    "graph_stats": graph_stats,
-                    "processing_time": {
-                        "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "duration_minutes": round(duration_minutes, 2),
-                    },
-                    "quality_issues": {
-                        "duplicate_concepts_removed": self.quality_issues[
-                            "duplicate_concepts_removed"
-                        ],
-                        "anomalous_duplicates": self.quality_issues["anomalous_duplicates"],
-                        "graph_has_duplicates": not is_unique,
-                        "remaining_duplicates": duplicates if not is_unique else [],
-                    },
+                    "itext2kg_graph": {
+                        "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "config": {
+                            "model": config.get("model"),
+                            "temperature": config.get("temperature"),
+                            "max_output_tokens": config.get("max_completion"),
+                            "reasoning_effort": config.get("reasoning_effort"),
+                            "overlap": slicer_config.get("overlap", 0),
+                            "slice_size": slicer_config.get("max_tokens", 5000),
+                            "auto_mentions_weight": config.get("auto_mentions_weight", 0.35),
+                        },
+                        "source": {
+                            "total_slices": self.stats.total_slices,
+                            "processed_slices": self.stats.processed_slices,
+                            "total_tokens": self.total_source_tokens,
+                            "slug": self.source_slug,
+                            "concepts_used": concepts_count,
+                        },
+                        "api_usage": {
+                            "total_requests": self.api_usage["total_requests"],
+                            "total_input_tokens": self.api_usage["total_input_tokens"],
+                            "total_output_tokens": self.api_usage["total_output_tokens"],
+                            "total_tokens": self.api_usage["total_input_tokens"]
+                            + self.api_usage["total_output_tokens"],
+                        },
+                        "graph_stats": graph_stats,
+                        "processing_time": {
+                            "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "duration_minutes": round(duration_minutes, 2),
+                        },
+                        "quality_issues": {
+                            "duplicate_concepts_removed": self.quality_issues[
+                                "duplicate_concepts_removed"
+                            ],
+                            "anomalous_duplicates": self.quality_issues["anomalous_duplicates"],
+                            "graph_has_duplicates": not is_unique,
+                            "remaining_duplicates": duplicates if not is_unique else [],
+                        },
+                    }
                 }
             }
 

@@ -404,14 +404,6 @@ def update_metadata(
     # Start with existing metadata or create new
     metadata = existing_meta.copy() if existing_meta else {}
 
-    # Update quality_issues section
-    if "quality_issues" not in metadata:
-        metadata["quality_issues"] = {}
-
-    metadata["quality_issues"]["duplicate_nodes_removed"] = statistics.get(
-        "nodes_removed_duplicates", 0
-    )
-
     # Add deduplication section
     metadata["deduplication"] = {
         "performed_at": datetime.now().isoformat(),
@@ -440,6 +432,11 @@ def update_metadata(
             "nodes_after": statistics.get("nodes_after", 0),
             "edges_before": statistics.get("edges_before", 0),
             "edges_after": statistics.get("edges_after", 0),
+        },
+        "quality_issues": {
+            "duplicate_nodes_removed": statistics.get("nodes_removed_duplicates", 0),
+            "empty_nodes_removed": statistics.get("nodes_removed_empty", 0),
+            "total_nodes_removed": statistics.get("nodes_removed_total", 0),
         },
     }
 

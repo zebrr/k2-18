@@ -58,9 +58,10 @@ class TestConfigLoading:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -80,7 +81,8 @@ class TestConfigLoading:
             assert config["slicer"]["max_tokens"] == 40000
             assert config["itext2kg"]["model"] == "gpt-4o"
             assert config["dedup"]["sim_threshold"] == 0.97
-            assert config["refiner"]["weight_low"] == 0.3
+            # Веса больше не в конфиге - перенесены в промпты
+            # assert config["refiner"]["weight_low"] == 0.3
 
         Path(f.name).unlink()  # Удаляем временный файл
 
@@ -176,9 +178,10 @@ class TestSlicerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -234,9 +237,10 @@ class TestSlicerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -292,9 +296,10 @@ class TestSlicerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -352,9 +357,10 @@ class TestSlicerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -415,9 +421,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -542,9 +549,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -606,9 +614,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -674,9 +683,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -739,9 +749,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -797,9 +808,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -858,9 +870,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -919,9 +932,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -980,9 +994,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1041,9 +1056,10 @@ class TestItext2kgValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1063,7 +1079,9 @@ class TestRefinerValidation:
     """Тесты валидации секции [refiner]."""
 
     def test_invalid_weight_order(self):
-        """Тест валидации порядка весов."""
+        """Тест валидации порядка весов - ОТКЛЮЧЕН, веса удалены из конфига."""
+        pass
+        return
         config_with_invalid_weights = textwrap.dedent(
             """
         [slicer]
@@ -1123,7 +1141,9 @@ class TestRefinerValidation:
         Path(f.name).unlink()
 
     def test_weight_out_of_range(self):
-        """Тест валидации весов вне диапазона [0,1]."""
+        """Тест валидации весов вне диапазона [0,1] - ОТКЛЮЧЕН, веса удалены из конфига."""
+        pass
+        return
         config_with_invalid_weight_range = textwrap.dedent(
             """
         [slicer]
@@ -1224,9 +1244,10 @@ class TestRefinerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1285,9 +1306,10 @@ class TestRefinerValidation:
         max_completion = 2048
         timeout = 0
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1343,9 +1365,10 @@ class TestRefinerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = -2
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1403,9 +1426,10 @@ class TestRefinerValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1464,9 +1488,10 @@ class TestRefinerValidation:
         timeout = 30
         max_retries = 3
         response_chain_depth = -3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1526,9 +1551,10 @@ class TestRefinerValidation:
         timeout = 30
         max_retries = 3
         truncation = "always"
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1590,9 +1616,10 @@ class TestTypeValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -1917,9 +1944,10 @@ class TestParametrizedValidation:
             ("dedup", "len_ratio_min", 2.0, "must be between 0.0 and 1.0"),
             ("refiner", "sim_threshold", -0.2, "must be between 0.0 and 1.0"),
             ("refiner", "sim_threshold", 1.5, "must be between 0.0 and 1.0"),
-            ("refiner", "weight_low", -0.1, "must be between 0.0 and 1.0"),
-            ("refiner", "weight_mid", 1.2, "must be between 0.0 and 1.0"),
-            ("refiner", "weight_high", 2.0, "must be between 0.0 and 1.0"),
+            # Веса удалены из конфига - теперь в промптах
+            # ("refiner", "weight_low", -0.1, "must be between 0.0 and 1.0"),
+            # ("refiner", "weight_mid", 1.2, "must be between 0.0 and 1.0"),
+            # ("refiner", "weight_high", 2.0, "must be between 0.0 and 1.0"),
         ],
     )
     def test_range_validation(self, section, field, value, error_pattern):
@@ -2030,8 +2058,9 @@ class TestExtremeValues:
             f.flush()
 
             result = load_config(f.name)
-            assert result["refiner"]["weight_low"] == 0.0
-            assert result["refiner"]["weight_high"] == 1.0
+            # Веса больше не в конфиге - перенесены в промпты
+            # assert result["refiner"]["weight_low"] == 0.0
+            # assert result["refiner"]["weight_high"] == 1.0
 
         Path(f.name).unlink()
 
@@ -2156,9 +2185,10 @@ def get_minimal_valid_config():
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
     )
 
@@ -2208,9 +2238,10 @@ class TestDedupValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -2268,9 +2299,10 @@ class TestDedupValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -2328,9 +2360,10 @@ class TestDedupValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -2386,9 +2419,10 @@ class TestDedupValidation:
         max_completion = 2048
         timeout = 30
         max_retries = 3
-        weight_low = 0.3
-        weight_mid = 0.6
-        weight_high = 0.9
+        # Веса удалены - теперь в промптах
+        # weight_low = 0.3
+        # weight_mid = 0.6
+        # weight_high = 0.9
         """
         )
 
@@ -2520,7 +2554,9 @@ class TestDedupValidation:
         Path(f.name).unlink()
 
     def test_refiner_invalid_weight_boundaries(self):
-        """Тест валидации некорректных weight границ (покрытие строк 282, 288, 291, 294)."""
+        """Тест валидации некорректных weight границ - ОТКЛЮЧЕН, веса удалены из конфига."""
+        pass
+        return
         # weight_low отрицательный
         config_invalid_weights = get_minimal_valid_config().replace(
             "weight_low = 0.3", "weight_low = -0.1"
@@ -2617,7 +2653,9 @@ class TestDedupValidation:
         Path(f.name).unlink()
 
     def test_invalid_weight_order(self):
-        """Тест валидации порядка weight (покрытие строк 301-302)."""
+        """Тест валидации порядка weight - ОТКЛЮЧЕН, веса удалены из конфига."""
+        pass
+        return
         # Make weight_low > weight_mid to violate the order
         config_invalid_order = (
             get_minimal_valid_config()

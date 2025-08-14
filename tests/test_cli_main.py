@@ -414,15 +414,28 @@ class TestRefinerMain:
         mock_load_config.assert_called_once()
         mock_json_dump.assert_called()
 
+    @patch("src.refiner_longrange.Path.exists")
     @patch("src.refiner_longrange.load_config")
     @patch("src.refiner_longrange.shutil.copy2")
-    def test_main_disabled(self, mock_copy, mock_load_config):
+    def test_main_disabled(self, mock_copy, mock_load_config, mock_exists):
         """Тест когда refiner отключен в конфиге"""
         mock_load_config.return_value = {
             "refiner": {
                 "run": False,
+                "embedding_model": "text-embedding-3-small",
+                "sim_threshold": 0.8,
+                "max_pairs_per_node": 20,
+                "model": "gpt-4o",
+                "api_key": "sk-test",
+                "tpm_limit": 100000,
+                "max_completion": 4096,
+                "faiss_M": 32,
+                "faiss_metric": "INNER_PRODUCT",
             }
         }
+        
+        # Mock that input file exists
+        mock_exists.return_value = True
 
         from src.refiner_longrange import main
 

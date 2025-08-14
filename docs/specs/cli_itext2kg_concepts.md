@@ -472,38 +472,39 @@ Final validation uses:
 ```json
 {
   "_meta": {
-    "generated_at": "2024-01-15 10:30:00",
-    "generator": "itext2kg_concepts",
-    "config": {
-      "model": "o4-mini-2025-04-16",
-      "temperature": 0.1,
-      "max_output_tokens": 25000,
-      "reasoning_effort": "medium",
-      "overlap": 500,
-      "slice_size": 5000
-    },
-    "source": {
-      "total_slices": 157,
-      "processed_slices": 155,
-      "total_tokens": 785000,
-      "slug": "algo101"
-    },
-    "api_usage": {
-      "total_requests": 312,
-      "total_input_tokens": 1250000,
-      "total_output_tokens": 450000,
-      "total_tokens": 1700000
-    },
-    "concepts_stats": {
-      "total_concepts": 234,
-      "concepts_with_aliases": 189,
-      "total_aliases": 567,
-      "avg_aliases_per_concept": 2.42
-    },
-    "processing_time": {
-      "start": "2024-01-15 10:00:00",
-      "end": "2024-01-15 10:30:00",
-      "duration_minutes": 30.5
+    "itext2kg_concepts": {
+      "generated_at": "2024-01-15 10:30:00",
+      "config": {
+        "model": "o4-mini-2025-04-16",
+        "temperature": 0.1,
+        "max_output_tokens": 25000,
+        "reasoning_effort": "medium",
+        "overlap": 500,
+        "slice_size": 5000
+      },
+      "source": {
+        "total_slices": 157,
+        "processed_slices": 155,
+        "total_tokens": 785000,
+        "slug": "algo101"
+      },
+      "api_usage": {
+        "total_requests": 312,
+        "total_input_tokens": 1250000,
+        "total_output_tokens": 450000,
+        "total_tokens": 1700000
+      },
+      "concepts_stats": {
+        "total_concepts": 234,
+        "concepts_with_aliases": 189,
+        "total_aliases": 567,
+        "avg_aliases_per_concept": 2.42
+      },
+      "processing_time": {
+        "start": "2024-01-15 10:00:00",
+        "end": "2024-01-15 10:30:00",
+        "duration_minutes": 30.5
+      }
     }
   },
   "concepts": [
@@ -585,7 +586,7 @@ ls data/out/
 python -c "import json; d=json.load(open('data/out/ConceptDictionary.json')); print(f'Concepts: {len(d[\"concepts\"])}')"
 
 # Check API usage from metadata
-python -c "import json; d=json.load(open('data/out/ConceptDictionary.json')); m=d['_meta']['api_usage']; print(f'Total API cost estimate: {m[\"total_tokens\"]} tokens')"
+python -c "import json; d=json.load(open('data/out/ConceptDictionary.json')); m=d['_meta']['itext2kg_concepts']['api_usage']; print(f'Total API cost estimate: {m[\"total_tokens\"]} tokens')"
 ```
 
 ### Error Recovery
@@ -631,7 +632,7 @@ cat logs/itext2kg_concepts_*.log | jq 'select(.level == "DEBUG" and .event == "l
 python -c "
 import json
 d = json.load(open('data/out/ConceptDictionary.json'))
-m = d['_meta']['api_usage']
+m = d['_meta']['itext2kg_concepts']['api_usage']
 avg_in = m['total_input_tokens'] / m['total_requests']
 avg_out = m['total_output_tokens'] / m['total_requests']
 print(f'Avg tokens per request: {avg_in:.0f} in, {avg_out:.0f} out')

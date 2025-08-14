@@ -569,12 +569,14 @@ class TestUpdateMetadata:
 
         metadata = update_metadata(None, config, statistics, 17.24)
 
-        # Проверяем качественные показатели
-        assert "quality_issues" in metadata
-        assert metadata["quality_issues"]["duplicate_nodes_removed"] == 15
-
-        # Проверяем секцию дедупликации
+        # Проверяем качественные показатели (теперь внутри deduplication)
         assert "deduplication" in metadata
+        assert "quality_issues" in metadata["deduplication"]
+        assert metadata["deduplication"]["quality_issues"]["duplicate_nodes_removed"] == 15
+        assert metadata["deduplication"]["quality_issues"]["empty_nodes_removed"] == 3
+        assert metadata["deduplication"]["quality_issues"]["total_nodes_removed"] == 18
+
+        # Получаем секцию дедупликации
         dedup = metadata["deduplication"]
 
         # Проверяем конфигурацию
@@ -645,9 +647,12 @@ class TestUpdateMetadata:
         assert metadata["generator"] == "itext2kg_graph"
         assert metadata["config"]["model"] == "o4-mini-2025-04-16"
 
-        # Проверяем, что quality_issues обновлён
-        assert metadata["quality_issues"]["some_other_issue"] == 5
-        assert metadata["quality_issues"]["duplicate_nodes_removed"] == 10
+        # Проверяем quality_issues в секции deduplication
+        # (старые quality_issues не сохраняются, т.к. теперь всё внутри deduplication)
+        assert "quality_issues" in metadata["deduplication"]
+        assert metadata["deduplication"]["quality_issues"]["duplicate_nodes_removed"] == 10
+        assert metadata["deduplication"]["quality_issues"]["empty_nodes_removed"] == 2
+        assert metadata["deduplication"]["quality_issues"]["total_nodes_removed"] == 12
 
         # Проверяем секцию дедупликации
         assert "deduplication" in metadata

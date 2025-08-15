@@ -5,7 +5,7 @@ Module for loading and validating iText2KG configuration from TOML file.
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 # TOML support for different Python versions
 if sys.version_info >= (3, 11):
@@ -70,7 +70,7 @@ def _inject_env_api_keys(config: Dict[str, Any]) -> None:
                 config["refiner"]["embedding_api_key"] = env_embedding_key
 
 
-def load_config(config_path: Union[str, Path] = None) -> Dict[str, Any]:
+def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
     """
     Loads and validates configuration from TOML file.
 
@@ -102,16 +102,21 @@ def load_config(config_path: Union[str, Path] = None) -> Dict[str, Any]:
     except Exception as e:
         raise ConfigValidationError(f"Failed to parse TOML file: {e}")
 
-    # Inject API keys from env variables
-    _inject_env_api_keys(config)
+    # Check if this is a viz config (has viz-specific sections)
+    is_viz_config = "graph2metrics" in config or "visualization" in config
 
-    # Validate configuration
-    try:
-        _validate_config(config)
-    except Exception as e:
-        raise ConfigValidationError(f"Configuration validation failed: {e}")
+    # Only inject API keys and validate main sections for non-viz configs
+    if not is_viz_config:
+        # Inject API keys from env variables
+        _inject_env_api_keys(config)
 
-    # Validate is_reasoning parameter is present
+        # Validate configuration
+        try:
+            _validate_config(config)
+        except Exception as e:
+            raise ConfigValidationError(f"Configuration validation failed: {e}")
+
+    # Validate is_reasoning parameter is present (only for main pipeline)
     if "itext2kg" in config:
         if "is_reasoning" not in config["itext2kg"]:
             raise ConfigValidationError(
@@ -242,13 +247,13 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
 
     if section["max_retries"] < 0:
         raise ConfigValidationError("itext2kg.max_retries must be non-negative")
-    
+
     # Проверяем температуру, если она указана
     if "temperature" in section:
         temp = section["temperature"]
         if not (0 <= temp <= 2):
             raise ConfigValidationError("itext2kg.temperature must be between 0 and 2")
-    
+
     # Validate optional response_chain_depth
     if "response_chain_depth" in section:
         depth = section["response_chain_depth"]
@@ -256,14 +261,12 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
             raise ConfigValidationError(
                 "itext2kg.response_chain_depth must be a non-negative integer"
             )
-    
+
     # Validate optional truncation
     if "truncation" in section:
         truncation = section["truncation"]
         if truncation not in ["auto", "disabled"]:
-            raise ConfigValidationError(
-                "itext2kg.truncation must be 'auto' or 'disabled'"
-            )
+            raise ConfigValidationError("itext2kg.truncation must be 'auto' or 'disabled'")
 
 
 def _validate_dedup_section(section: Dict[str, Any]) -> None:
@@ -364,7 +367,7 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
     # Веса больше не проверяем - они теперь в промптах
     # weights = [section["weight_low"], section["weight_mid"], section["weight_high"]]
     # ...проверки весов удалены...
-    
+
     # Validate optional response_chain_depth
     if "response_chain_depth" in section:
         depth = section["response_chain_depth"]
@@ -372,14 +375,12 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
             raise ConfigValidationError(
                 "refiner.response_chain_depth must be a non-negative integer"
             )
-    
+
     # Validate optional truncation
     if "truncation" in section:
         truncation = section["truncation"]
         if truncation not in ["auto", "disabled"]:
-            raise ConfigValidationError(
-                "refiner.truncation must be 'auto' or 'disabled'"
-            )
+            raise ConfigValidationError("refiner.truncation must be 'auto' or 'disabled'")
 
 
 def _validate_required_fields(

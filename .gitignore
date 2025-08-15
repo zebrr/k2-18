@@ -22,3 +22,8 @@ data/out/*
 data/raw/*
 data/staging/*
 !data/**/.gitkeep
+viz/data/in/*
+viz/data/out/*
+!viz/**/.gitkeep
+viz/logs/*
+!viz/logs/.gitkeep

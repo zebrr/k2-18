@@ -1,0 +1,142 @@
+# /viz/config.toml - Configuration for K2-18 Knowledge Graph Visualization
+
+[graph2metrics]
+# Вычисление метрик
+use_edge_weights = true
+# Типы ребер для расчета educational_importance (PageRank по подграфу)
+educational_edge_types = ["PREREQUISITE", "ELABORATES", "TESTS", "EXAMPLE_OF"]
+pagerank_damping = 0.85
+pagerank_max_iter = 100
+betweenness_normalized = true
+closeness_harmonic = true           # для несвязных графов
+min_bridge_score = 0.7
+louvain_resolution = 1.0            # разрешение для кластеризации
+# bridge_score = w_b·bc_norm + w_p·inter_ratio
+bridge_weight_betweenness = 0.7     # w_b
+bridge_weight_inter_ratio = 0.3     # w_p
+
+[path_mode]
+# Взвешивание «простого» пути
+alpha_step = 0
+beta_difficulty = 1
+sigma_confidence = 0.5
+default_difficulty = 3    # значение difficulty если отсутствует в узле (1-5)
+
+# Лестница расширения допустимых типов
+edge_type_ladder = [
+  ["PREREQUISITE","ELABORATES","EXAMPLE_OF","PARALLEL","REVISION_OF","TESTS"],
+  ["REFER_BACK","HINT_FORWARD"],
+  ["MENTIONS"]
+]
+
+[edge_filter]
+# Фильтрация ВИДИМОСТИ рёбер (метрики считаются по полному графу!)
+mode = "auto"           # auto | manual | off
+auto_quantile = 0.2     # отсекаем нижние 20% весов для каждого типа
+baseline_min = 0.3      # но не ниже этого порога
+
+# При mode="manual" можно задать пороги для каждого типа
+manual_thresholds = { MENTIONS = 0.2, HINT_FORWARD = 0.3, REFER_BACK = 0.3 }
+
+[prereq_closure]
+# Опционально: при жёсткой обрезке JSON достраивать предков по PREREQUISITE
+enabled = false
+max_depth = 0           # 0/None = без ограничения
+
+[demo_path]
+# Генерация educational path
+strategy = 1              # 1=optimal, 2=showcase, 3=critical
+max_nodes = 15            # максимум узлов в демо
+
+[graph2html]
+# Генерация HTML
+output_filename = "knowledge_graph.html"
+minify_json = true                  # сжатие JSON данных
+minify_html = false                 # сжатие итогового HTML
+embed_libraries = true              # true=встроить все, false=CDN
+
+# Что именно встраиваем и в каком порядке
+vendor_js = [
+  "vendor/cytoscape.min.js",
+  "vendor/cytoscape-cose-bilkent.js",
+  "vendor/cytoscape-navigator.js"    # если show_minimap = true
+]
+vendor_css = [
+  "vendor/cytoscape.js-navigator.css"       # если show_minimap = true
+]
+
+# Язык по умолчанию
+default_language = "ru"              # ru|en
+enable_language_switch = true
+
+[visualization]
+# Параметры визуализации (передаются в HTML)
+initial_layout = "cose-bilkent"     # cola|cose|cose-bilkent|grid|circle
+animation_duration = 500            # ms для анимаций
+tour_speed = 3000                   # ms между узлами в презентации
+tour_auto_loop = true               # зациклить презентацию
+
+# Размеры узлов (на основе PageRank)
+node_size_min = 20                  # px
+node_size_max = 60                  # px
+
+# Физическая симуляция
+physics_enabled = true
+physics_duration = 3000              # ms для устаканивания
+
+[colors]
+# Цветовая схема
+theme = "modern"                     # modern|classic|dark|contrast
+
+# Палитра для кластеров (до 12 цветов)
+cluster_palette = [
+    "#3498db",  # синий
+    "#e74c3c",  # красный  
+    "#2ecc71",  # зеленый
+    "#f39c12",  # оранжевый
+    "#9b59b6",  # фиолетовый
+    "#1abc9c",  # бирюзовый
+    "#34495e",  # серый
+    "#e67e22",  # темно-оранжевый
+    "#16a085",  # темно-бирюзовый
+    "#8e44ad",  # темно-фиолетовый
+    "#2c3e50",  # темно-серый
+    "#27ae60"   # темно-зеленый
+]
+
+# Цвета для путей
+path_fast = "#0066cc"               # быстрый путь
+path_easy = "#00aa44"               # простой путь
+
+# Градиенты сложности (learning_effort)
+gradient_easy = "#4ade80"           # легко
+gradient_medium = "#fbbf24"         # средне
+gradient_hard = "#ef4444"           # сложно
+
+[ui]
+# Параметры интерфейса
+sidebar_width = 320                 # px
+sidebar_position = "right"          # left|right
+search_debounce = 300               # ms задержка поиска
+max_popup_width = 600               # px
+show_fps_counter = false            # показать FPS для отладки
+
+# Видимость элементов по умолчанию
+show_legend = true
+show_minimap = true                # вкл/выкл миникарту
+show_stats = true
+
+[filters]
+# Начальные фильтры
+show_chunks = true
+show_concepts = true
+show_assessments = true
+min_pagerank = 0.0                  # скрыть узлы с PR меньше
+max_difficulty = 5                  # показать до этой сложности
+
+[performance]
+# Оптимизация для больших графов
+viewport_culling = true             # рендерить только видимое
+max_nodes_animated = 500            # выше - без анимации появления
+batch_animations = true             # группировка анимаций
+progressive_loading = false         # загрузка по частям

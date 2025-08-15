@@ -1,0 +1,69 @@
+{
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A: Start of linear chain",
+      "node_offset": 0,
+      "definition": "Starting node with no incoming edges",
+      "difficulty": 1
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B: First middle node",
+      "node_offset": 100,
+      "definition": "First intermediate node in the chain",
+      "difficulty": 2
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C: Second middle node",
+      "node_offset": 200,
+      "definition": "Second intermediate node in the chain",
+      "difficulty": 3
+    },
+    {
+      "id": "D",
+      "type": "Chunk",
+      "text": "Node D: End of linear chain",
+      "node_offset": 300,
+      "definition": "Terminal node with no outgoing edges",
+      "difficulty": 4
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "A must be understood before B"
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "B must be understood before C"
+    },
+    {
+      "source": "C",
+      "target": "D",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "C must be understood before D"
+    }
+  ],
+  "_meta": {
+    "test_name": "Linear Graph Test",
+    "description": "Simple directed linear chain A→B→C→D for testing flow-based metrics",
+    "expected_properties": {
+      "pagerank_flow": "Should increase towards the end (D has maximum)",
+      "betweenness": "Middle nodes (B,C) should have equal non-zero betweenness",
+      "closeness": "Should decrease along the chain",
+      "components": "Single weakly connected component"
+    }
+  }
+}

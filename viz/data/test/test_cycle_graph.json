@@ -1,0 +1,66 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_a",
+      "type": "Chunk",
+      "text": "Node A: First node in the cycle",
+      "node_offset": 0,
+      "definition": "First node in cyclic test graph",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_b",
+      "type": "Chunk",
+      "text": "Node B: Second node in the cycle",
+      "node_offset": 100,
+      "definition": "Second node in cyclic test graph",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_c",
+      "type": "Chunk",
+      "text": "Node C: Third node in the cycle",
+      "node_offset": 200,
+      "definition": "Third node in cyclic test graph",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_d",
+      "type": "Chunk",
+      "text": "Node D: Fourth node in the cycle",
+      "node_offset": 300,
+      "definition": "Fourth node in cyclic test graph",
+      "difficulty": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_a",
+      "target": "chunk_b",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "A connects to B in the cycle"
+    },
+    {
+      "source": "chunk_b",
+      "target": "chunk_c",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "B connects to C in the cycle"
+    },
+    {
+      "source": "chunk_c",
+      "target": "chunk_d",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "C connects to D in the cycle"
+    },
+    {
+      "source": "chunk_d",
+      "target": "chunk_a",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "D connects back to A, completing the cycle"
+    }
+  ]
+}

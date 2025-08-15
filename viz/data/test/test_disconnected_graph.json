@@ -1,0 +1,59 @@
+{
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A in component 1",
+      "node_offset": 0,
+      "difficulty": 1
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B in component 1",
+      "node_offset": 100,
+      "difficulty": 2
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C in component 1",
+      "node_offset": 200,
+      "difficulty": 3
+    },
+    {
+      "id": "D",
+      "type": "Chunk",
+      "text": "Node D in component 2",
+      "node_offset": 300,
+      "difficulty": 2
+    },
+    {
+      "id": "E",
+      "type": "Chunk",
+      "text": "Node E in component 2",
+      "node_offset": 400,
+      "difficulty": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "D",
+      "target": "E",
+      "type": "ELABORATES",
+      "weight": 1.0
+    }
+  ]
+}

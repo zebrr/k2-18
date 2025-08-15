@@ -1,0 +1,112 @@
+{
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A in component 1",
+      "node_offset": 0,
+      "difficulty": 1,
+      "degree_in": 0,
+      "degree_out": 1,
+      "degree_centrality": 0.25,
+      "pagerank": 0.1208825,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.3333333,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1.0,
+      "educational_importance": 0.1208825
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B in component 1",
+      "node_offset": 100,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.5,
+      "pagerank": 0.2236326,
+      "betweenness_centrality": 0.0833333,
+      "out-closeness": 0.25,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 3.0,
+      "educational_importance": 0.2236326
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C in component 1",
+      "node_offset": 200,
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.3109697,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 2,
+      "learning_effort": 6.0,
+      "educational_importance": 0.3109697
+    },
+    {
+      "id": "D",
+      "type": "Chunk",
+      "text": "Node D in component 2",
+      "node_offset": 300,
+      "difficulty": 2,
+      "degree_in": 0,
+      "degree_out": 1,
+      "degree_centrality": 0.25,
+      "pagerank": 0.1208825,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.25,
+      "component_id": 1,
+      "prerequisite_depth": 0,
+      "learning_effort": 2.0,
+      "educational_importance": 0.1208825
+    },
+    {
+      "id": "E",
+      "type": "Chunk",
+      "text": "Node E in component 2",
+      "node_offset": 400,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.2236326,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.0,
+      "component_id": 1,
+      "prerequisite_depth": 0,
+      "learning_effort": 2.0,
+      "educational_importance": 0.2236326
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "D",
+      "target": "E",
+      "type": "ELABORATES",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    }
+  ]
+}

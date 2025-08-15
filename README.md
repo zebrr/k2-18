@@ -28,15 +28,15 @@ K2-18 implements the **iText2KG (Incremental Text to Knowledge Graph)** approach
 ```
 Raw Content (.md, .txt, .html)
     ↓
-1. Slicer → Semantic chunks (respecting paragraph boundaries)
+1. Slicer             → Semantic Chunks (respecting paragraph boundaries)
     ↓
-2. iText2KG Concepts → ConceptDictionary (all concepts extracted)
+2. iText2KG Concepts  → Concept Dictionary (with all concepts extracted)
     ↓
-3. iText2KG Graph → Raw knowledge graph (using ConceptDictionary)
+3. iText2KG Graph     → Knowledge Graph (using Concept Dictionary)
     ↓
-4. Dedup → Clean graph (semantic duplicates removed)
+4. Dedup              → Knowledge Graph (with semantic duplicates removed)
     ↓
-5. Refiner → Final graph (long-range connections added)
+5. Refiner Longrange  → Knowledge Graph (with long-range connections added)
 ```
 
 ### Key Features
@@ -44,7 +44,7 @@ Raw Content (.md, .txt, .html)
 - **Incremental Processing**: Handles books of 100-1000 pages by processing in chunks
 - **Context Preservation**: Maintains semantic continuity across chunk boundaries
 - **Smart Deduplication**: Uses embeddings to identify and merge semantically identical content
-- **Long-range Connections**: Discovers relationships between concepts separated by many pages
+- **Long-range Connections**: Discovers relationships between concepts separated by many pages (forward/backward pass)
 - **Language Support**: Any UTF-8 text content
 
 ## Requirements
@@ -88,17 +88,13 @@ pip install -r requirements-dev.txt
 
 # Run tests
 pytest tests/
-
-# Check code quality
-ruff check src/
-black src/ --check
 ```
 
 ## Quick Start
 
-1. **Prepare your content**:
+1. **Prepare content**:
    ```bash
-   # Place your educational materials in:
+   # Place educational materials in:
    data/raw/
    ```
    Supported formats: `.md`, `.txt`, `.html`
@@ -112,17 +108,17 @@ black src/ --check
    python -m src.slicer               # Split into chunks
    python -m src.itext2kg_concepts    # Extract concepts
    python -m src.itext2kg_graph       # Build knowledge graph
-   python -m src.dedup                # Remove duplicates
-   python -m src.refiner              # Add distant connections
+   python -m src.dedup                # Remove duplicates if any
+   python -m src.refiner_longrange    # Add distant connections
    ```
 
 4. **Find your results**:
    ```bash
    data/out/
-   ├── ConceptDictionary.json       # All extracted concepts
-   ├── LearningChunkGraph_raw.json  # Initial graph
-   ├── LearningChunkGraph_dedup.json # After deduplication
-   └── LearningChunkGraph.json      # Final graph
+   ├── ConceptDictionary.json             # All extracted concepts
+   ├── LearningChunkGraph_raw.json        # Initial graph
+   ├── LearningChunkGraph_dedup.json      # After deduplication
+   └── LearningChunkGraph_longrange.json  # Final graph
    ```
 
 ## Configuration
@@ -131,21 +127,21 @@ Main settings in `src/config.toml`:
 
 ```toml
 [slicer]
-max_tokens = 5000        # Chunk size in tokens
-overlap = 0              # Token overlap between chunks
-soft_boundary = true     # Respect semantic boundaries
+max_tokens = 5000          # Chunk size in tokens
+overlap = 0                # Context window size manage by response_chain_depth (Responses API feat.)
+soft_boundary = true       # Respect semantic boundaries
 
 [itext2kg]
-model = "..."           # OpenAI model selection
-tpm_limit = 150000      # API rate limit (tokens/minute)
+model = "..."              # OpenAI model selection
+tpm_limit = 150000         # API rate limit (tokens/minute) based on your Tier
 max_output_tokens = 25000  # Max response size
 
 [dedup]
-sim_threshold = 0.97    # Similarity threshold for duplicates
+sim_threshold = 0.85       # Similarity threshold for duplicates
 
 [refiner]
-run = true              # Enable/disable refiner stage
-sim_threshold = 0.7     # Threshold for new connections
+run = true                 # Enable/disable refiner stage
+sim_threshold = 0.7        # Threshold for new connections
 ```
 
 ## Data Formats
@@ -154,24 +150,18 @@ All data formats are defined by JSON schemas in `/src/schemas/`:
 - `ConceptDictionary.schema.json` - concept vocabulary structure
 - `LearningChunkGraph.schema.json` - knowledge graph structure
 
-## Error Handling
-
-The pipeline uses consistent exit codes:
-- `0` - Success
-- `1` - Configuration error
-- `2` - Input data error
-- `3` - Runtime error
-- `4` - API rate limit exceeded
-- `5` - I/O error
-
-See `/docs/specs/util_exit_codes.md` for details.
-
 ## Documentation
 
 Detailed specifications for each component are in `/docs/specs/`:
 - CLI utilities: `cli_*.md`
 - Utility modules: `util_*.md`
-- Architecture overview: see main Technical Specification
+
+## Limitations
+
+- **Memory-bound**: Entire corpus processed in memory
+- **Sequential**: No parallel processing (to maintain context/TPM limits)
+- **API-dependent**: Requires stable OpenAI API access
+- **Token limits**: Constrained by LLM context windows
 
 ## Troubleshooting
 
@@ -183,7 +173,7 @@ Detailed specifications for each component are in `/docs/specs/`:
 - Solution: Process smaller batches or increase available memory
 
 **API Rate Limits**
-- Check your OpenAI tier limits
+- Check your OpenAI Tier TPM limits
 - Adjust `tpm_limit` in config
 - Pipeline will auto-retry with backoff
 
@@ -194,41 +184,13 @@ Detailed specifications for each component are in `/docs/specs/`:
 
 ## Development
 
-### Running Tests
+### Contributing
 
-```bash
-# Activate virtual environment first
-source .venv/bin/activate  # Linux/macOS
-.venv\Scripts\activate     # Windows
-
-# Quick unit tests (< 10 seconds)
-pytest tests/ -m "not integration and not slow" -v
-
-# All unit tests with coverage
-pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
-
-# Integration tests (require API key)
-pytest tests/ -m "integration" -v
-
-# Full test suite
-pytest tests/ -v
-
-# Generate HTML coverage report
-pytest tests/ --cov=src --cov-report=html
-# Open htmlcov/index.html in browser
-
-# Specific module testing
-pytest tests/test_slicer.py -v
-pytest tests/test_validation.py::TestValidateJson -v
-
-# Check test quality
-grep -r "pass.*# Было print" tests/  # Should return nothing
-```
-
-Test markers:
-- `integration` - Tests requiring real API calls
-- `slow` - Tests taking >30 seconds
-- `timeout` - Tests with explicit timeout settings
+1. Follow TDD approach - write tests first
+2. All functions must have type hints
+3. Update relevant specifications in `/docs/specs/`
+4. Run quality checks before commits
+5. Keep specifications in sync with code
 
 ### Code Quality
 
@@ -243,20 +205,33 @@ flake8 src/
 mypy src/
 ```
 
-### Contributing
+### Running Tests
 
-1. Follow TDD approach - write tests first
-2. All functions must have type hints
-3. Update relevant specifications in `/docs/specs/`
-4. Run quality checks before commits
-5. Keep specifications in sync with code
+```bash
+# Activate virtual environment first
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate     # Windows
 
-## Limitations
+# Quick unit tests (< 10 seconds)
+pytest tests/ -m "not integration and not slow" -v
 
-- **Memory-bound**: Entire corpus processed in memory
-- **Sequential**: No parallel processing (to maintain context)
-- **API-dependent**: Requires stable OpenAI API access
-- **Token limits**: Constrained by LLM context windows
+# All unit tests with coverage
+pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
+
+# Integration SLOW (~5m) tests (require API key)
+pytest tests/ -m "integration" -v
+
+# Full test suite
+pytest tests/ -v
+
+# Generate HTML coverage report (/htmlcov/index.html)
+pytest tests/ --cov=src --cov-report=html
+```
+
+Test markers:
+- `integration` - Tests requiring real API calls
+- `slow` - Tests taking >30 seconds
+- `timeout` - Tests with explicit timeout settings
 
 ## License — Non-Commercial Educational & Research Use
 
@@ -277,4 +252,4 @@ This software is provided **“AS IS”**, without warranty of any kind. Use may
 
 - Check `/docs/specs/` for detailed component documentation
 - Review logs in `/logs/` for debugging
-- See Technical Specification for architecture details
+- Open an Issue

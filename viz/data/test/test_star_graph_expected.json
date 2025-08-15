@@ -1,0 +1,124 @@
+{
+  "nodes": [
+    {
+      "id": "central",
+      "type": "Concept",
+      "text": "Sorting Algorithms",
+      "node_offset": 0,
+      "definition": "Central concept of sorting algorithms",
+      "difficulty": 2,
+      "degree_in": 0,
+      "degree_out": 4,
+      "degree_centrality": 1.0,
+      "pagerank": 0.1709402,
+      "betweenness_centrality": 0.0,
+      "out_closeness": 1.0,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 2,
+      "educational_importance": 0.1709402
+    },
+    {
+      "id": "branch_1",
+      "type": "Chunk",
+      "text": "Bubble sort is a simple sorting algorithm",
+      "node_offset": 50,
+      "definition": "Introduction to bubble sort",
+      "difficulty": 1,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.2072650,
+      "betweenness_centrality": 0.0,
+      "out_closeness": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1,
+      "educational_importance": 0.2072650
+    },
+    {
+      "id": "branch_2",
+      "type": "Chunk",
+      "text": "Quick sort uses divide and conquer strategy",
+      "node_offset": 100,
+      "definition": "Introduction to quick sort",
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.2072650,
+      "betweenness_centrality": 0.0,
+      "out_closeness": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.2072650
+    },
+    {
+      "id": "branch_3",
+      "type": "Chunk",
+      "text": "Merge sort is stable and efficient",
+      "node_offset": 150,
+      "definition": "Introduction to merge sort",
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.2072650,
+      "betweenness_centrality": 0.0,
+      "out_closeness": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.2072650
+    },
+    {
+      "id": "branch_4",
+      "type": "Assessment",
+      "text": "Compare time complexity of different sorting algorithms",
+      "node_offset": 200,
+      "definition": "Assessment on sorting algorithms",
+      "difficulty": 4,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.25,
+      "pagerank": 0.2072650,
+      "betweenness_centrality": 0.0,
+      "out_closeness": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 4,
+      "educational_importance": 0.2072650
+    }
+  ],
+  "edges": [
+    {
+      "source": "central",
+      "target": "branch_1",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_2",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_3",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_4",
+      "type": "TESTS",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    }
+  ]
+}

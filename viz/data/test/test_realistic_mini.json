@@ -1,0 +1,177 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_intro",
+      "type": "Chunk",
+      "text": "Introduction to algorithms and complexity",
+      "node_offset": 0,
+      "definition": "Basic introduction to algorithmic thinking",
+      "difficulty": 1
+    },
+    {
+      "id": "concept_complexity",
+      "type": "Concept",
+      "text": "Algorithm Complexity",
+      "node_offset": 50,
+      "definition": "Measure of computational resources needed"
+    },
+    {
+      "id": "chunk_sorting",
+      "type": "Chunk",
+      "text": "Sorting algorithms overview",
+      "node_offset": 100,
+      "definition": "Introduction to sorting problem",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_bubble",
+      "type": "Chunk",
+      "text": "Bubble sort implementation and analysis",
+      "node_offset": 200,
+      "definition": "Simple quadratic sorting algorithm",
+      "difficulty": 2
+    },
+    {
+      "id": "concept_sorting",
+      "type": "Concept",
+      "text": "Sorting",
+      "node_offset": 150,
+      "definition": "Arranging elements in order"
+    },
+    {
+      "id": "chunk_quicksort",
+      "type": "Chunk",
+      "text": "Quicksort divide-and-conquer approach",
+      "node_offset": 300,
+      "definition": "Efficient recursive sorting algorithm",
+      "difficulty": 3
+    },
+    {
+      "id": "concept_recursion",
+      "type": "Concept",
+      "text": "Recursion",
+      "node_offset": 350,
+      "definition": "Function calling itself with smaller input"
+    },
+    {
+      "id": "assessment_sorting",
+      "type": "Assessment",
+      "text": "Compare bubble sort and quicksort performance",
+      "node_offset": 400,
+      "difficulty": 3
+    },
+    {
+      "id": "chunk_optimization",
+      "type": "Chunk",
+      "text": "Optimizing quicksort with pivot selection",
+      "node_offset": 450,
+      "definition": "Advanced quicksort improvements",
+      "difficulty": 4
+    },
+    {
+      "id": "assessment_final",
+      "type": "Assessment",
+      "text": "Implement and analyze a hybrid sorting algorithm",
+      "node_offset": 500,
+      "difficulty": 4
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_intro",
+      "target": "concept_complexity",
+      "type": "MENTIONS",
+      "weight": 0.35
+    },
+    {
+      "source": "chunk_intro",
+      "target": "chunk_sorting",
+      "type": "PREREQUISITE",
+      "weight": 0.9
+    },
+    {
+      "source": "concept_complexity",
+      "target": "chunk_sorting",
+      "type": "PREREQUISITE",
+      "weight": 0.85
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "concept_sorting",
+      "type": "MENTIONS",
+      "weight": 0.4
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "chunk_bubble",
+      "type": "PREREQUISITE",
+      "weight": 0.85
+    },
+    {
+      "source": "chunk_bubble",
+      "target": "chunk_quicksort",
+      "type": "PARALLEL",
+      "weight": 0.6
+    },
+    {
+      "source": "concept_sorting",
+      "target": "chunk_bubble",
+      "type": "ELABORATES",
+      "weight": 0.65
+    },
+    {
+      "source": "concept_sorting",
+      "target": "chunk_quicksort",
+      "type": "ELABORATES",
+      "weight": 0.7
+    },
+    {
+      "source": "chunk_quicksort",
+      "target": "concept_recursion",
+      "type": "MENTIONS",
+      "weight": 0.35
+    },
+    {
+      "source": "assessment_sorting",
+      "target": "chunk_bubble",
+      "type": "TESTS",
+      "weight": 0.9
+    },
+    {
+      "source": "assessment_sorting",
+      "target": "chunk_quicksort",
+      "type": "TESTS",
+      "weight": 0.9
+    },
+    {
+      "source": "chunk_quicksort",
+      "target": "chunk_optimization",
+      "type": "PREREQUISITE",
+      "weight": 0.95
+    },
+    {
+      "source": "chunk_optimization",
+      "target": "chunk_quicksort",
+      "type": "REVISION_OF",
+      "weight": 0.85
+    },
+    {
+      "source": "concept_recursion",
+      "target": "chunk_optimization",
+      "type": "PREREQUISITE",
+      "weight": 0.8
+    },
+    {
+      "source": "assessment_final",
+      "target": "chunk_optimization",
+      "type": "TESTS",
+      "weight": 0.85
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "assessment_final",
+      "type": "HINT_FORWARD",
+      "weight": 0.4
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "_meta": {
+    "test_graph": true,
+    "description": "Bridge graph: two triangular clusters connected by a single bridge node",
+    "expected_properties": {
+      "bridge_node": "D",
+      "bridge_betweenness": "maximum",
+      "clusters": 2,
+      "critical_edges": ["C→D", "D→E"]
+    }
+  },
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A in cluster 1",
+      "node_offset": 0,
+      "difficulty": 2
+    },
+    {
+      "id": "B", 
+      "type": "Chunk",
+      "text": "Node B in cluster 1",
+      "node_offset": 10,
+      "difficulty": 2
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C in cluster 1 (connects to bridge)",
+      "node_offset": 20,
+      "difficulty": 3
+    },
+    {
+      "id": "D",
+      "type": "Chunk",
+      "text": "Bridge node D connecting two clusters",
+      "node_offset": 30,
+      "difficulty": 3
+    },
+    {
+      "id": "E",
+      "type": "Chunk",
+      "text": "Node E in cluster 2 (connects from bridge)",
+      "node_offset": 40,
+      "difficulty": 3
+    },
+    {
+      "id": "F",
+      "type": "Chunk",
+      "text": "Node F in cluster 2",
+      "node_offset": 50,
+      "difficulty": 2
+    },
+    {
+      "id": "G",
+      "type": "Chunk",
+      "text": "Node G in cluster 2",
+      "node_offset": 60,
+      "difficulty": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PARALLEL",
+      "weight": 1.0
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "C",
+      "target": "A",
+      "type": "REFER_BACK",
+      "weight": 1.0
+    },
+    {
+      "source": "C",
+      "target": "D",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "D",
+      "target": "E",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "E",
+      "target": "F",
+      "type": "PARALLEL",
+      "weight": 1.0
+    },
+    {
+      "source": "F",
+      "target": "G",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "G",
+      "target": "E",
+      "type": "REFER_BACK",
+      "weight": 1.0
+    },
+    {
+      "source": "A",
+      "target": "C",
+      "type": "ELABORATES",
+      "weight": 1.0
+    },
+    {
+      "source": "E",
+      "target": "G",
+      "type": "ELABORATES",
+      "weight": 1.0
+    }
+  ]
+}

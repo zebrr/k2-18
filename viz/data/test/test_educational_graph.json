@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "description": "Educational graph with different node and edge types",
+    "purpose": "Testing metrics calculation with various educational relationships",
+    "expected_properties": "Concept should have high PageRank, Assessment should test Chunks"
+  },
+  "nodes": [
+    {
+      "id": "concept_1",
+      "type": "Concept",
+      "text": "Sorting",
+      "node_offset": 0,
+      "definition": "Process of arranging elements in a specific order",
+      "difficulty": 1
+    },
+    {
+      "id": "chunk_1",
+      "type": "Chunk",
+      "text": "Bubble sort is a simple sorting algorithm that repeatedly steps through the list",
+      "node_offset": 100,
+      "definition": "Introduction to bubble sort algorithm",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_2",
+      "type": "Chunk",
+      "text": "def bubble_sort(arr): for i in range(len(arr)): for j in range(0, len(arr)-i-1): ...",
+      "node_offset": 200,
+      "definition": "Implementation of bubble sort in Python",
+      "difficulty": 3
+    },
+    {
+      "id": "assessment_1",
+      "type": "Assessment",
+      "text": "Implement an optimized version of bubble sort that stops early if no swaps occur",
+      "node_offset": 300,
+      "difficulty": 3
+    }
+  ],
+  "edges": [
+    {
+      "source": "concept_1",
+      "target": "chunk_1",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "chunk_1",
+      "target": "chunk_2",
+      "type": "PREREQUISITE",
+      "weight": 1.0
+    },
+    {
+      "source": "chunk_1",
+      "target": "concept_1",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0
+    },
+    {
+      "source": "chunk_2",
+      "target": "chunk_1",
+      "type": "ELABORATES",
+      "weight": 1.0
+    },
+    {
+      "source": "assessment_1",
+      "target": "chunk_2",
+      "type": "TESTS",
+      "weight": 1.0
+    }
+  ]
+}

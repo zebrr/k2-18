@@ -1,0 +1,70 @@
+{
+  "nodes": [
+    {
+      "id": "central",
+      "type": "Concept",
+      "text": "Sorting Algorithms",
+      "node_offset": 0,
+      "definition": "Central concept of sorting algorithms",
+      "difficulty": 2
+    },
+    {
+      "id": "branch_1",
+      "type": "Chunk",
+      "text": "Bubble sort is a simple sorting algorithm",
+      "node_offset": 50,
+      "definition": "Introduction to bubble sort",
+      "difficulty": 1
+    },
+    {
+      "id": "branch_2",
+      "type": "Chunk",
+      "text": "Quick sort uses divide and conquer strategy",
+      "node_offset": 100,
+      "definition": "Introduction to quick sort",
+      "difficulty": 3
+    },
+    {
+      "id": "branch_3",
+      "type": "Chunk",
+      "text": "Merge sort is stable and efficient",
+      "node_offset": 150,
+      "definition": "Introduction to merge sort",
+      "difficulty": 3
+    },
+    {
+      "id": "branch_4",
+      "type": "Assessment",
+      "text": "Compare time complexity of different sorting algorithms",
+      "node_offset": 200,
+      "definition": "Assessment on sorting algorithms",
+      "difficulty": 4
+    }
+  ],
+  "edges": [
+    {
+      "source": "central",
+      "target": "branch_1",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_2",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_3",
+      "type": "EXAMPLE_OF",
+      "weight": 1.0
+    },
+    {
+      "source": "central",
+      "target": "branch_4",
+      "type": "TESTS",
+      "weight": 1.0
+    }
+  ]
+}

@@ -1,69 +1,59 @@
 {
   "nodes": [
     {
-      "id": "A",
+      "id": "chunk_a",
       "type": "Chunk",
-      "text": "Node A: Start of linear chain",
+      "text": "Node A: Starting point of the linear chain",
       "node_offset": 0,
-      "definition": "Starting node with no incoming edges",
+      "definition": "First node in linear test graph",
       "difficulty": 1
     },
     {
-      "id": "B",
+      "id": "chunk_b",
       "type": "Chunk",
-      "text": "Node B: First middle node",
+      "text": "Node B: Second step in the chain",
       "node_offset": 100,
-      "definition": "First intermediate node in the chain",
+      "definition": "Second node in linear test graph",
       "difficulty": 2
     },
     {
-      "id": "C",
+      "id": "chunk_c",
       "type": "Chunk",
-      "text": "Node C: Second middle node",
+      "text": "Node C: Third step in the chain",
       "node_offset": 200,
-      "definition": "Second intermediate node in the chain",
+      "definition": "Third node in linear test graph",
       "difficulty": 3
     },
     {
-      "id": "D",
+      "id": "chunk_d",
       "type": "Chunk",
-      "text": "Node D: End of linear chain",
+      "text": "Node D: Final destination",
       "node_offset": 300,
-      "definition": "Terminal node with no outgoing edges",
+      "definition": "Fourth and final node in linear test graph",
       "difficulty": 4
     }
   ],
   "edges": [
     {
-      "source": "A",
-      "target": "B",
+      "source": "chunk_a",
+      "target": "chunk_b",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "A must be understood before B"
     },
     {
-      "source": "B",
-      "target": "C",
+      "source": "chunk_b",
+      "target": "chunk_c",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "B must be understood before C"
     },
     {
-      "source": "C",
-      "target": "D",
+      "source": "chunk_c",
+      "target": "chunk_d",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "C must be understood before D"
     }
-  ],
-  "_meta": {
-    "test_name": "Linear Graph Test",
-    "description": "Simple directed linear chain A→B→C→D for testing flow-based metrics",
-    "expected_properties": {
-      "pagerank_flow": "Should increase towards the end (D has maximum)",
-      "betweenness": "Middle nodes (B,C) should have equal non-zero betweenness",
-      "closeness": "Should decrease along the chain",
-      "components": "Single weakly connected component"
-    }
-  }
+  ]
 }

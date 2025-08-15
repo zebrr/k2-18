@@ -1,0 +1,293 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_intro",
+      "type": "Chunk",
+      "text": "Introduction to algorithms and complexity",
+      "node_offset": 0,
+      "definition": "Basic introduction to algorithmic thinking",
+      "difficulty": 1,
+      "degree_in": 0,
+      "degree_out": 2,
+      "degree_centrality": 0.222222,
+      "pagerank": 0.01500000,
+      "betweenness_centrality": 0.000000,
+      "out-closeness": 0.244946,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1,
+      "educational_importance": 0.05268460
+    },
+    {
+      "id": "concept_complexity",
+      "type": "Concept",
+      "text": "Algorithm Complexity",
+      "node_offset": 50,
+      "definition": "Measure of computational resources needed",
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.222222,
+      "pagerank": 0.01857000,
+      "betweenness_centrality": 0.000000,
+      "out-closeness": 0.204432,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.05268460
+    },
+    {
+      "id": "chunk_sorting",
+      "type": "Chunk",
+      "text": "Sorting algorithms overview",
+      "node_offset": 100,
+      "definition": "Introduction to sorting problem",
+      "difficulty": 2,
+      "degree_in": 2,
+      "degree_out": 3,
+      "degree_centrality": 0.555556,
+      "pagerank": 0.03996450,
+      "betweenness_centrality": 0.166667,
+      "out-closeness": 0.217433,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 5,
+      "educational_importance": 0.14224841
+    },
+    {
+      "id": "chunk_bubble",
+      "type": "Chunk",
+      "text": "Bubble sort implementation and analysis",
+      "node_offset": 200,
+      "definition": "Simple quadratic sorting algorithm",
+      "difficulty": 2,
+      "degree_in": 3,
+      "degree_out": 1,
+      "degree_centrality": 0.444444,
+      "pagerank": 0.04838379,
+      "betweenness_centrality": 0.083333,
+      "out-closeness": 0.112236,
+      "component_id": 0,
+      "prerequisite_depth": 2,
+      "learning_effort": 7,
+      "educational_importance": 0.21754836
+    },
+    {
+      "id": "concept_sorting",
+      "type": "Concept",
+      "text": "Sorting",
+      "node_offset": 150,
+      "definition": "Arranging elements in order",
+      "degree_in": 1,
+      "degree_out": 2,
+      "degree_centrality": 0.333333,
+      "pagerank": 0.02323511,
+      "betweenness_centrality": 0.000000,
+      "out-closeness": 0.182636,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.05268460
+    },
+    {
+      "id": "chunk_quicksort",
+      "type": "Chunk",
+      "text": "Quicksort divide-and-conquer approach",
+      "node_offset": 300,
+      "definition": "Efficient recursive sorting algorithm",
+      "difficulty": 3,
+      "degree_in": 4,
+      "degree_out": 2,
+      "degree_centrality": 0.666667,
+      "pagerank": 0.36884547,
+      "betweenness_centrality": 0.152778,
+      "out-closeness": 0.113677,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.09829580
+    },
+    {
+      "id": "concept_recursion",
+      "type": "Concept",
+      "text": "Recursion",
+      "node_offset": 350,
+      "definition": "Function calling itself with smaller input",
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.222222,
+      "pagerank": 0.09940887,
+      "betweenness_centrality": 0.000000,
+      "out-closeness": 0.120888,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.05268460
+    },
+    {
+      "id": "assessment_sorting",
+      "type": "Assessment",
+      "text": "Compare bubble sort and quicksort performance",
+      "node_offset": 400,
+      "difficulty": 3,
+      "degree_in": 0,
+      "degree_out": 2,
+      "degree_centrality": 0.222222,
+      "pagerank": 0.01500000,
+      "betweenness_centrality": 0.000000,
+      "out-closeness": 0.212803,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 3,
+      "educational_importance": 0.05268460
+    },
+    {
+      "id": "chunk_optimization",
+      "type": "Chunk",
+      "text": "Optimizing quicksort with pivot selection",
+      "node_offset": 450,
+      "definition": "Advanced quicksort improvements",
+      "difficulty": 4,
+      "degree_in": 3,
+      "degree_out": 1,
+      "degree_centrality": 0.444444,
+      "pagerank": 0.34835716,
+      "betweenness_centrality": 0.041667,
+      "out-closeness": 0.085304,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 7,
+      "educational_importance": 0.22579984
+    },
+    {
+      "id": "assessment_final",
+      "type": "Assessment",
+      "text": "Implement and analyze a hybrid sorting algorithm",
+      "node_offset": 500,
+      "difficulty": 4,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.222222,
+      "pagerank": 0.02323511,
+      "betweenness_centrality": 0.041667,
+      "out-closeness": 0.114422,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 4,
+      "educational_importance": 0.05268460
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_intro",
+      "target": "concept_complexity",
+      "type": "MENTIONS",
+      "weight": 0.35,
+      "inverse_weight": 2.8571
+    },
+    {
+      "source": "chunk_intro",
+      "target": "chunk_sorting",
+      "type": "PREREQUISITE",
+      "weight": 0.9,
+      "inverse_weight": 1.1111
+    },
+    {
+      "source": "concept_complexity",
+      "target": "chunk_sorting",
+      "type": "PREREQUISITE",
+      "weight": 0.85,
+      "inverse_weight": 1.1765
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "concept_sorting",
+      "type": "MENTIONS",
+      "weight": 0.4,
+      "inverse_weight": 2.5000
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "chunk_bubble",
+      "type": "PREREQUISITE",
+      "weight": 0.85,
+      "inverse_weight": 1.1765
+    },
+    {
+      "source": "chunk_bubble",
+      "target": "chunk_quicksort",
+      "type": "PARALLEL",
+      "weight": 0.6,
+      "inverse_weight": 1.6667
+    },
+    {
+      "source": "concept_sorting",
+      "target": "chunk_bubble",
+      "type": "ELABORATES",
+      "weight": 0.65,
+      "inverse_weight": 1.5385
+    },
+    {
+      "source": "concept_sorting",
+      "target": "chunk_quicksort",
+      "type": "ELABORATES",
+      "weight": 0.7,
+      "inverse_weight": 1.4286
+    },
+    {
+      "source": "chunk_quicksort",
+      "target": "concept_recursion",
+      "type": "MENTIONS",
+      "weight": 0.35,
+      "inverse_weight": 2.8571
+    },
+    {
+      "source": "assessment_sorting",
+      "target": "chunk_bubble",
+      "type": "TESTS",
+      "weight": 0.9,
+      "inverse_weight": 1.1111
+    },
+    {
+      "source": "assessment_sorting",
+      "target": "chunk_quicksort",
+      "type": "TESTS",
+      "weight": 0.9,
+      "inverse_weight": 1.1111
+    },
+    {
+      "source": "chunk_quicksort",
+      "target": "chunk_optimization",
+      "type": "PREREQUISITE",
+      "weight": 0.95,
+      "inverse_weight": 1.0526
+    },
+    {
+      "source": "chunk_optimization",
+      "target": "chunk_quicksort",
+      "type": "REVISION_OF",
+      "weight": 0.85,
+      "inverse_weight": 1.1765
+    },
+    {
+      "source": "concept_recursion",
+      "target": "chunk_optimization",
+      "type": "PREREQUISITE",
+      "weight": 0.8,
+      "inverse_weight": 1.2500
+    },
+    {
+      "source": "assessment_final",
+      "target": "chunk_optimization",
+      "type": "TESTS",
+      "weight": 0.85,
+      "inverse_weight": 1.1765
+    },
+    {
+      "source": "chunk_sorting",
+      "target": "assessment_final",
+      "type": "HINT_FORWARD",
+      "weight": 0.4,
+      "inverse_weight": 2.5000
+    }
+  ]
+}

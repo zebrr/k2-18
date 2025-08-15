@@ -1,96 +1,102 @@
 {
   "nodes": [
     {
-      "id": "A",
+      "id": "chunk_a",
       "type": "Chunk",
-      "text": "Node A: Start of linear chain",
+      "text": "Node A: Starting point of the linear chain",
       "node_offset": 0,
-      "definition": "Starting node with no incoming edges",
+      "definition": "First node in linear test graph",
       "difficulty": 1,
       "degree_in": 0,
       "degree_out": 1,
-      "degree_centrality": 0.3333,
-      "pagerank": 0.0375,
+      "degree_centrality": 0.3333333333333333,
+      "pagerank": 0.1161558230,
       "betweenness_centrality": 0.0,
-      "closeness_centrality": 0.5
+      "closeness_centrality": 0.5,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1.0,
+      "educational_importance": 0.1161558230
     },
     {
-      "id": "B",
+      "id": "chunk_b",
       "type": "Chunk",
-      "text": "Node B: First middle node",
+      "text": "Node B: Second step in the chain",
       "node_offset": 100,
-      "definition": "First intermediate node in the chain",
+      "definition": "Second node in linear test graph",
       "difficulty": 2,
       "degree_in": 1,
       "degree_out": 1,
-      "degree_centrality": 0.6667,
-      "pagerank": 0.0694,
-      "betweenness_centrality": 0.3333,
-      "closeness_centrality": 0.4444
+      "degree_centrality": 0.6666666666666666,
+      "pagerank": 0.2148882726,
+      "betweenness_centrality": 0.3333333333333333,
+      "closeness_centrality": 0.4444444444444444,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 3.0,
+      "educational_importance": 0.2148882726
     },
     {
-      "id": "C",
+      "id": "chunk_c",
       "type": "Chunk",
-      "text": "Node C: Second middle node",
+      "text": "Node C: Third step in the chain",
       "node_offset": 200,
-      "definition": "Second intermediate node in the chain",
+      "definition": "Third node in linear test graph",
       "difficulty": 3,
       "degree_in": 1,
       "degree_out": 1,
-      "degree_centrality": 0.6667,
-      "pagerank": 0.1419,
-      "betweenness_centrality": 0.3333,
-      "closeness_centrality": 0.3333
+      "degree_centrality": 0.6666666666666666,
+      "pagerank": 0.2988108548,
+      "betweenness_centrality": 0.3333333333333333,
+      "closeness_centrality": 0.3333333333333333,
+      "component_id": 0,
+      "prerequisite_depth": 2,
+      "learning_effort": 6.0,
+      "educational_importance": 0.2988108548
     },
     {
-      "id": "D",
+      "id": "chunk_d",
       "type": "Chunk",
-      "text": "Node D: End of linear chain",
+      "text": "Node D: Final destination",
       "node_offset": 300,
-      "definition": "Terminal node with no outgoing edges",
+      "definition": "Fourth and final node in linear test graph",
       "difficulty": 4,
       "degree_in": 1,
       "degree_out": 0,
-      "degree_centrality": 0.3333,
-      "pagerank": 0.7512,
+      "degree_centrality": 0.3333333333333333,
+      "pagerank": 0.3701450496,
       "betweenness_centrality": 0.0,
-      "closeness_centrality": 0.0
+      "closeness_centrality": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 3,
+      "learning_effort": 10.0,
+      "educational_importance": 0.3701450496
     }
   ],
   "edges": [
     {
-      "source": "A",
-      "target": "B",
+      "source": "chunk_a",
+      "target": "chunk_b",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "A must be understood before B",
       "inverse_weight": 1.0
     },
     {
-      "source": "B",
-      "target": "C",
+      "source": "chunk_b",
+      "target": "chunk_c",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "B must be understood before C",
       "inverse_weight": 1.0
     },
     {
-      "source": "C",
-      "target": "D",
+      "source": "chunk_c",
+      "target": "chunk_d",
       "type": "PREREQUISITE",
       "weight": 1.0,
       "conditions": "C must be understood before D",
       "inverse_weight": 1.0
     }
-  ],
-  "_meta": {
-    "test_name": "Linear Graph Test",
-    "description": "Simple directed linear chain A→B→C→D for testing flow-based metrics",
-    "expected_properties": {
-      "pagerank_flow": "Should increase towards the end (D has maximum)",
-      "betweenness": "Middle nodes (B,C) should have equal non-zero betweenness",
-      "closeness": "Should decrease along the chain",
-      "components": "Single weakly connected component"
-    }
-  }
+  ]
 }

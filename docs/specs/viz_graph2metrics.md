@@ -1,6 +1,6 @@
 # viz_graph2metrics.md
 
-## Status: READY (VIZ-METRICS-02 IMPLEMENTED)
+## Status: IN PROGRESS
 
 Module for computing NetworkX metrics on K2-18 knowledge graph for visualization.
 
@@ -16,11 +16,27 @@ python -m viz.graph2metrics
 
 # Run on test data  
 python -m viz.graph2metrics --test-mode
+
+# Run validation mode
+python -m viz.graph2metrics --validate
+
+# Validate specific graph
+python -m viz.graph2metrics --validate --graph test_line
+
+# Validate specific metric
+python -m viz.graph2metrics --validate --metric pagerank
+
+# Verbose validation output
+python -m viz.graph2metrics --validate --verbose
 ```
 
 ### Command-line Arguments
 
 - `--test-mode` - Use test data from `/viz/data/test/` instead of `/viz/data/in/`
+- `--validate` - Run validation mode to check test graphs against expected results
+- `--graph NAME` - Filter validation to specific graph (e.g., test_line)
+- `--metric NAME` - Filter validation to specific metric (e.g., pagerank)
+- `--verbose` - Show detailed validation output
 
 ## Input/Output Files
 
@@ -81,6 +97,59 @@ Always saved to `/viz/data/out/` regardless of mode:
 - Copy input data to output (metrics will be added in future versions)
 - Save enriched JSON files with UTF-8 encoding
 - Log completion status
+
+## Validation Mode
+
+### Purpose
+Validation mode compares computed metrics against expected results for test graphs to identify implementation issues.
+
+### Test Data Structure
+- Test graphs located in `/viz/data/test/`
+- Each test consists of:
+  - `test_NAME_graph.json` - Input graph
+  - `test_NAME_expected.json` - Expected output with all metrics
+  - `test_NAME_calc.md` - Manual calculation documentation
+
+### Validated Metrics
+**Node metrics (10):**
+- `degree_in`, `degree_out`, `degree_centrality` - Currently implemented
+- `pagerank`, `betweenness_centrality`, `closeness_centrality` - Currently implemented
+- `component_id`, `prerequisite_depth`, `learning_effort`, `educational_importance` - Not yet implemented
+
+**Edge metrics (1):**
+- `inverse_weight` - Not yet implemented
+
+### Validation Process
+1. Scan `/viz/data/test/` for test graph pairs
+2. Validate each file against JSON schemas
+3. Compute metrics using current implementation
+4. Compare with expected values using 1% tolerance
+5. Special handling for zero values (absolute tolerance 0.001)
+
+### Output Format
+
+#### Console Matrix
+Shows validation results with emoji indicators:
+- ✅ - PASS (within 1% tolerance)
+- ❌ XX% - FAIL (with deviation percentage)
+- ❌ MISS - Metric not implemented
+- ⚠️ NaN - Invalid value
+
+#### JSON Report
+Saved to `/viz/logs/validation_report.json`:
+```json
+{
+  "timestamp": "ISO-8601",
+  "summary": {
+    "total_checks": 88,
+    "passed": 24,
+    "failed": 64,
+    "missing": 0
+  },
+  "by_metric": {...},
+  "by_graph": {...}
+}
+```
 
 ## Dependencies
 
@@ -202,26 +271,26 @@ tail -20 viz/logs/graph2metrics.log
 grep ERROR viz/logs/graph2metrics.log
 ```
 
-## Future Enhancements
+### Validation Mode Examples
+```bash
+# Run full validation
+python -m viz.graph2metrics --validate
 
-### ✅ VIZ-METRICS-02: Centrality Metrics (COMPLETED)
-- ✓ PageRank for node importance
-- ✓ Degree centrality (in/out/normalized)
-- ✓ Betweenness centrality for bridges
-- ✓ Closeness centrality for connectivity
-- ✓ Safe handling of NaN/inf values for isolated nodes
-- ✓ Configuration-driven parameters
+# Validate specific graph
+python -m viz.graph2metrics --validate --graph test_line
 
-### VIZ-METRICS-03: Clustering
-- Louvain community detection
-- Connected components analysis
-- Clustering coefficients
-- Bridge score calculation
+# Check specific metric across all graphs
+python -m viz.graph2metrics --validate --metric pagerank
 
-### VIZ-METRICS-04: Demo Path
-- Generate educational paths based on strategy
-- Add path metadata to graph
-- Support different path generation algorithms
+# Detailed output for debugging
+python -m viz.graph2metrics --validate --verbose
+
+# Combine filters for targeted check
+python -m viz.graph2metrics --validate --graph test_weighted_triangle --metric betweenness_centrality --verbose
+
+# View validation report
+cat viz/logs/validation_report.json | python -m json.tool
+```
 
 ## Performance Notes
 

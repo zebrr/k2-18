@@ -1,0 +1,53 @@
+{
+  "concepts": [
+    {
+      "concept_id": "concept_sorting",
+      "term": {
+        "primary": "Sorting",
+        "aliases": ["sort", "ordering", "arrangement"]
+      },
+      "definition": "The process of arranging elements in a specific order based on comparison criteria"
+    },
+    {
+      "concept_id": "concept_complexity", 
+      "term": {
+        "primary": "Algorithm Complexity",
+        "aliases": ["computational complexity", "time complexity", "Big O"]
+      },
+      "definition": "A measure of the computational resources required by an algorithm as input size grows"
+    },
+    {
+      "concept_id": "concept_recursion",
+      "term": {
+        "primary": "Recursion",
+        "aliases": ["recursive function", "self-reference"]
+      },
+      "definition": "A programming technique where a function calls itself to solve smaller instances of the same problem"
+    },
+    {
+      "concept_id": "concept_bubble_sort",
+      "term": {
+        "primary": "Bubble Sort",
+        "aliases": ["sinking sort", "exchange sort"]
+      },
+      "definition": "A simple sorting algorithm that repeatedly steps through the list, compares adjacent elements and swaps them if they are in the wrong order"
+    },
+    {
+      "concept_id": "concept_quick_sort",
+      "term": {
+        "primary": "Quick Sort",
+        "aliases": ["partition sort", "quicksort"]
+      },
+      "definition": "An efficient divide-and-conquer sorting algorithm that picks a pivot element and partitions the array around it"
+    }
+  ],
+  "_meta": {
+    "source": "test_data_for_viz",
+    "created": "2024-08-16",
+    "description": "Minimal concept dictionary for viz module testing",
+    "stats": {
+      "total_concepts": 5,
+      "total_aliases": 10
+    }
+  }
+}

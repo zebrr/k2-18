@@ -74,7 +74,7 @@ def test_centrality_metrics_computation():
         assert "degree_centrality" in node
         assert "pagerank" in node
         assert "betweenness_centrality" in node
-        assert "closeness_centrality" in node
+        assert "out-closeness" in node
 
         # Check types
         assert isinstance(node["degree_in"], int)
@@ -82,7 +82,7 @@ def test_centrality_metrics_computation():
         assert isinstance(node["degree_centrality"], float)
         assert isinstance(node["pagerank"], float)
         assert isinstance(node["betweenness_centrality"], float)
-        assert isinstance(node["closeness_centrality"], float)
+        assert isinstance(node["out-closeness"], float)
 
         # Check value ranges
         assert node["degree_in"] >= 0
@@ -90,7 +90,7 @@ def test_centrality_metrics_computation():
         assert 0.0 <= node["degree_centrality"] <= 1.0
         assert 0.0 <= node["pagerank"] <= 1.0
         assert 0.0 <= node["betweenness_centrality"] <= 1.0
-        assert 0.0 <= node["closeness_centrality"] <= 1.0
+        assert 0.0 <= node["out-closeness"] <= 1.0
 
     # Check specific values for this graph structure
     # Node A has 2 outgoing edges (to B and C)
@@ -150,7 +150,7 @@ def test_isolated_nodes_handling():
     # With 3 nodes, each gets ~1/3 of total PageRank
     assert 0.0 <= isolated_node["pagerank"] <= 0.4
     # Closeness for isolated node should be 0 with harmonic mean
-    assert isolated_node["closeness_centrality"] == 0.0
+    assert isolated_node["out-closeness"] == 0.0
 
 
 @pytest.mark.viz
@@ -300,7 +300,7 @@ def test_single_node_graph():
     # Single node gets all PageRank
     assert node["pagerank"] == 1.0
     # Closeness is 0 for single node
-    assert node["closeness_centrality"] == 0.0
+    assert node["out-closeness"] == 0.0
 
 
 @pytest.mark.viz
@@ -342,4 +342,4 @@ def test_self_loops():
     # All metrics should be computed
     assert "pagerank" in node_a
     assert "betweenness_centrality" in node_a
-    assert "closeness_centrality" in node_a
+    assert "out-closeness" in node_a

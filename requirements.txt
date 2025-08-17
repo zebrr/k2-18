@@ -16,5 +16,6 @@ tomli>=2.0.0; python_version<"3.11"
 
 # Visualization dependencies
 networkx>=3.0
+scipy>=1.10.0  # Required by NetworkX for PageRank and other algorithms
 python-louvain>=0.16
 Jinja2>=3.1.0

@@ -1,0 +1,178 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_1",
+      "type": "Chunk",
+      "text": "Introduction to sorting algorithms",
+      "node_offset": 0,
+      "definition": "Basic concepts of sorting",
+      "difficulty": 1
+    },
+    {
+      "id": "chunk_2",
+      "type": "Chunk",
+      "text": "Bubble sort implementation",
+      "node_offset": 100,
+      "definition": "Step-by-step bubble sort",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_3",
+      "type": "Chunk",
+      "text": "Quick sort algorithm",
+      "node_offset": 200,
+      "definition": "Divide and conquer sorting",
+      "difficulty": 3
+    },
+    {
+      "id": "chunk_4",
+      "type": "Chunk",
+      "text": "Complexity analysis",
+      "node_offset": 300,
+      "definition": "Time and space complexity",
+      "difficulty": 3
+    },
+    {
+      "id": "concept_sorting",
+      "type": "Concept",
+      "text": "Sorting",
+      "node_offset": 10,
+      "definition": "Arranging elements in order"
+    },
+    {
+      "id": "concept_complexity",
+      "type": "Concept",
+      "text": "Algorithm Complexity",
+      "node_offset": 310,
+      "definition": "Computational resource requirements"
+    },
+    {
+      "id": "concept_recursion",
+      "type": "Concept",
+      "text": "Recursion",
+      "node_offset": 210,
+      "definition": "Function calling itself"
+    },
+    {
+      "id": "assessment_1",
+      "type": "Assessment",
+      "text": "Implement merge sort",
+      "node_offset": 400,
+      "definition": "Practice exercise",
+      "difficulty": 3
+    },
+    {
+      "id": "chunk_5",
+      "type": "Chunk",
+      "text": "Comparison of sorting methods",
+      "node_offset": 500,
+      "definition": "Performance comparison",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_6",
+      "type": "Chunk",
+      "text": "Real-world applications",
+      "node_offset": 600,
+      "definition": "Practical uses of sorting",
+      "difficulty": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_1",
+      "target": "chunk_2",
+      "type": "PREREQUISITE",
+      "weight": 0.9
+    },
+    {
+      "source": "chunk_1",
+      "target": "chunk_3",
+      "type": "PREREQUISITE",
+      "weight": 0.85
+    },
+    {
+      "source": "chunk_2",
+      "target": "chunk_4",
+      "type": "ELABORATES",
+      "weight": 0.7
+    },
+    {
+      "source": "chunk_3",
+      "target": "chunk_4",
+      "type": "ELABORATES",
+      "weight": 0.75
+    },
+    {
+      "source": "chunk_1",
+      "target": "concept_sorting",
+      "type": "MENTIONS",
+      "weight": 0.8
+    },
+    {
+      "source": "chunk_4",
+      "target": "concept_complexity",
+      "type": "MENTIONS",
+      "weight": 0.9
+    },
+    {
+      "source": "chunk_3",
+      "target": "concept_recursion",
+      "type": "MENTIONS",
+      "weight": 0.6
+    },
+    {
+      "source": "chunk_2",
+      "target": "chunk_3",
+      "type": "PARALLEL",
+      "weight": 0.5
+    },
+    {
+      "source": "assessment_1",
+      "target": "chunk_3",
+      "type": "TESTS",
+      "weight": 0.8
+    },
+    {
+      "source": "chunk_4",
+      "target": "chunk_5",
+      "type": "HINT_FORWARD",
+      "weight": 0.4
+    },
+    {
+      "source": "chunk_5",
+      "target": "chunk_2",
+      "type": "REFER_BACK",
+      "weight": 0.3
+    },
+    {
+      "source": "chunk_5",
+      "target": "chunk_3",
+      "type": "REFER_BACK",
+      "weight": 0.35
+    },
+    {
+      "source": "chunk_1",
+      "target": "chunk_6",
+      "type": "PREREQUISITE",
+      "weight": 0.7
+    },
+    {
+      "source": "chunk_6",
+      "target": "concept_sorting",
+      "type": "EXAMPLE_OF",
+      "weight": 0.6
+    },
+    {
+      "source": "chunk_5",
+      "target": "chunk_6",
+      "type": "ELABORATES",
+      "weight": 0.65
+    }
+  ],
+  "_meta": {
+    "source": "test_data_for_viz",
+    "created": "2024-08-16",
+    "description": "Minimal test graph for viz module testing"
+  }
+}

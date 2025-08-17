@@ -11,9 +11,11 @@ betweenness_normalized = true
 closeness_harmonic = true           # для несвязных графов
 min_bridge_score = 0.7
 louvain_resolution = 1.0            # разрешение для кластеризации
+louvain_random_state = 42           # для детерминизма кластеризации
 # bridge_score = w_b·bc_norm + w_p·inter_ratio
 bridge_weight_betweenness = 0.7     # w_b
 bridge_weight_inter_ratio = 0.3     # w_p
+bridge_top_gap_min = 0.05           # Minimum gap between top-2 bridges and rest
 
 [path_mode]
 # Взвешивание «простого» пути
@@ -45,8 +47,8 @@ max_depth = 0           # 0/None = без ограничения
 
 [demo_path]
 # Генерация educational path
-strategy = 1              # 1=optimal, 2=showcase, 3=critical
-max_nodes = 15            # максимум узлов в демо
+strategy = 2              # 1=optimal, 2=showcase, 3=critical
+max_nodes = 100            # максимум узлов в демо
 
 [graph2html]
 # Генерация HTML
@@ -140,3 +142,18 @@ viewport_culling = true             # рендерить только видим
 max_nodes_animated = 500            # выше - без анимации появления
 batch_animations = true             # группировка анимаций
 progressive_loading = false         # загрузка по частям
+
+[anomaly_detection]
+# Critical thresholds (violation = stop)
+pagerank_sum_tolerance = 0.01      # Allowed deviation from 1.0
+educational_sum_tolerance = 0.01   # Allowed deviation from 1.0
+
+# Warning thresholds
+min_modularity = 0.1               # Minimum cluster modularity
+min_bridge_correlation = 0.3       # Minimum correlation bridge_score vs betweenness
+outlier_method = "iqr"             # Outlier detection: "iqr" or "3sigma"
+outlier_threshold = 1.5            # Multiplier for IQR method
+
+# Behavior
+strict_mode = false                # true = WARNINGs are also critical
+save_json_report = true            # Save JSON report to logs

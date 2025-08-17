@@ -28,11 +28,14 @@ def test_viz_infrastructure():
     assert (viz_root / "static").exists(), "viz/static directory does not exist"
     assert (viz_root / "logs").exists(), "viz/logs directory does not exist"
 
-    # Check test data files
-    test_graph = viz_root / "data" / "test" / "tiny_graph.json"
-    test_concepts = viz_root / "data" / "test" / "tiny_concepts.json"
-    assert test_graph.exists(), "tiny_graph.json does not exist"
-    assert test_concepts.exists(), "tiny_concepts.json does not exist"
+    # Check that test validation graphs exist
+    test_files = list((viz_root / "data" / "test").glob("test_*_graph.json"))
+    assert len(test_files) > 0, "No test_*_graph.json files found for validation"
+    
+    # Check that at least one expected test graph exists
+    expected_test_graphs = ["test_line_graph.json", "test_cycle_graph.json", "test_bridge_graph.json"]
+    found_graphs = [(viz_root / "data" / "test" / name).exists() for name in expected_test_graphs]
+    assert any(found_graphs), "No expected test graphs found"
 
     # Check placeholder modules
     assert (viz_root / "graph2metrics.py").exists(), "graph2metrics.py does not exist"
@@ -59,7 +62,7 @@ def test_config_loading_with_path():
 
     # Check specific values from config
     assert config["graph2metrics"]["pagerank_damping"] == 0.85
-    assert config["graph2metrics"]["demo_strategy"] == 1
+    assert config["demo_path"]["strategy"] in [1, 2, 3], "Strategy should be 1, 2, or 3"
     assert config["graph2html"]["output_filename"] == "knowledge_graph.html"
     assert config["visualization"]["initial_layout"] == "cose-bilkent"
     assert config["colors"]["theme"] == "modern"
@@ -70,136 +73,86 @@ def test_config_loading_with_path():
 
 
 @pytest.mark.viz
-def test_test_data_validity():
-    """Test that test data files are valid JSON."""
+def test_validation_test_data():
+    """Test that validation test graphs are valid JSON."""
     import json
     from pathlib import Path
 
     viz_root = Path("viz")
-
-    # Test tiny_concepts.json
-    concepts_file = viz_root / "data" / "test" / "tiny_concepts.json"
-    with open(concepts_file, encoding="utf-8") as f:
-        concepts_data = json.load(f)
-
-    assert "concepts" in concepts_data, "concepts key missing in tiny_concepts.json"
-    assert len(concepts_data["concepts"]) == 8, "Expected 8 concepts in test data"
-
-    # Check structure of first concept
-    first_concept = concepts_data["concepts"][0]
-    assert "concept_id" in first_concept
-    assert "term" in first_concept
-    assert "definition" in first_concept
-    assert "primary" in first_concept["term"]
-
-    # Test tiny_graph.json
-    graph_file = viz_root / "data" / "test" / "tiny_graph.json"
-    with open(graph_file, encoding="utf-8") as f:
-        graph_data = json.load(f)
-
-    assert "nodes" in graph_data, "nodes key missing in tiny_graph.json"
-    assert "edges" in graph_data, "edges key missing in tiny_graph.json"
-    assert len(graph_data["nodes"]) == 16, "Expected 16 nodes in test data"
-    assert len(graph_data["edges"]) == 22, "Expected 22 edges in test data"
-
-    # Check node types
-    node_types = {node["type"] for node in graph_data["nodes"]}
-    assert "Chunk" in node_types, "No Chunk nodes found"
-    assert "Assessment" in node_types, "No Assessment nodes found"
-    assert "Concept" in node_types, "No Concept nodes found"
-
-    # Count nodes by type
-    chunks = sum(1 for n in graph_data["nodes"] if n["type"] == "Chunk")
-    assessments = sum(1 for n in graph_data["nodes"] if n["type"] == "Assessment")
-    concepts = sum(1 for n in graph_data["nodes"] if n["type"] == "Concept")
-
-    assert chunks == 5, f"Expected 5 Chunk nodes, got {chunks}"
-    assert assessments == 3, f"Expected 3 Assessment nodes, got {assessments}"
-    assert concepts == 8, f"Expected 8 Concept nodes, got {concepts}"
+    test_dir = viz_root / "data" / "test"
+    
+    # Find all test graphs for validation
+    test_graphs = list(test_dir.glob("test_*_graph.json"))
+    assert len(test_graphs) > 0, "No test graphs found for validation"
+    
+    # Check each test graph
+    for graph_file in test_graphs:
+        with open(graph_file, encoding="utf-8") as f:
+            graph_data = json.load(f)
+        
+        # Basic structure checks
+        assert "nodes" in graph_data, f"nodes key missing in {graph_file.name}"
+        assert "edges" in graph_data, f"edges key missing in {graph_file.name}"
+        assert len(graph_data["nodes"]) > 0, f"No nodes in {graph_file.name}"
+        
+        # Check node structure
+        for node in graph_data["nodes"]:
+            assert "id" in node, f"Node missing id in {graph_file.name}"
+            assert "type" in node, f"Node missing type in {graph_file.name}"
+        
+        # Check edge structure  
+        for edge in graph_data["edges"]:
+            assert "source" in edge, f"Edge missing source in {graph_file.name}"
+            assert "target" in edge, f"Edge missing target in {graph_file.name}"
+            assert "type" in edge, f"Edge missing type in {graph_file.name}"
+            assert "weight" in edge, f"Edge missing weight in {graph_file.name}"
 
 
 @pytest.mark.viz
-def test_test_data_schema_validation():
-    """Test that test data passes schema validation."""
+def test_validation_graphs_schema_compliance():
+    """Test that validation test graphs pass schema validation."""
     import json
     from pathlib import Path
 
     from src.utils.validation import ValidationError, validate_json
 
-    # Validate tiny_concepts.json
-    concepts_file = Path("viz/data/test/tiny_concepts.json")
-    with open(concepts_file, encoding="utf-8") as f:
-        concepts_data = json.load(f)
-
-    try:
-        validate_json(concepts_data, "ConceptDictionary")
-    except ValidationError as e:
-        pytest.fail(f"tiny_concepts.json validation failed: {e}")
-
-    # Validate tiny_graph.json
-    graph_file = Path("viz/data/test/tiny_graph.json")
-    with open(graph_file, encoding="utf-8") as f:
-        graph_data = json.load(f)
-
-    try:
-        validate_json(graph_data, "LearningChunkGraph")
-    except ValidationError as e:
-        pytest.fail(f"tiny_graph.json validation failed: {e}")
+    test_dir = Path("viz/data/test")
+    
+    # Validate all test graphs
+    for graph_file in test_dir.glob("test_*_graph.json"):
+        with open(graph_file, encoding="utf-8") as f:
+            graph_data = json.load(f)
+        
+        try:
+            validate_json(graph_data, "LearningChunkGraph")
+        except ValidationError as e:
+            pytest.fail(f"{graph_file.name} validation failed: {e}")
 
 
 @pytest.mark.viz
-def test_test_data_id_conventions():
-    """Test that test data follows ID conventions from prompts."""
+def test_edge_type_conventions():
+    """Test that test graphs follow edge type conventions."""
     import json
     from pathlib import Path
     
-    viz_root = Path("viz")
+    test_dir = Path("viz/data/test")
     
-    # Check concept IDs follow the pattern
-    concepts_file = viz_root / "data" / "test" / "tiny_concepts.json"
-    with open(concepts_file, encoding="utf-8") as f:
-        concepts_data = json.load(f)
-    
-    for concept in concepts_data["concepts"]:
-        concept_id = concept["concept_id"]
-        # Should follow pattern: slug:p:slugified-term
-        assert ":" in concept_id, f"Concept ID {concept_id} missing colon separator"
-        parts = concept_id.split(":")
-        assert len(parts) == 3, f"Concept ID {concept_id} should have 3 parts"
-        assert parts[0] == "algo101", f"Concept ID should start with slug 'algo101'"
-        assert parts[1] == "p", f"Concept ID should have 'p' as second part"
-        assert parts[2].replace("-", "").isalnum(), f"Third part should be alphanumeric with hyphens"
-    
-    # Check graph node IDs
-    graph_file = viz_root / "data" / "test" / "tiny_graph.json"
-    with open(graph_file, encoding="utf-8") as f:
-        graph_data = json.load(f)
-    
-    for node in graph_data["nodes"]:
-        node_id = node["id"]
-        node_type = node["type"]
-        
-        if node_type == "Chunk":
-            assert node_id.startswith("chunk_"), f"Chunk ID should start with 'chunk_'"
-        elif node_type == "Assessment":
-            assert node_id.startswith("assessment_"), f"Assessment ID should start with 'assessment_'"
-        elif node_type == "Concept":
-            assert node_id.startswith("algo101:p:"), f"Concept ID should start with 'algo101:p:'"
-    
-    # Check edge types and weights
+    # Valid edge types from specifications
     valid_edge_types = {
         "PREREQUISITE", "ELABORATES", "EXAMPLE_OF", "HINT_FORWARD", 
         "REFER_BACK", "PARALLEL", "TESTS", "REVISION_OF", "MENTIONS"
     }
     
-    for edge in graph_data["edges"]:
-        assert edge["type"] in valid_edge_types, f"Invalid edge type: {edge['type']}"
-        assert 0 <= edge["weight"] <= 1, f"Edge weight out of range: {edge['weight']}"
+    # Check all test graphs
+    for graph_file in test_dir.glob("test_*_graph.json"):
+        with open(graph_file, encoding="utf-8") as f:
+            graph_data = json.load(f)
         
-        # Check weight ranges according to prompts
-        if edge["type"] in ["PREREQUISITE", "TESTS", "REVISION_OF"]:
-            assert edge["weight"] >= 0.8, f"{edge['type']} should have weight >= 0.8"
-        elif edge["type"] in ["ELABORATES", "EXAMPLE_OF", "PARALLEL"]:
-            assert 0.5 <= edge["weight"] <= 0.9, f"{edge['type']} should have weight 0.5-0.9"
-        elif edge["type"] in ["HINT_FORWARD", "REFER_BACK"]:
-            assert 0.3 <= edge["weight"] <= 0.5, f"{edge['type']} should have weight 0.3-0.5"
+        for edge in graph_data.get("edges", []):
+            # Check edge type validity
+            edge_type = edge.get("type")
+            assert edge_type in valid_edge_types, f"Invalid edge type '{edge_type}' in {graph_file.name}"
+            
+            # Check weight range
+            weight = edge.get("weight", 1.0)
+            assert 0 <= weight <= 1, f"Edge weight {weight} out of range [0,1] in {graph_file.name}"

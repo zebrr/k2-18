@@ -320,7 +320,153 @@ else:
 
 ---
 
-## 3. Итоговые замечания
+## 3. Продвинутые метрики (Advanced Metrics)
+
+### 3.1. cluster_id (Louvain clustering)
+
+**Образовательный смысл:** Группировка тематически связанных узлов. Узлы одного кластера образуют смысловой блок знаний.
+
+**Алгоритм:** Louvain community detection на undirected проекции графа с детерминированной перенумерацией.
+
+**Python реализация:**
+```python
+import community as community_louvain
+
+UG = G.to_undirected()
+# Агрегация весов для двунаправленных рёбер
+for u, v in list(UG.edges()):
+    if UG.has_edge(v, u):
+        UG[u][v]['weight'] = G.get_edge_data(u, v, {}).get('weight', 1.0) + \
+                              G.get_edge_data(v, u, {}).get('weight', 1.0)
+
+partition = community_louvain.best_partition(
+    UG, 
+    resolution=config['louvain_resolution'],
+    random_state=config['louvain_random_state']
+)
+
+# Детерминированная перенумерация по минимальному ID узла
+clusters = {}
+for node, cluster in partition.items():
+    clusters.setdefault(cluster, []).append(node)
+    
+sorted_clusters = sorted(clusters.items(), 
+                        key=lambda x: min(node_order.index(n) for n in x[1]))
+
+cluster_map = {}
+for new_id, (old_id, nodes) in enumerate(sorted_clusters):
+    for node in nodes:
+        cluster_map[node] = new_id
+```
+
+**Параметры конфига:**
+- `louvain_resolution` (default: 1.0) — контроль размера кластеров
+- `louvain_random_state` (default: 42) — seed для детерминизма
+
+**Граничные случаи:**
+- Пустой граф: пустой dict
+- Один узел: cluster_id = 0
+- Несвязные компоненты: каждая компонента кластеризуется отдельно
+
+**Зависимости:** Требует python-louvain>=0.16
+
+---
+
+### 3.2. bridge_score
+
+**Образовательный смысл:** Узлы-мосты между разными тематическими блоками. Высокий bridge_score = узел связывает разные области знаний.
+
+**Алгоритм:** Взвешенная комбинация betweenness centrality и доли межкластерных связей.
+
+**Формула:** 
+```
+bridge_score = w_b * betweenness_norm + (1 - w_b) * inter_ratio
+```
+где:
+- `w_b` = bridge_weight_betweenness (default: 0.7)
+- `inter_ratio` = доля соседей в других кластерах
+
+**Python реализация:**
+```python
+def compute_bridge_scores(G, cluster_map, betweenness_centrality, config):
+    w_b = config.get('bridge_weight_betweenness', 0.7)
+    bridge_scores = {}
+    
+    for node in G.nodes():
+        neighbors = set(G.predecessors(node)) | set(G.successors(node))
+        if neighbors:
+            inter_count = sum(1 for n in neighbors 
+                            if cluster_map.get(n, -1) != cluster_map.get(node, -1))
+            inter_ratio = inter_count / len(neighbors)
+        else:
+            inter_ratio = 0.0
+            
+        btw_norm = betweenness_centrality.get(node, 0.0)
+        bridge_scores[node] = w_b * btw_norm + (1 - w_b) * inter_ratio
+        
+    return bridge_scores
+```
+
+**Параметры конфига:**
+- `bridge_weight_betweenness` (default: 0.7) — вес для betweenness компоненты
+
+**Граничные случаи:**
+- Узел без соседей: inter_ratio = 0, использует только betweenness
+- Один кластер: все inter_ratio = 0
+- Нет кластеризации: использует только betweenness
+
+**Зависимости:** Требует предвычисленные cluster_id и betweenness_centrality.
+
+---
+
+### 3.3. Межкластерные метрики рёбер
+
+**Образовательный смысл:** Выявление связей между тематическими блоками для понимания междисциплинарных зависимостей.
+
+**Алгоритм:** Проверка принадлежности source и target разным кластерам.
+
+**Python реализация:**
+```python
+for u, v, d in G.edges(data=True):
+    src_cluster = cluster_map.get(u, -1)
+    tgt_cluster = cluster_map.get(v, -1)
+    
+    if src_cluster != tgt_cluster and src_cluster >= 0 and tgt_cluster >= 0:
+        G[u][v]['is_inter_cluster_edge'] = True
+        G[u][v]['source_cluster_id'] = src_cluster
+        G[u][v]['target_cluster_id'] = tgt_cluster
+    else:
+        G[u][v]['is_inter_cluster_edge'] = False
+```
+
+**Инвариант:** `is_inter_cluster_edge = True ⟺ source_cluster_id ≠ target_cluster_id`
+
+---
+
+## 4. Полный список метрик
+
+### Метрики узлов (12):
+1. degree_in, degree_out — входящая/исходящая степень
+2. degree_centrality — нормализованная степень
+3. pagerank — важность с учетом источников
+4. betweenness_centrality — узел как мост
+5. out-closeness — исходящая близость
+6. component_id — компонента связности
+7. prerequisite_depth — уровень в иерархии
+8. learning_effort — накопленная сложность
+9. educational_importance — образовательная важность
+10. cluster_id — ID кластера (Louvain)
+11. bridge_score — композитная метрика моста
+
+### Метрики рёбер (4):
+1. inverse_weight — обратный вес
+2. is_inter_cluster_edge — флаг межкластерного ребра
+3. source_cluster_id — кластер источника (для межкластерных)
+4. target_cluster_id — кластер цели (для межкластерных)
+
+---
+
+## 5. Итоговые замечания
 
 ### Последовательность вычисления
 1. **degree_in, degree_out** — базовые метрики
@@ -333,6 +479,8 @@ else:
 8. **prerequisite_depth** — анализ PREREQUISITE подграфа
 9. **learning_effort** — расширение prerequisite_depth
 10. **educational_importance** — PageRank на подграфе
+11. **cluster_id** — Louvain кластеризация
+12. **bridge_score** — требует cluster_id и betweenness_centrality
 
 ### Обработка граничных случаев
 - Все метрики должны возвращать числовые значения (не NaN/Inf)
@@ -344,3 +492,5 @@ else:
 - sum(educational_importance) ≈ 1.0
 - component_id от 0 до k-1 (k компонент)
 - prerequisite_depth ≥ 0 для всех узлов
+- cluster_id от 0 до c-1 (c кластеров)
+- bridge_score ∈ [0, 1] для всех узлов

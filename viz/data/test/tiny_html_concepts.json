@@ -1,0 +1,73 @@
+{
+  "concepts": [
+    {
+      "concept_id": "concept_complexity",
+      "term": {
+        "primary": "Algorithm Complexity",
+        "aliases": ["complexity", "computational complexity", "time complexity"]
+      },
+      "definition": "A measure of the computational resources required by an algorithm"
+    },
+    {
+      "concept_id": "concept_sorting",
+      "term": {
+        "primary": "Sorting",
+        "aliases": ["sort", "ordering", "arrangement"]
+      },
+      "definition": "The process of arranging elements in a specific order"
+    },
+    {
+      "concept_id": "concept_recursion",
+      "term": {
+        "primary": "Recursion",
+        "aliases": ["recursive", "self-referential"]
+      },
+      "definition": "A method where a function calls itself with smaller inputs"
+    },
+    {
+      "concept_id": "concept_bigO",
+      "term": {
+        "primary": "Big O Notation",
+        "aliases": ["Big-O", "O notation", "asymptotic notation"]
+      },
+      "definition": "Mathematical notation describing the upper bound of algorithm growth rate"
+    },
+    {
+      "concept_id": "concept_divconquer",
+      "term": {
+        "primary": "Divide and Conquer",
+        "aliases": ["divide-and-conquer", "D&C"]
+      },
+      "definition": "An algorithm design paradigm that breaks problems into smaller subproblems"
+    },
+    {
+      "concept_id": "concept_heap",
+      "term": {
+        "primary": "Binary Heap",
+        "aliases": ["heap", "heap structure", "priority queue"]
+      },
+      "definition": "A complete binary tree satisfying the heap property"
+    },
+    {
+      "concept_id": "concept_tree",
+      "term": {
+        "primary": "Tree Structure",
+        "aliases": ["tree", "tree data structure", "hierarchical structure"]
+      },
+      "definition": "A hierarchical data structure with connected nodes and no cycles"
+    },
+    {
+      "concept_id": "concept_memoization",
+      "term": {
+        "primary": "Memoization",
+        "aliases": ["caching", "result caching", "dynamic programming optimization"]
+      },
+      "definition": "An optimization technique that stores computed results for reuse"
+    }
+  ],
+  "_meta": {
+    "description": "Test concept dictionary for HTML visualization",
+    "concepts_count": 8,
+    "generated_for": "tiny_html_data.json"
+  }
+}

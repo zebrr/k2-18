@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K2-18 Knowledge Graph Visualization</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Embedded styles -->
+    <style>
+        {{ styles_content }}
+    </style>
+    
+    
+    
+    {% if embed_libraries and vendor_css_content %}
+    <!-- Embedded vendor CSS -->
+    <style>
+        {{ vendor_css_content }}
+    </style>
+    {% else %}
+    <!-- External CSS libraries -->
+    {{ link_tags|safe }}
+    {% endif %}
+</head>
+<body>
+    <div id="app-container">
+        <header id="header">
+            <div class="brand">
+                <div class="logo">K2</div>
+                <div>
+                    <h1>Knowledge Graph Visualization</h1>
+                    <div class="subtitle">Semantic Learning Network</div>
+                </div>
+            </div>
+            <div id="stats-container">
+                <div class="stat-group">
+                    <span class="stat-label">Nodes</span>
+                    <span class="stat-value" id="node-count">{{ graph_stats.nodes }}</span>
+                </div>
+                <div class="stat-group">
+                    <span class="stat-label">Edges</span>
+                    <span class="stat-value" id="edge-count">{{ graph_stats.edges }}</span>
+                </div>
+            </div>
+        </header>
+        
+        <div id="cy-wrapper">
+            <div id="cy"></div>
+        </div>
+    </div>
+    
+    <!-- Graph data -->
+    <script>
+        // Embedded graph data
+        window.graphData = {{ graph_data_json|safe }};
+        window.conceptData = {{ concepts_data_json|safe }};
+        
+        // Configuration from Python
+        window.vizConfig = {{ viz_config|tojson|safe }};
+        window.colorsConfig = {{ colors_config|tojson|safe }};
+        window.uiConfig = {{ ui_config|tojson|safe }};
+        window.nodeShapes = {{ node_shapes|tojson|safe }};
+        
+        // Graph metadata
+        window.graphMetadata = {
+            filtered: window.graphData._meta?.graph_metadata?.filtered || false,
+            original_nodes: window.graphData._meta?.graph_metadata?.original_nodes || {{ graph_stats.nodes }},
+            displayed_nodes: {{ graph_stats.nodes }},
+            filter_method: window.graphData._meta?.graph_metadata?.filter_method || "none"
+        };
+    </script>
+    
+    {% if embed_libraries %}
+    <!-- Embedded vendor JavaScript -->
+    <script>
+        {{ vendor_js_content|safe }}
+    </script>
+    {% else %}
+    <!-- External JavaScript libraries -->
+    {{ script_tags|safe }}
+    {% endif %}
+    
+    {% if embed_libraries %}
+    <!-- Embedded modules in correct order -->
+    <script>
+        // Edge styles module (if available)
+        {% if edge_styles_content %}
+        {{ edge_styles_content|safe }}
+        {% endif %}
+        
+        // Animation controller module (if available)
+        {% if animation_controller_content %}
+        {{ animation_controller_content|safe }}
+        {% endif %}
+        
+        // Graph core module
+        {% if graph_core_content %}
+        {{ graph_core_content|safe }}
+        {% endif %}
+    </script>
+    {% else %}
+    <!-- External modules in correct order -->
+    <script src="../static/edge_styles.js"></script>
+    <script src="../static/animation_controller.js"></script>
+    <script src="../static/graph_core.js"></script>
+    {% endif %}
+    
+    <!-- Graph initialization using GraphCore -->
+    <script>
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('K2-18 Visualization initializing...');
+            console.log('Nodes:', window.graphData.nodes.length);
+            console.log('Edges:', window.graphData.edges.length);
+            console.log('Concepts:', window.conceptData.concepts.length);
+            
+            // Check required libraries
+            if (typeof cytoscape === 'undefined') {
+                console.error('✗ Cytoscape.js not loaded');
+                return;
+            }
+            console.log('✓ Cytoscape.js loaded');
+            
+            if (typeof GraphCore === 'undefined') {
+                console.error('✗ GraphCore module not loaded');
+                return;
+            }
+            console.log('✓ GraphCore module loaded');
+            
+            // Check optional modules
+            if (typeof EdgeStyles !== 'undefined') {
+                console.log('✓ EdgeStyles module loaded');
+            }
+            if (typeof AnimationController !== 'undefined') {
+                console.log('✓ AnimationController module loaded');
+            }
+            
+            // Prepare configuration
+            const graphConfig = {
+                // Node shapes from config
+                nodeShapes: window.nodeShapes || {
+                    'Chunk': 'hexagon',
+                    'Concept': 'star',
+                    'Assessment': 'roundrectangle'
+                },
+                // Colors from config
+                nodeColors: {
+                    'Chunk': window.colorsConfig?.chunk_color || '#3498db',
+                    'Concept': window.colorsConfig?.concept_color || '#2ecc71',
+                    'Assessment': window.colorsConfig?.assessment_color || '#f39c12'
+                },
+                // Size mapping
+                minNodeSize: window.vizConfig?.node_size_min || 20,
+                maxNodeSize: window.vizConfig?.node_size_max || 60,
+                // Animation settings
+                animationDuration: window.vizConfig?.animation_duration || 500,
+                layoutAnimationDuration: window.vizConfig?.physics_duration || 3000,
+                physicsDuration: window.vizConfig?.physics_duration || 3000,
+                // Layout
+                initialLayout: window.vizConfig?.initial_layout || 'cose-bilkent',
+                // Labels
+                showLabelsOnHover: true,
+                hoverDelay: 500,
+                // Animation on load
+                animateOnLoad: true
+            };
+            
+            // Initialize GraphCore
+            try {
+                const container = document.getElementById('cy');
+                const graphCore = new GraphCore(container, graphConfig);
+                
+                // Initialize graph with data
+                window.cy = await graphCore.initialize(window.graphData, window.conceptData);
+                
+                console.log('✓ Graph initialized successfully with GraphCore');
+                
+                // Store graphCore instance for debugging
+                window.graphCore = graphCore;
+                
+                // Fit graph to screen after animation completes
+                // setTimeout(() => {
+                //     window.cy.fit();
+                // }, graphConfig.physicsDuration + 1000);
+                
+            } catch (error) {
+                console.error('✗ Failed to initialize graph:', error);
+            }
+        });
+    </script>
+</body>
+</html>

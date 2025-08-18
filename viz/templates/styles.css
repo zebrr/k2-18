@@ -1,0 +1,473 @@
+/* K2-18 Knowledge Graph - Professional Typography & Design System */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* CSS Variables - Design System */
+:root {
+  /* Typography */
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  
+  /* Font Sizes - модульная шкала 1.25 */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+  --text-3xl: 1.875rem;  /* 30px */
+  --text-4xl: 2.25rem;   /* 36px */
+  
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-extrabold: 800;
+  
+  /* Line Heights */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 1.75;
+  
+  /* Letter Spacing */
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.025em;
+  
+  /* Spacing Scale - базовая единица 8px */
+  --space-xs: 0.25rem;   /* 4px */
+  --space-sm: 0.5rem;    /* 8px */
+  --space-md: 1rem;      /* 16px */
+  --space-lg: 1.5rem;    /* 24px */
+  --space-xl: 2rem;      /* 32px */
+  --space-2xl: 3rem;     /* 48px */
+  --space-3xl: 4rem;     /* 64px */
+  
+  /* Colors from config */
+  --color-chunk: #3498db;
+  --color-concept: #2ecc71;
+  --color-assessment: #f39c12;
+  
+  /* UI Colors */
+  --color-background: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e1e4e8;
+  --color-text-primary: #1a202c;
+  --color-text-secondary: #4a5568;
+  --color-text-muted: #718096;
+  
+  /* Shadows - тонкие и элегантные */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+  
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* Typography Classes */
+.heading-1 {
+  font-family: var(--font-primary);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-lg);
+  color: var(--color-text-primary);
+}
+
+.heading-2 {
+  font-family: var(--font-primary);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.heading-3 {
+  font-family: var(--font-primary);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-snug);
+  margin-bottom: var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.text-body {
+  font-family: var(--font-primary);
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.text-small {
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  letter-spacing: 0;
+}
+
+/* Base Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Body - Updated with Design System */
+body {
+  font-family: var(--font-primary);
+  background: var(--color-background);
+  overflow: hidden;
+  color: var(--color-text-primary);
+}
+
+/* Header - Updated with Design System */
+#header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg);
+  z-index: 1000;
+  box-shadow: var(--shadow-md);
+  border-bottom: 1px solid var(--color-border);
+  transition: all var(--transition-base);
+}
+
+#header .title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+#header .stats {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-medium);
+}
+
+/* Cytoscape Container - Updated */
+#cy {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-background);
+  z-index: 1;
+  transition: top var(--transition-base);
+}
+
+/* Controls Placeholder - Updated with Design System */
+#controls-placeholder {
+  position: fixed;
+  top: calc(56px + var(--space-md));
+  right: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-base);
+}
+
+#controls-placeholder:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-1px);
+}
+
+/* Loading Indicator - Enhanced */
+.loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--text-xl);
+  font-weight: var(--font-medium);
+  color: var(--color-chunk);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.loading::before {
+  content: '';
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-chunk);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Utility Classes */
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* Responsive - Updated with Design System */
+@media (max-width: 768px) {
+  #header {
+    height: 48px;
+    padding: 0 var(--space-md);
+  }
+  
+  #header .title {
+    font-size: var(--text-lg);
+  }
+  
+  #header .stats {
+    font-size: var(--text-xs);
+  }
+  
+  #cy {
+    top: 48px;
+  }
+  
+  #controls-placeholder {
+    top: calc(48px + var(--space-sm));
+    right: var(--space-sm);
+    padding: var(--space-sm);
+  }
+}
+
+/* Print Styles */
+@media print {
+  #header,
+  #controls-placeholder {
+    display: none;
+  }
+  
+  #cy {
+    top: 0;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: #000;
+    --shadow-md: 0 0 0 2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 0 0 3px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Page Layout - FROM PREMIUM */
+body {
+  font-family: var(--font-primary);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#app-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+#header {
+  background: white;
+  box-shadow: var(--shadow-md);
+  padding: var(--space-md) var(--space-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 1000;
+}
+
+#header .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+#header .logo {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--color-chunk) 0%, var(--color-concept) 100%);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-bold);
+  color: white;
+  font-size: var(--text-lg);
+}
+
+#header h1 {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+}
+
+#header .subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-weight: var(--font-normal);
+}
+
+#stats-container {
+  display: flex;
+  gap: var(--space-lg);
+  align-items: center;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  font-weight: var(--font-medium);
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--color-text-primary);
+  line-height: 1;
+  margin-top: var(--space-xs);
+}
+
+#cy-wrapper {
+  flex: 1;
+  position: relative;
+  background: var(--color-background);
+}
+
+#cy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.loading {
+  animation: pulse 2s infinite;
+}
+
+/* Apply animations */
+#header {
+  animation: slideDown 0.6s ease-out;
+}
+
+#header .brand {
+  animation: fadeIn 0.8s ease-out;
+}
+
+#stats-container {
+  /* animation disabled to avoid first paint flash */
+  animation: none;
+}
+
+#cy-wrapper {
+  /* animation disabled to avoid first paint flash */
+  animation: none;
+}
+
+/* Dark Mode Support (for future) */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode variables can be added here when implementing dark theme */
+}
+
+/* Prevent first-paint flash: hide canvas until JS reveals it */
+#cy { visibility: hidden; }

@@ -49,19 +49,32 @@ max_depth = 0           # 0/None = без ограничения
 # Генерация educational path
 strategy = 2              # 1=optimal, 2=showcase, 3=critical
 max_nodes = 100            # максимум узлов в демо
+# Названия стратегий для UI
+[demo_path.strategy_names]
+1 = "Educational Journey"
+2 = "Cluster Tour" 
+3 = "Dependency Chain"
+
+[node_shapes]
+# Формы узлов для Cytoscape.js
+chunk_shape = "hexagon"        # Updated from ellipse
+concept_shape = "star"          # Updated from diamond
+assessment_shape = "roundrectangle"  # Updated from triangle
 
 [graph2html]
 # Генерация HTML
 output_filename = "knowledge_graph.html"
 minify_json = true                  # сжатие JSON данных
-minify_html = false                 # сжатие итогового HTML
+minify_html = true                  # сжатие итогового HTML
 embed_libraries = true              # true=встроить все, false=CDN
 
 # Что именно встраиваем и в каком порядке
 vendor_js = [
-  "vendor/cytoscape.min.js",
-  "vendor/cytoscape-cose-bilkent.js",
-  "vendor/cytoscape-navigator.js"    # если show_minimap = true
+  "vendor/cytoscape.min.js",           # 1. Основная библиотека
+  "vendor/layout-base.js",              # 2. Базовая зависимость для cose-bilkent
+  "vendor/cose-base.js",                # 3. Зависит от layout-base
+  "vendor/cytoscape-cose-bilkent.js",  # 4. Зависит от cose-base
+  "vendor/cytoscape-navigator.js"      # 5. Независимое расширение (если show_minimap = true)
 ]
 vendor_css = [
   "vendor/cytoscape.js-navigator.css"       # если show_minimap = true
@@ -105,6 +118,11 @@ cluster_palette = [
     "#2c3e50",  # темно-серый
     "#27ae60"   # темно-зеленый
 ]
+
+# Цвета типов узлов
+chunk_color = "#3498db"         # синий
+concept_color = "#2ecc71"       # зеленый  
+assessment_color = "#f39c12"    # оранжевый
 
 # Цвета для путей
 path_fast = "#0066cc"               # быстрый путь

@@ -160,15 +160,23 @@ class GraphCore {
                 selector: 'node',
                 style: {
                     'opacity': 0,  // first visible frame should be empty
-                    // No labels - handled by ui_controls.js tooltip
-                    'label': '',
+                    // Label hidden by default, shown on hover
+                    'label': '',  // 'data(label)' - commented out for hover-only display
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'font-family': 'Inter, sans-serif',
+                    'font-size': '12px',
+                    'font-weight': 500,
+                    'text-wrap': 'wrap',
+                    'text-max-width': '100px',
+                    'color': '#2c3e50',
                     'background-opacity': (ele) => this.calculateOpacity(ele),
                     'width': (ele) => this.calculateNodeSize(ele),
                     'height': (ele) => this.calculateNodeSize(ele),
                     'border-width': 2,
                     'border-color': '#ffffff',
                     'border-opacity': 0.8,
-                    'transition-property': 'width, height, background-opacity, background-color',
+                    'transition-property': 'width, height, background-opacity',
                     'transition-duration': '250ms',
                     'transition-timing-function': 'ease-out'
                 }
@@ -177,21 +185,21 @@ class GraphCore {
             {
                 selector: 'node.chunk',
                 style: {
-                    'shape': this.config.nodeShapes['Chunk'] || 'hexagon',
+                    'shape': this.config.nodeShapes['Chunk'],
                     'background-color': this.config.nodeColors['Chunk']
                 }
             },
             {
                 selector: 'node.concept',
                 style: {
-                    'shape': this.config.nodeShapes['Concept'] || 'star',
+                    'shape': this.config.nodeShapes['Concept'],
                     'background-color': this.config.nodeColors['Concept']
                 }
             },
             {
                 selector: 'node.assessment',
                 style: {
-                    'shape': this.config.nodeShapes['Assessment'] || 'roundrectangle',
+                    'shape': this.config.nodeShapes['Assessment'],
                     'background-color': this.config.nodeColors['Assessment']
                 }
             },
@@ -200,46 +208,6 @@ class GraphCore {
                 style: {
                     'border-width': 4,
                     'border-color': '#f39c12'
-                }
-            },
-            // UI Controls hover effects
-            {
-                selector: 'node.hover-node',
-                style: {
-                    'width': (ele) => ele.style('width') * 1.2,
-                    'height': (ele) => ele.style('height') * 1.2,
-                    'z-index': 9999
-                }
-            },
-            {
-                selector: 'node.pulse',
-                style: {
-                    'background-color': '#ff0000',
-                    'background-opacity': 1,
-                    'border-width': 3,
-                    'border-color': '#ffffff',
-                    'z-index': 9999
-                }
-            },
-            {
-                selector: '.hidden',
-                style: {
-                    'display': 'none'
-                }
-            },
-            {
-                selector: '.hidden-edge',
-                style: {
-                    'display': 'none'
-                }
-            },
-            {
-                selector: 'edge.hover-connected',
-                style: {
-                    'line-color': '#ff6b6b',
-                    'target-arrow-color': '#ff6b6b',
-                    'opacity': 0.8,
-                    'width': (ele) => (ele.style('width') || 2) * 1.5
                 }
             }
         ];
@@ -310,11 +278,67 @@ class GraphCore {
     
     /**
      * Setup hover label display with delay
-     * DISABLED - now handled by ui_controls.js with better tooltip
      */
     setupHoverLabels() {
-        // Functionality moved to ui_controls.js
-        // Keeping empty method for compatibility
+        let hoverTimeout = null;
+        let currentNode = null;
+        
+        // Mouse enter - show label after delay
+        this.cy.on('mouseover', 'node', (evt) => {
+            const node = evt.target;
+            
+            // Clear any existing timeout
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+            }
+            
+            currentNode = node;
+            
+            // Set timeout to show label
+            hoverTimeout = setTimeout(() => {
+                if (currentNode === node) {
+                    node.style({
+                        'label': node.data('label') || node.data('text') || node.data('id'),
+                        'text-outline-width': 3,
+                        'text-outline-color': '#ffffff',
+                        'color': '#2c3e50',
+                        'font-weight': 600,
+                        'z-index': 9999
+                    });
+                }
+            }, this.config.hoverDelay);
+        });
+        
+        // Mouse leave - hide label
+        this.cy.on('mouseout', 'node', (evt) => {
+            const node = evt.target;
+            
+            // Clear timeout if still waiting
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            
+            // Hide label
+            if (currentNode === node) {
+                node.style('label', '');
+                currentNode = null;
+            }
+        });
+        
+        // Also clear on graph click
+        this.cy.on('tap', (evt) => {
+            if (evt.target === this.cy) {
+                if (hoverTimeout) {
+                    clearTimeout(hoverTimeout);
+                    hoverTimeout = null;
+                }
+                if (currentNode) {
+                    currentNode.style('label', '');
+                    currentNode = null;
+                }
+            }
+        });
     }
 
     getLayoutConfig() {

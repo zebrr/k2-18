@@ -35,8 +35,15 @@
                     <div class="subtitle">Semantic Learning Network</div>
                 </div>
             </div>
-            <div id="stats-container" style="visibility: hidden;">
-                <!-- Will be populated by UIControls -->
+            <div id="stats-container">
+                <div class="stat-group">
+                    <span class="stat-label">Nodes</span>
+                    <span class="stat-value" id="node-count">{{ graph_stats.nodes }}</span>
+                </div>
+                <div class="stat-group">
+                    <span class="stat-label">Edges</span>
+                    <span class="stat-value" id="edge-count">{{ graph_stats.edges }}</span>
+                </div>
             </div>
         </header>
         
@@ -93,18 +100,12 @@
         {% if graph_core_content %}
         {{ graph_core_content|safe }}
         {% endif %}
-        
-        // UI controls module
-        {% if ui_controls_content %}
-        {{ ui_controls_content|safe }}
-        {% endif %}
     </script>
     {% else %}
     <!-- External modules in correct order -->
     <script src="../static/edge_styles.js"></script>
     <script src="../static/animation_controller.js"></script>
     <script src="../static/graph_core.js"></script>
-    <script src="../static/ui_controls.js"></script>
     {% endif %}
     
     <!-- Graph initialization using GraphCore -->

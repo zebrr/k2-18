@@ -351,6 +351,19 @@ def generate_html(
     else:
         logger.error("graph_core.js not found - graph won't be initialized!")
 
+    # Load UI controls module
+    ui_controls_content = ""
+    ui_controls_path = viz_dir / "static" / "ui_controls.js"
+    if ui_controls_path.exists():
+        try:
+            with open(ui_controls_path, encoding="utf-8") as f:
+                ui_controls_content = f.read()
+            logger.info(f"Loaded ui_controls.js ({len(ui_controls_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to load ui_controls.js: {e}")
+    else:
+        logger.warning("ui_controls.js not found - UI controls disabled")
+
     # Add cose-bilkent registration script
     if embed:
         # For embedded mode, add registration after vendor_js_content
@@ -394,7 +407,11 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "viz_config": viz_config,
         "colors_config": colors_config,
         "ui_config": ui_config,
-        "node_shapes": config.get("node_shapes", {}),
+        "node_shapes": {
+            "Chunk": config.get("node_shapes", {}).get("chunk_shape", "hexagon"),
+            "Concept": config.get("node_shapes", {}).get("concept_shape", "star"),
+            "Assessment": config.get("node_shapes", {}).get("assessment_shape", "roundrectangle")
+        },
         # Embedded content
         "embed_libraries": embed,
         "vendor_js_content": vendor_js_content,
@@ -403,6 +420,7 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "edge_styles_content": edge_styles_content if embed else "",
         "animation_controller_content": animation_controller_content if embed else "",
         "graph_core_content": graph_core_content if embed else "",
+        "ui_controls_content": ui_controls_content if embed else "",
         # CDN tags
         "script_tags": script_tags,
         "link_tags": link_tags,

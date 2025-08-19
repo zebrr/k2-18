@@ -72,6 +72,17 @@ class GraphCore {
             maxZoom: 5
         });
         
+        // Предварительно размещаем узлы в горизонтальной полосе для широкого layout
+        const width = this.container.clientWidth || 1920;
+        const height = this.container.clientHeight || 800;
+        
+        this.cy.nodes().forEach((node, i) => {
+            node.position({
+                x: (Math.random() - 0.5) * width * 3.0,  // Широко по X
+                y: (Math.random() - 0.5) * height * 0.3  // Узко по Y
+            });
+        });
+        
         // Debug: check what styles Cytoscape actually has
         console.log('Cytoscape initialized, checking applied styles...');
         const cyStyles = this.cy.style().json();
@@ -204,10 +215,12 @@ class GraphCore {
             },
             // UI Controls hover effects
             {
-                selector: 'node.hover-node',
+                selector: 'node.hover-highlight',
                 style: {
-                    'width': (ele) => ele.style('width') * 1.2,
-                    'height': (ele) => ele.style('height') * 1.2,
+                    'background-color': '#ff0000',
+                    'background-opacity': 1,
+                    'border-width': 3,
+                    'border-color': '#ffffff',
                     'z-index': 9999
                 }
             },
@@ -231,15 +244,6 @@ class GraphCore {
                 selector: '.hidden-edge',
                 style: {
                     'display': 'none'
-                }
-            },
-            {
-                selector: 'edge.hover-connected',
-                style: {
-                    'line-color': '#ff6b6b',
-                    'target-arrow-color': '#ff6b6b',
-                    'opacity': 0.8,
-                    'width': (ele) => (ele.style('width') || 2) * 1.5
                 }
             }
         ];
@@ -278,6 +282,19 @@ class GraphCore {
                 }
             });
         }
+        
+        // Add hover styles AFTER edge styles to ensure higher priority
+        styles.push({
+            selector: 'edge.hover-connected',
+            style: {
+                'line-color': '#ff0000',
+                'target-arrow-color': '#ff0000',
+                'source-arrow-color': '#ff0000',
+                'opacity': 1,
+                'width': 6,
+                'z-index': 999
+            }
+        });
         
         return styles;
     }
@@ -325,15 +342,19 @@ class GraphCore {
                 name: 'cose-bilkent',
                 animate: 'end',
                 animationDuration: this.config.layoutAnimationDuration,
-                nodeRepulsion: 8000,
-                idealEdgeLength: 400,
-                edgeElasticity: 0.55,
-                nestingFactor: 0.1,
-                gravity: 0.15,
-                numIter: 3500,
+                randomize: false,               // Используем наши начальные позиции из широкой полосы
+                nodeRepulsion: 15000,
+                idealEdgeLength: 300,
+                edgeElasticity: 0.1,
+                gravity: 0.01,
+                gravityRange: 2.0,              // Действие гравитации на отдаленные узлы
+                gravityCompound: 4.0,           // Принягие вание отдаленных компонент к центру
+                gravityRangeCompound: 1.5,
                 tile: true,
-                tilingPaddingVertical: 10,
-                tilingPaddingHorizontal: 10
+                tilingPaddingHorizontal: 300,   // Большой отступ по горизонтали
+                tilingPaddingVertical: 10,      // Маленький по вертикали
+                numIter: 4000,
+                nestingFactor: 0.05
             };
         }
         

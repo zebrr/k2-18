@@ -39,6 +39,7 @@ python -m viz.graph2html --test
   - `edge_styles.js` - Edge styling definitions for all 9 types
   - `animation_controller.js` - Animation sequences controller
   - `graph_core.js` - Core graph initialization module
+  - `ui_controls.js` - UI controls and user interactions
   - `debug_helpers.js` - Debug utilities (test mode only)
 
 #### Test Mode (`--test`)
@@ -665,21 +666,35 @@ All 9 edge types from the schema have distinct visual styles:
 ### JavaScript Module Architecture
 
 #### Static Modules (loaded in order)
-1. **edge_styles.js** (7.6KB)
+1. **edge_styles.js**
    - Defines all 9 edge type styles
    - Exports EdgeStyles global object
    - Functions: generateEdgeStyles(), getEdgeColor(), isEducationalEdge()
 
-2. **animation_controller.js** (10.3KB)
+2. **animation_controller.js**
    - Controls animation sequences
    - Exports AnimationController class
    - Methods: animateGraph(), highlightPath(), stopAnimation()
 
-3. **graph_core.js** (13.7KB)
+3. **graph_core.js**
    - Main visualization controller
    - Integrates edge styles and animations
    - Exports GraphCore class
-   - Manages hover labels and interactions
+   - Provides base styles for UI interactions
+
+4. **ui_controls.js**
+   - User interface controls and interactions
+   - Exports UIControls object
+   - Features:
+     * Top header filters for node types (Chunks, Concepts, Assessments)
+     * Dynamic counters showing visible/total nodes and edges
+     * Right side panel with Dictionary and TOP nodes tabs
+     * Node hover effects with red highlighting
+     * Edge highlighting on node hover
+     * Tooltips with 500ms delay
+     * Info popup with graph statistics (i key)
+     * Keyboard shortcuts (Esc, i, d)
+   - Auto-initializes via "k2-graph-ready" event
 
 ## Usage Examples
 

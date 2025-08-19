@@ -48,6 +48,7 @@ class AnimationController {
             // Reveal canvas after elements are hidden (first visible frame is empty graph)
             if (container) container.style.visibility = 'visible';
             
+            // Start animation immediately without delay
             // Animate nodes by prerequisite depth
             await this.animateNodesByDepth();
             
@@ -159,11 +160,15 @@ class AnimationController {
             const difficulty = node.data('difficulty') || 3;
             const targetOpacity = this.calculateOpacity(difficulty);
             
+            // First level nodes appear faster (300ms), others use normal duration
+            const depth = node.data('prerequisite_depth') || 0;
+            const duration = depth === 0 ? 300 : this.config.nodeAnimDuration;
+            
             node.animate({
                 style: { 
                     'opacity': targetOpacity
                 },
-                duration: this.config.nodeAnimDuration,
+                duration: duration,
                 easing: 'ease-out-cubic',
                 complete: resolve
             });
@@ -234,15 +239,16 @@ class AnimationController {
                 animate: 'end',
                 animationDuration: this.config.physicsDuration,
                 animationEasing: 'ease-out-cubic',
-                nodeRepulsion: 4500,
-                idealEdgeLength: 100,
-                edgeElasticity: 0.45,
+                randomize: false,  // Сохраняем начальные позиции
+                nodeRepulsion: 7500,
+                idealEdgeLength: 180,
+                edgeElasticity: 0.25,
                 nestingFactor: 0.1,
-                gravity: 0.25,
+                gravity: 0.08,
                 numIter: 2500,
                 tile: true,
-                tilingPaddingVertical: 10,
-                tilingPaddingHorizontal: 10,
+                tilingPaddingVertical: 20,     // Меньше вертикальный padding
+                tilingPaddingHorizontal: 80,   // Больше горизонтальный padding
                 gravityRangeCompound: 1.5,
                 gravityCompound: 1.0,
                 gravityRange: 3.8,

@@ -174,10 +174,14 @@
                 // Initialize graph with data
                 window.cy = await graphCore.initialize(window.graphData, window.conceptData);
                 
-                console.log('✓ Graph initialized successfully with GraphCore');
-                
                 // Store graphCore instance for debugging
                 window.graphCore = graphCore;
+
+                document.dispatchEvent(new CustomEvent("k2-graph-ready", {
+                  detail: { cy: window.cy, graphCore: window.graphCore }
+                }));
+            
+                console.log('✓ Graph initialized successfully with GraphCore');
                 
                 // Fit graph to screen after animation completes
                 // setTimeout(() => {

@@ -26,8 +26,11 @@ const UIControls = {
     },
     
     // Initialization
-    init(cy, graphData, conceptData, config) {
+    init(cy, graphCore, appContainer, statsContainer, graphData, conceptData, config) {
         this.cy = cy;
+        this.graphCore = graphCore;
+        this.appContainer = appContainer;
+        this.statsContainer = statsContainer;
         this.graphData = graphData;
         this.conceptData = conceptData || { concepts: [] };
         this.config = config;
@@ -342,11 +345,13 @@ const UIControls = {
                 hoverTimeout = null;
             }
             
-            // Increase size
-            node.addClass('hover-node');
+            // Make node red (same as pulse effect)
+            node.addClass('hover-highlight');
             
             // Highlight connected edges
-            node.connectedEdges().addClass('hover-connected');
+            const edges = node.connectedEdges();
+            edges.addClass('hover-connected');
+            console.log(`Hover: highlighting ${edges.length} edges for node ${node.id()}`);
             
             // Show tooltip after delay
             hoverTimeout = setTimeout(() => {
@@ -364,7 +369,7 @@ const UIControls = {
             }
             
             // Remove hover classes
-            node.removeClass('hover-node');
+            node.removeClass('hover-highlight');
             node.connectedEdges().removeClass('hover-connected');
             
             // Hide tooltip
@@ -494,35 +499,140 @@ const UIControls = {
         
         // Generate HTML
         const html = `
-            <div class="stat-section">
-                <strong>Узлов:</strong> ${totalNodes}<br>
-                <ul>
-                    <li>Chunks: ${nodeTypes['Chunk'] || 0}</li>
-                    <li>Concepts: ${nodeTypes['Concept'] || 0}</li>
-                    <li>Assessments: ${nodeTypes['Assessment'] || 0}</li>
-                </ul>
-            </div>
-            <div class="stat-section">
-                <strong>Рёбер:</strong> ${totalEdges}
-            </div>
-            <div class="stat-section">
-                <strong>Компонент связности:</strong> ${components}
-            </div>
-            ${clusters.size > 0 ? `
-            <div class="stat-section">
-                <strong>Кластеров:</strong> ${clusters.size}
-            </div>
-            ` : ''}
-            <div class="stat-section legend">
-                <h4>Легенда</h4>
-                <div class="legend-item">
-                    <span class="legend-shape chunk">⬢</span> Chunk
+            <div class="stats-grid">
+                <div class="stat-column">
+                    <div class="stat-row">
+                        <span class="stat-label">Узлов:</span>
+                        <span class="stat-value">${totalNodes}</span>
+                    </div>
+                    <div class="stat-row-detail">
+                        <span class="stat-label-sub">Chunks:</span>
+                        <span class="stat-value-sub">${nodeTypes['Chunk'] || 0}</span>
+                    </div>
+                    <div class="stat-row-detail">
+                        <span class="stat-label-sub">Concepts:</span>
+                        <span class="stat-value-sub">${nodeTypes['Concept'] || 0}</span>
+                    </div>
+                    <div class="stat-row-detail">
+                        <span class="stat-label-sub">Assessments:</span>
+                        <span class="stat-value-sub">${nodeTypes['Assessment'] || 0}</span>
+                    </div>
                 </div>
-                <div class="legend-item">
-                    <span class="legend-shape concept">★</span> Concept
+                <div class="stat-column">
+                    <div class="stat-row">
+                        <span class="stat-label">Рёбер:</span>
+                        <span class="stat-value">${totalEdges}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Компонент:</span>
+                        <span class="stat-value">${components}</span>
+                    </div>
+                    ${clusters.size > 0 ? `
+                    <div class="stat-row">
+                        <span class="stat-label">Кластеров:</span>
+                        <span class="stat-value">${clusters.size}</span>
+                    </div>
+                    ` : ''}
                 </div>
-                <div class="legend-item">
-                    <span class="legend-shape assessment">▬</span> Assessment
+            </div>
+            
+            <div class="legend-section">
+                <h4>Легенда визуализации</h4>
+                
+                <div class="legend-subsection">
+                    <h5>Узлы</h5>
+                    <div class="legend-nodes">
+                        <div class="legend-item">
+                            <span class="legend-shape chunk">⬢</span>
+                            <span>Chunk (учебный блок)</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-shape concept">★</span>
+                            <span>Concept (концепт)</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-shape assessment">▬</span>
+                            <span>Assessment (тест)</span>
+                        </div>
+                    </div>
+                    <div class="encoding-note">
+                        📏 Размер узла = важность (PageRank)<br>
+                        👁 Прозрачность = сложность (1-5)
+                    </div>
+                </div>
+                
+                <div class="legend-subsection">
+                    <h5>Связи между узлами</h5>
+                    <div class="legend-edges">
+                        <div class="edge-group">
+                            <div class="edge-group-title">Сильные (4px)</div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#e74c3c" stroke-width="3"/>
+                                </svg>
+                                <span>PREREQUISITE</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#f39c12" stroke-width="3"/>
+                                </svg>
+                                <span>TESTS</span>
+                            </div>
+                        </div>
+                        
+                        <div class="edge-group">
+                            <div class="edge-group-title">Средние (2.5px)</div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#3498db" stroke-width="2" stroke-dasharray="5,2"/>
+                                </svg>
+                                <span>ELABORATES</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#9b59b6" stroke-width="2" stroke-dasharray="2,3"/>
+                                </svg>
+                                <span>EXAMPLE_OF</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#95a5a6" stroke-width="2"/>
+                                </svg>
+                                <span>PARALLEL</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#27ae60" stroke-width="2" stroke-dasharray="4,2"/>
+                                </svg>
+                                <span>REVISION_OF</span>
+                            </div>
+                        </div>
+                        
+                        <div class="edge-group">
+                            <div class="edge-group-title">Слабые (1px)</div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#5dade2" stroke-width="1" stroke-dasharray="2,4" opacity="0.6"/>
+                                </svg>
+                                <span>HINT_FORWARD</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#ec7063" stroke-width="1" stroke-dasharray="2,4" opacity="0.6"/>
+                                </svg>
+                                <span>REFER_BACK</span>
+                            </div>
+                            <div class="legend-item">
+                                <svg class="edge-svg" width="30" height="10">
+                                    <line x1="0" y1="5" x2="30" y2="5" stroke="#bdc3c7" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>
+                                </svg>
+                                <span>MENTIONS</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="encoding-note">
+                        ⚡ Межкластерные связи отображаются толще
+                    </div>
                 </div>
             </div>
         `;
@@ -623,41 +733,22 @@ const UIControls = {
     }
 };
 
-// Auto-initialize when DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Wait for graph initialization - check periodically
-    let initAttempts = 0;
-    const maxAttempts = 20;
-    
-    const tryInit = setInterval(() => {
-        initAttempts++;
-        
-        // Check if cy is ready and is actual Cytoscape instance
-        if (window.cy && window.cy.nodes && typeof window.cy.nodes === 'function') {
-            // Verify it's working
-            try {
-                const nodeCount = window.cy.nodes().length;
-                console.log(`[UIControls] Graph ready with ${nodeCount} nodes, initializing...`);
-                
-                UIControls.init(
-                    window.cy,
-                    window.graphData,
-                    window.conceptData,
-                    window.uiConfig || {}
-                );
-                
-                clearInterval(tryInit);
-            } catch (e) {
-                console.warn('[UIControls] Graph not fully ready:', e);
-            }
-        } else if (initAttempts >= maxAttempts) {
-            console.error('[UIControls] Failed to initialize after', maxAttempts, 'attempts');
-            clearInterval(tryInit);
-        } else {
-            console.log(`[UIControls] Waiting for graph initialization... (attempt ${initAttempts})`);
-        }
-    }, 500); // Check every 500ms
+document.addEventListener("k2-graph-ready", (e) => {
+  const { cy, graphCore } = e.detail || {};
+  UIControls.init(
+    cy,
+    graphCore,
+    document.getElementById("app-container"),
+    document.getElementById("stats-container"),
+    window.graphData,
+    window.conceptData,
+    window.uiConfig || {}
+  );
+  const statsEl = document.getElementById("stats-container");
+  if (statsEl) statsEl.style.visibility = "visible";
+  console.log("✓ UIControls initialized via k2-graph-ready");
 });
+
 
 // Export for debugging
 window.UIControls = UIControls;

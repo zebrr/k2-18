@@ -518,24 +518,39 @@ body {
     right: 0;
     top: 50%;
     transform: translateY(-50%);
-    width: 40px;
-    height: 60px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid var(--color-border);
+    width: 45px;
+    height: 70px;
+    background: var(--color-chunk); /* Яркий синий фон */
+    border: 2px solid white;
     border-right: none;
-    border-radius: 10px 0 0 10px;
+    border-radius: 12px 0 0 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 24px;
+    font-size: 28px;
     z-index: 201;
+    box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
     transition: all var(--transition-base);
+    /* Добавим фильтр для белой иконки на синем фоне */
+    filter: brightness(1.1);
 }
 
 .side-panel-tab:hover {
-    background: #f0f0f0;
-    transform: translateY(-50%) translateX(-2px);
+    background: #2980b9; /* Темнее при наведении */
+    transform: translateY(-50%) translateX(-4px);
+    box-shadow: -4px 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Анимация привлечения внимания при загрузке */
+@keyframes tab-attention {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    25% { transform: translateY(-50%) translateX(-6px); }
+    75% { transform: translateY(-50%) translateX(-2px); }
+}
+
+.side-panel-tab {
+    animation: tab-attention 2s ease-out 3s; /* Запуск через 3 секунды после загрузки */
 }
 
 /* Panel Content */
@@ -736,7 +751,7 @@ edge.hover-connected {
     position: fixed;
     left: 70px;
     bottom: var(--space-lg);
-    width: 400px;
+    width: 650px;
     max-height: 600px;
     background: white;
     border: 1px solid var(--color-border);
@@ -800,31 +815,126 @@ edge.hover-connected {
     padding: var(--space-xs) 0;
 }
 
-/* Legend */
-.legend {
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-md);
-    margin-top: var(--space-md);
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    background: #f8f9fa;
+    border-radius: var(--radius-md);
 }
 
-.legend h4 {
+.stat-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-xs) 0;
+}
+
+.stat-row-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0 2px var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.stat-label {
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+}
+
+.stat-value {
+    font-weight: var(--font-bold);
+    color: var(--color-chunk);
+    font-size: var(--text-base);
+}
+
+.stat-label-sub {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+}
+
+.stat-value-sub {
+    color: var(--color-text-secondary);
+    font-weight: var(--font-medium);
+    font-size: var(--text-sm);
+}
+
+/* Legend */
+.legend-section {
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-lg);
+}
+
+.legend-section h4 {
+    margin: 0 0 var(--space-md) 0;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.legend-subsection {
+    margin-bottom: var(--space-lg);
+}
+
+.legend-subsection h5 {
     margin: 0 0 var(--space-sm) 0;
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.legend-nodes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.legend-edges {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+}
+
+.edge-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.edge-group-title {
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-xs);
 }
 
 .legend-item {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-xs) 0;
+    gap: var(--space-xs);
+    font-size: 11px;
+    color: var(--color-text-secondary);
 }
 
 .legend-shape {
     font-size: var(--text-lg);
     width: 24px;
     text-align: center;
+    flex-shrink: 0;
 }
 
 .legend-shape.chunk {
@@ -837,6 +947,22 @@ edge.hover-connected {
 
 .legend-shape.assessment {
     color: var(--color-assessment);
+}
+
+.edge-svg {
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+
+.encoding-note {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: #f0f7ff;
+    border-left: 3px solid var(--color-chunk);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
 }
 
 /* Adjust cy-wrapper for header only */

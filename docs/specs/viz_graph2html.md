@@ -656,12 +656,25 @@ All 9 edge types from the schema have distinct visual styles:
 
 #### Node Interactions
 - Hover: 20% size increase, label display
-- Click: Selection with orange border
+- Click: Opens node information popup with full details
 - Drag: Repositioning (maintained after physics)
 
 #### Edge Interactions
 - Hover: 50% width increase, full opacity
 - Click: Selection with orange highlight
+
+#### Dictionary Interactions
+- Click on concept: Opens concept definition popup
+- Hover on concept: Highlights nodes containing that concept
+
+#### TOP Nodes Interactions
+- Click on TOP node: Centers view on that node (no popup)
+- Hover on TOP node: Pulse effect on the node
+
+#### Popup Interactions
+- Click on edge target in node popup: Updates popup with target node
+- Click outside popup: Closes popup
+- Escape key: Closes active popup (priority: node > concept > info > side panel)
 
 ### JavaScript Module Architecture
 
@@ -693,6 +706,10 @@ All 9 edge types from the schema have distinct visual styles:
      * Edge highlighting on node hover
      * Tooltips with 500ms delay
      * Info popup with graph statistics (i key)
+     * **Node Information Popup**: Detailed node information with metrics, edges, and navigation
+     * **Concept Definition Popup**: Concept definition with aliases and mention count
+     * **Popup Management**: Exclusive popup display (only one at a time)
+     * **Educational Tooltips**: Explanations for PageRank, Betweenness, and Learning Effort metrics
      * Keyboard shortcuts (Esc, i, d)
    - Auto-initializes via "k2-graph-ready" event
 
@@ -752,3 +769,9 @@ cy.nodes().size()    // Count nodes via Cytoscape
 - Both production and test modes use same template system
 - Minification settings are independent (JSON vs HTML)
 - Library order is critical for cose-bilkent layout to work
+
+## Known Issues and Fixes
+
+- **Fixed**: Chrome on Windows showing unwanted scrollbars in info popup (overflow management with nested containers)
+- Node and Concept popups use exclusive display (only one popup at a time)
+- Educational tooltips provide context for learning metrics

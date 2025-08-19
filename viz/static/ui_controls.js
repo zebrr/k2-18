@@ -10,6 +10,8 @@ const UIControls = {
     hoverController: null,
     infoPopup: null,
     tooltip: null,
+    nodePopup: null,
+    conceptPopup: null,
     
     // State
     state: {
@@ -22,7 +24,11 @@ const UIControls = {
         activeTab: 'dictionary',
         hoveredNode: null,
         hoveredConcept: null,
-        infoPanelOpen: false
+        infoPanelOpen: false,
+        nodePopupOpen: false,
+        conceptPopupOpen: false,
+        currentPopupNode: null,
+        currentPopupConcept: null
     },
     
     // Initialization
@@ -40,6 +46,8 @@ const UIControls = {
         this.createSidePanel();
         this.setupHoverEffects();
         this.createInfoPopup();
+        this.createNodePopup();
+        this.createConceptPopup();
         this.createTooltip();
         this.setupKeyboardHandlers();
         
@@ -246,7 +254,7 @@ const UIControls = {
         
         listElement.innerHTML = html;
         
-        // Add hover listeners
+        // Add hover and click listeners
         listElement.querySelectorAll('.concept-item').forEach(item => {
             item.addEventListener('mouseenter', () => {
                 const conceptId = item.dataset.conceptId;
@@ -255,6 +263,14 @@ const UIControls = {
             
             item.addEventListener('mouseleave', () => {
                 this.clearConceptHighlight();
+            });
+            
+            item.addEventListener('click', () => {
+                const conceptId = item.dataset.conceptId;
+                const concept = this.findConceptById(conceptId);
+                if (concept) {
+                    this.showConceptPopup(concept);
+                }
             });
         });
     },
@@ -374,6 +390,13 @@ const UIControls = {
             
             // Hide tooltip
             this.hideTooltip();
+        });
+        
+        // Click on graph nodes
+        this.cy.on('click', 'node', (evt) => {
+            evt.stopPropagation();
+            const node = evt.target;
+            this.showNodePopup(node);
         });
     },
     
@@ -655,8 +678,12 @@ const UIControls = {
             }
             
             if (e.key === 'Escape') {
-                // Close any open panels
-                if (this.state.infoPanelOpen) {
+                // Priority order for closing
+                if (this.state.nodePopupOpen) {
+                    this.hideNodePopup();
+                } else if (this.state.conceptPopupOpen) {
+                    this.hideConceptPopup();
+                } else if (this.state.infoPanelOpen) {
                     this.hideInfoPopup();
                 } else if (this.state.sidePanelOpen) {
                     this.toggleSidePanel();
@@ -730,6 +757,379 @@ const UIControls = {
     getCySelector(conceptId) {
         // Return Cytoscape selector for nodes with this concept
         return `node[concepts *= "${conceptId}"]`;
+    },
+    
+    // Node Popup Methods
+    createNodePopup() {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'node-popup-backdrop';
+        backdrop.style.display = 'none';
+        
+        const popup = document.createElement('div');
+        popup.className = 'node-popup';
+        
+        backdrop.appendChild(popup);
+        document.body.appendChild(backdrop);
+        this.nodePopup = backdrop;
+        
+        // Click on backdrop to close
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) {
+                this.hideNodePopup();
+            }
+        });
+        
+        console.log('[UIControls] Node popup created');
+    },
+    
+    showNodePopup(node) {
+        // Close other popups
+        this.hideConceptPopup();
+        this.hideInfoPopup();
+        
+        // Get node data
+        const nodeData = node.data();
+        const nodeId = node.id();
+        
+        // Format metrics
+        const pagerank = this.formatMetricValue(nodeData.pagerank, 'pagerank');
+        const betweenness = this.formatMetricValue(nodeData.betweenness_centrality, 'betweenness');
+        const learningEffort = this.formatMetricValue(nodeData.learning_effort, 'effort');
+        
+        // Get edges
+        const edges = this.getNodeEdges(node);
+        const showAllButton = edges.length > 3 ? `
+            <button class="show-all-edges" onclick="UIControls.toggleAllEdges(this)">
+                показать все ${edges.length - 3}...
+            </button>` : '';
+        
+        // Generate HTML
+        const html = `
+            <button class="popup-close" onclick="UIControls.hideNodePopup()">×</button>
+            <div class="popup-header">
+                <span class="node-type node-type-${nodeData.type}">${nodeData.type}</span>
+                <span class="node-id" title="${nodeId}">${nodeId}</span>
+                <span class="node-difficulty">${this.renderDifficulty(nodeData.difficulty)}</span>
+            </div>
+            <div class="popup-content">
+                <div class="node-text-section">
+                    <h4>Содержание:</h4>
+                    <div class="node-text-scroll">
+                        ${nodeData.text || 'Текст недоступен'}
+                    </div>
+                </div>
+                ${nodeData.definition ? `
+                <div class="node-definition-section">
+                    <h4>Источник:</h4>
+                    <div class="node-definition-scroll">
+                        ${nodeData.definition}
+                    </div>
+                </div>
+                ` : ''}
+                <div class="metrics-section">
+                    <h4>Образовательные метрики:</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Важность (PageRank):</span>
+                        <span class="metric-value">${pagerank}</span>
+                        <span class="metric-info" onclick="UIControls.toggleMetricTooltip(this, 'pagerank')">ℹ️
+                            <span class="metric-tooltip">Определяет значимость узла в структуре знаний. Чем выше значение, тем больше важных концептов ссылается на этот материал. Изучение узлов с высокой важностью критично для полного понимания темы.</span>
+                        </span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Мост (Betweenness):</span>
+                        <span class="metric-value">${betweenness}</span>
+                        <span class="metric-info" onclick="UIControls.toggleMetricTooltip(this, 'betweenness')">ℹ️
+                            <span class="metric-tooltip">Показывает, насколько узел является мостом между разными частями учебного материала. Высокое значение означает, что узел соединяет различные темы. Пропуск такого материала может нарушить целостность понимания.</span>
+                        </span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Учебная нагрузка (Learning Effort):</span>
+                        <span class="metric-value">${learningEffort}</span>
+                        <span class="metric-info" onclick="UIControls.toggleMetricTooltip(this, 'effort')">ℹ️
+                            <span class="metric-tooltip">Суммарная сложность изучения с учётом всех предварительных тем. Отражает общий объём усилий, необходимых для освоения этого узла и всех его зависимостей.</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="connectivity-section">
+                    <span>Связность: ${nodeData.degree_in || 0} входящих, ${nodeData.degree_out || 0} исходящих</span>
+                </div>
+                <div class="edges-section">
+                    <h4>Связи (${edges.length}):</h4>
+                    <div class="edges-header">
+                        <span class="edges-header-direction"></span>
+                        <span class="edges-header-type">Тип</span>
+                        <span class="edges-header-target">Узел</span>
+                        <span class="edges-header-difficulty">Сложность</span>
+                        <span class="edges-header-weight">Вес</span>
+                    </div>
+                    <div class="edges-list" data-expanded="false">
+                        ${edges.slice(0, 3).map(edge => this.renderEdgeItem(edge)).join('')}
+                        <div class="edges-expanded" style="display: none;">
+                            ${edges.slice(3).map(edge => this.renderEdgeItem(edge)).join('')}
+                        </div>
+                    </div>
+                    ${showAllButton}
+                </div>
+            </div>
+        `;
+        
+        this.nodePopup.querySelector('.node-popup').innerHTML = html;
+        this.nodePopup.style.display = 'flex';
+        this.state.nodePopupOpen = true;
+        this.state.currentPopupNode = nodeId;
+        
+        console.log(`[UIControls] Node popup shown for: ${nodeId}`);
+    },
+    
+    hideNodePopup() {
+        if (this.nodePopup) {
+            this.nodePopup.style.display = 'none';
+            this.state.nodePopupOpen = false;
+            this.state.currentPopupNode = null;
+        }
+    },
+    
+    updateNodePopup(nodeId) {
+        const node = this.cy.getElementById(nodeId);
+        if (node && node.length > 0) {
+            this.showNodePopup(node);
+            console.log(`[UIControls] Popup updated to node: ${nodeId}`);
+        }
+    },
+    
+    toggleAllEdges(button) {
+        const edgesList = button.parentElement.querySelector('.edges-list');
+        const expandedDiv = edgesList.querySelector('.edges-expanded');
+        const isExpanded = edgesList.dataset.expanded === 'true';
+        
+        if (isExpanded) {
+            expandedDiv.style.display = 'none';
+            button.textContent = `показать все ${expandedDiv.children.length}...`;
+            edgesList.dataset.expanded = 'false';
+        } else {
+            expandedDiv.style.display = 'block';
+            button.textContent = 'скрыть';
+            edgesList.dataset.expanded = 'true';
+        }
+    },
+    
+    renderEdgeItem(edge) {
+        const direction = edge.direction === 'incoming' ? '←' : '→';
+        const targetId = edge.targetId;
+        const targetLabel = this.truncateText(edge.targetLabel, 30);
+        const weight = edge.weight ? `(${edge.weight.toFixed(1)})` : '';
+        
+        // Render small difficulty circles
+        const difficulty = Math.min(5, Math.max(1, parseInt(edge.targetDifficulty) || 1));
+        let difficultyCircles = '';
+        for (let i = 1; i <= 5; i++) {
+            const filled = i <= difficulty;
+            const color = i <= 2 ? '#2ecc71' : i <= 3 ? '#f39c12' : '#e74c3c';
+            difficultyCircles += `<span class="edge-difficulty-circle ${filled ? 'filled' : ''}" style="${filled ? `background: ${color};` : ''}"></span>`;
+        }
+        
+        return `
+            <div class="edge-item">
+                <span class="edge-direction">${direction}</span>
+                <span class="edge-type edge-type-${edge.type}">${edge.type}</span>
+                <span class="edge-target clickable" onclick="UIControls.updateNodePopup('${targetId}')">
+                    ${targetLabel}
+                </span>
+                <span class="edge-difficulty">${difficultyCircles}</span>
+                <span class="edge-weight">${weight}</span>
+            </div>
+        `;
+    },
+    
+    getNodeEdges(node) {
+        const edges = [];
+        
+        // Incoming edges
+        node.incomers('edge').forEach(edge => {
+            const source = edge.source();
+            edges.push({
+                direction: 'incoming',
+                type: edge.data('type') || 'UNKNOWN',
+                targetId: source.id(),
+                targetLabel: source.data('text') || source.id(),
+                targetDifficulty: source.data('difficulty') || 1,
+                weight: edge.data('weight')
+            });
+        });
+        
+        // Outgoing edges
+        node.outgoers('edge').forEach(edge => {
+            const target = edge.target();
+            edges.push({
+                direction: 'outgoing',
+                type: edge.data('type') || 'UNKNOWN',
+                targetId: target.id(),
+                targetLabel: target.data('text') || target.id(),
+                targetDifficulty: target.data('difficulty') || 1,
+                weight: edge.data('weight')
+            });
+        });
+        
+        // Sort by type importance
+        const typeOrder = ['PREREQUISITE', 'TESTS', 'ELABORATES', 'EXAMPLE_OF', 'PARALLEL', 'REVISION_OF', 'HINT_FORWARD', 'REFER_BACK', 'MENTIONS'];
+        edges.sort((a, b) => {
+            const aIndex = typeOrder.indexOf(a.type);
+            const bIndex = typeOrder.indexOf(b.type);
+            return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+        });
+        
+        return edges;
+    },
+    
+    // Concept Popup Methods
+    createConceptPopup() {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'concept-popup-backdrop';
+        backdrop.style.display = 'none';
+        
+        const popup = document.createElement('div');
+        popup.className = 'concept-popup';
+        
+        backdrop.appendChild(popup);
+        document.body.appendChild(backdrop);
+        this.conceptPopup = backdrop;
+        
+        // Click on backdrop to close
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) {
+                this.hideConceptPopup();
+            }
+        });
+        
+        console.log('[UIControls] Concept popup created');
+    },
+    
+    showConceptPopup(concept) {
+        // Close other popups
+        this.hideNodePopup();
+        this.hideInfoPopup();
+        
+        // Get concept data
+        const conceptId = concept.concept_id || concept.id;
+        const primaryTerm = concept.term?.primary || concept.primary?.term || 'Unknown';
+        const definition = concept.definition || 'Определение недоступно';
+        const aliases = concept.term?.aliases || concept.aliases || [];
+        
+        // Count mentions
+        let mentionCount = 0;
+        if (this.conceptData._meta?.mention_index?.[conceptId]) {
+            mentionCount = this.conceptData._meta.mention_index[conceptId].count || 0;
+        }
+        
+        // Generate HTML
+        const html = `
+            <button class="popup-close" onclick="UIControls.hideConceptPopup()">×</button>
+            <div class="popup-header">
+                <h3>Концепт: ${primaryTerm}</h3>
+            </div>
+            <div class="popup-content">
+                <div class="definition-section">
+                    <h4>Определение:</h4>
+                    <p>${definition}</p>
+                </div>
+                ${aliases.length > 0 ? `
+                <div class="aliases-section">
+                    <h4>Синонимы:</h4>
+                    <p>${aliases.join(', ')}</p>
+                </div>
+                ` : ''}
+                <div class="mentions-section">
+                    <p>Упоминается в <strong>${mentionCount}</strong> узлах</p>
+                </div>
+            </div>
+        `;
+        
+        this.conceptPopup.querySelector('.concept-popup').innerHTML = html;
+        this.conceptPopup.style.display = 'flex';
+        this.state.conceptPopupOpen = true;
+        this.state.currentPopupConcept = conceptId;
+        
+        console.log(`[UIControls] Concept popup shown for: ${conceptId}`);
+    },
+    
+    hideConceptPopup() {
+        if (this.conceptPopup) {
+            this.conceptPopup.style.display = 'none';
+            this.state.conceptPopupOpen = false;
+            this.state.currentPopupConcept = null;
+        }
+    },
+    
+    findConceptById(conceptId) {
+        if (!this.conceptData || !this.conceptData.concepts) {
+            return null;
+        }
+        
+        return this.conceptData.concepts.find(c => 
+            (c.concept_id || c.id) === conceptId
+        );
+    },
+    
+    formatMetricValue(value, type) {
+        if (value === undefined || value === null) {
+            return 'N/A';
+        }
+        
+        switch (type) {
+            case 'pagerank':
+            case 'betweenness':
+                return value.toFixed(3);
+            case 'effort':
+                return Math.round(value).toString();
+            default:
+                return value.toString();
+        }
+    },
+    
+    renderDifficulty(difficulty) {
+        // Parse difficulty, ensuring it's a number between 1-5
+        const level = Math.min(5, Math.max(1, parseInt(difficulty) || 1));
+        let circles = '';
+        for (let i = 1; i <= 5; i++) {
+            const filled = i <= level;
+            // Traffic light colors: green (1-2), yellow (3), red (4-5)
+            const color = i <= 2 ? '#2ecc71' : i <= 3 ? '#f39c12' : '#e74c3c';
+            circles += `<span class="difficulty-circle ${filled ? 'filled' : ''}" style="${filled ? `background: ${color};` : ''}"></span>`;
+        }
+        return `<span class="difficulty-label">Сложность:</span> <span class="difficulty-circles">${circles}</span>`;
+    },
+    
+    toggleMetricTooltip(element, metricType) {
+        // Close all other tooltips first
+        document.querySelectorAll('.metric-tooltip.active').forEach(tooltip => {
+            if (tooltip !== element.querySelector('.metric-tooltip')) {
+                tooltip.classList.remove('active');
+            }
+        });
+        
+        // Toggle current tooltip
+        const tooltip = element.querySelector('.metric-tooltip');
+        if (tooltip) {
+            tooltip.classList.toggle('active');
+        }
+        
+        // Close tooltip when clicking elsewhere
+        if (!this.tooltipClickHandler) {
+            this.tooltipClickHandler = (e) => {
+                if (!e.target.closest('.metric-info')) {
+                    document.querySelectorAll('.metric-tooltip.active').forEach(t => {
+                        t.classList.remove('active');
+                    });
+                }
+            };
+            document.addEventListener('click', this.tooltipClickHandler);
+        }
+    },
+    
+    closeAllPopups() {
+        this.hideNodePopup();
+        this.hideConceptPopup();
+        this.hideInfoPopup();
     }
 };
 

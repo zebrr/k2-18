@@ -671,3 +671,216 @@ class TestSliceProcessor:
         # Other aliases should be there
         assert "lifo" in aliases_lower
         assert "stack" in aliases_lower
+
+
+class TestTimeoutRetryMechanism:
+    """Test TimeoutError retry mechanism."""
+
+    @pytest.fixture
+    def mock_config(self):
+        """Create mock configuration with max_retries."""
+        return {
+            "itext2kg": {
+                "model": "test-model",
+                "tpm_limit": 100000,
+                "log_level": "info",
+                "max_context_tokens": 128000,
+                "max_context_tokens_test": 128000,
+            },
+            "max_retries": 3
+        }
+
+    @pytest.fixture
+    def processor(self, mock_config, tmp_path):
+        """Create processor instance with mocked dependencies."""
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path / "logs"):
+            with patch("src.itext2kg_concepts.PROMPTS_DIR", tmp_path / "prompts"):
+                with patch("src.itext2kg_concepts.SCHEMAS_DIR", tmp_path / "schemas"):
+                    with patch("src.itext2kg_concepts.STAGING_DIR", tmp_path / "staging"):
+                        # Create necessary directories
+                        (tmp_path / "logs").mkdir()
+                        (tmp_path / "prompts").mkdir()
+                        (tmp_path / "schemas").mkdir()
+                        (tmp_path / "staging").mkdir()
+
+                        # Create prompt file
+                        prompt_file = tmp_path / "prompts" / "itext2kg_concepts_extraction.md"
+                        prompt_file.write_text(
+                            "Test prompt\n{concept_dictionary_schema}", encoding="utf-8"
+                        )
+
+                        # Create schema file
+                        schema_file = tmp_path / "schemas" / "ConceptDictionary.schema.json"
+                        schema_file.write_text(json.dumps({"$schema": "test-schema"}), encoding="utf-8")
+
+                        # Mock LLM client
+                        with patch("src.itext2kg_concepts.OpenAIClient") as mock_client_class:
+                            mock_client = mock_client_class.return_value
+                            processor = SliceProcessor(mock_config)
+                            processor.llm_client = mock_client
+                            yield processor
+
+    def test_timeout_retry_mechanism(self, processor, tmp_path):
+        """Test that TimeoutError triggers repair attempts up to max_retries."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to raise TimeoutError on first 2 attempts, then succeed
+        attempt_count = [0]
+        
+        def side_effect(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] <= 2:
+                raise TimeoutError("Request timeout")
+            else:
+                # Return valid response on 3rd attempt
+                return (
+                    json.dumps({"concepts_added": {"concepts": []}}),
+                    "response_id_3",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+        
+        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
+            side_effect() if attempt_count[0] == 0 else None
+        )
+        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.confirm_response.return_value = None
+
+        # Process the slice with mocked sleep
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify repair_response was called twice (for 2 retry attempts)
+        assert processor.llm_client.repair_response.call_count == 2
+        # Verify success on 3rd attempt
+        assert result is True
+        # Verify confirm_response was called
+        assert processor.llm_client.confirm_response.called
+
+    def test_timeout_causes_full_stop(self, processor, tmp_path):
+        """Test that concept extraction stops after max_retries TimeoutErrors."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to always raise TimeoutError
+        processor.llm_client.create_response.side_effect = TimeoutError("Request timeout")
+        processor.llm_client.repair_response.side_effect = TimeoutError("Request timeout")
+
+        # Process the slice with mocked sleep
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify processing stops with False
+        assert result is False
+        # Verify repair_response was called max_retries times
+        assert processor.llm_client.repair_response.call_count == 3
+        # Verify temporary dumps were created
+        assert (tmp_path / "logs").exists()
+
+    def test_json_error_causes_full_stop(self, processor, tmp_path):
+        """Test that persistent JSON errors stop concept extraction."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to return invalid JSON
+        processor.llm_client.create_response.return_value = (
+            "Invalid JSON response",
+            "response_id",
+            ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+        )
+        processor.llm_client.repair_response.return_value = (
+            "Still invalid JSON",
+            "repair_id",
+            ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+        )
+
+        # Process the slice
+        result = processor._process_single_slice(slice_file)
+
+        # Verify processing stops after max_retries
+        assert result is False
+        # Verify repair_response was called max_retries times
+        assert processor.llm_client.repair_response.call_count == 3
+
+    def test_mixed_errors_retry(self, processor, tmp_path):
+        """Test handling of different error types in sequence."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock different errors in sequence
+        attempt_count = [0]
+        
+        def side_effect(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] == 1:
+                # First attempt: TimeoutError
+                raise TimeoutError("Request timeout")
+            elif attempt_count[0] == 2:
+                # Second attempt: Invalid JSON
+                return (
+                    "Invalid JSON",
+                    "response_id_2",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+            else:
+                # Third attempt: Success
+                return (
+                    json.dumps({"concepts_added": {"concepts": []}}),
+                    "response_id_3",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+
+        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
+            side_effect() if attempt_count[0] == 0 else None
+        )
+        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.confirm_response.return_value = None
+
+        # Process the slice
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify success after mixed errors
+        assert result is True
+        # Verify repair_response was called twice
+        assert processor.llm_client.repair_response.call_count == 2

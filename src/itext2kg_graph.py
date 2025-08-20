@@ -22,6 +22,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import openai
+
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -974,13 +976,13 @@ class SliceProcessor:
 
     def _process_single_slice(self, slice_file: Path) -> bool:
         """
-        Process single slice with dual repair for JSON and ID errors.
+        Process single slice with retry mechanism for TimeoutError and JSON errors.
 
         Args:
             slice_file: Path to slice file
 
         Returns:
-            True if successful, False on error
+            True if successful, False on critical error (will stop processing)
         """
         # Load slice data
         try:
@@ -991,6 +993,7 @@ class SliceProcessor:
 
         slice_id = slice_data.id
         slice_token_start = slice_data.slice_token_start
+        slice_order = slice_data.order
 
         # Log processing start
         self.logger.info(
@@ -1000,7 +1003,7 @@ class SliceProcessor:
                     "level": "INFO",
                     "event": "slice_start",
                     "slice_id": slice_id,
-                    "order": slice_data.order,
+                    "order": slice_order,
                     "slice_token_start": slice_token_start,
                     "total": self.stats.total_slices,
                 }
@@ -1010,134 +1013,205 @@ class SliceProcessor:
         # Format input with FULL ConceptDictionary
         input_data = self._format_slice_input(slice_data)
 
-        # Call LLM with previous_response_id
-        try:
-            response_text, response_id, usage = self.llm_client.create_response(
-                instructions=self.extraction_prompt,
-                input_data=input_data,
-                previous_response_id=self.previous_response_id,
-            )
-            self.stats.total_tokens_used += usage.total_tokens
+        # Get max_retries from config
+        max_retries = self.config.get("max_retries", 3)
+        last_error_type = None
+        start_time = time.time()
 
-            # Track API usage
-            self.api_usage["total_requests"] += 1
-            self.api_usage["total_input_tokens"] += usage.input_tokens
-            self.api_usage["total_output_tokens"] += usage.output_tokens
-
-            # Log LLM response
-            self.logger.debug(
-                json.dumps(
-                    {
-                        "timestamp": datetime.now().isoformat(),
-                        "level": "DEBUG",
-                        "event": "llm_response",
-                        "slice_id": slice_id,
-                        "response_id": response_id,
-                        "usage": {
-                            "input_tokens": usage.input_tokens,
-                            "output_tokens": usage.output_tokens,
-                            "reasoning_tokens": usage.reasoning_tokens,
-                            "total_tokens": usage.total_tokens,
-                        },
-                    }
-                )
-            )
-        except Exception as e:
-            self.logger.error(f"LLM call failed for {slice_id}: {e}")
-            return False
-
-        # Try to parse JSON
-        success, parsed = self._process_llm_response(response_text, slice_id)
-
-        if success:
-            # НОВОЕ: Подтверждаем response после успешной валидации
-            self.llm_client.confirm_response()
-        # Handle JSON parsing errors
-        elif not success:
-            self.logger.warning(f"JSON validation failed for {slice_id}, attempting repair...")
-
-            # Add console output
-            current_time = datetime.now().strftime("%H:%M:%S")
-            print(f"[{current_time}] REPAIR   | 🔧 Attempting to fix JSON validation error...")
-
-            # Repair with JSON format emphasis
-            repair_instructions = (
-                f"{self.extraction_prompt}\n\n"
-                "CRITICAL: Return ONLY a valid JSON object. "
-                "No markdown formatting, no explanations, no text outside the JSON structure."
-            )
-
+        # Retry loop for recoverable errors
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 = first try + 3 retries
             try:
-                repair_text, repair_id, repair_usage = self.llm_client.repair_response(
-                    instructions=repair_instructions,
-                    input_data=input_data,
-                    previous_response_id=self.previous_response_id,  # Rollback!
-                )
-                self.stats.total_tokens_used += repair_usage.total_tokens
-
-                # Track API usage for repair
-                self.api_usage["total_requests"] += 1
-                self.api_usage["total_input_tokens"] += repair_usage.input_tokens
-                self.api_usage["total_output_tokens"] += repair_usage.output_tokens
-                success, parsed = self._process_llm_response(repair_text, slice_id)
-
-                if success:
-                    # Repair successful
-                    # НОВОЕ: Подтверждаем repair response
-                    self.llm_client.confirm_response()
-                    current_time = datetime.now().strftime("%H:%M:%S")
-                    print(f"[{current_time}] REPAIR   | ✅ JSON validation fixed successfully!")
-                    # Update response_id to repair_id for successful repair
-                    response_id = repair_id
-                else:
-                    self.logger.error(f"JSON repair failed for {slice_id}")
-                    self._save_bad_response(
-                        slice_id, response_text, "JSON parse failed", repair_text
+                if attempt == 0:
+                    # First attempt - normal request
+                    response_text, response_id, usage = self.llm_client.create_response(
+                        instructions=self.extraction_prompt,
+                        input_data=input_data,
+                        previous_response_id=self.previous_response_id,
                     )
-                    return False
+                else:
+                    # Retry through repair
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    print(
+                        f"[{current_time}] REPAIR   | 🔧 Attempt {attempt}/{max_retries} "
+                        f"after {last_error_type}..."
+                    )
+
+                    # Add hint based on error type
+                    repair_hint = ""
+                    if last_error_type == "json":
+                        repair_hint = (
+                            "\nCRITICAL: Return ONLY a valid JSON object. "
+                            "No markdown formatting, no explanations, "
+                            "no text outside the JSON structure."
+                        )
+                    elif last_error_type == "timeout":
+                        repair_hint = (
+                            "\nIMPORTANT: Be concise to avoid timeout. "
+                            "Focus on essential nodes and edges only."
+                        )
+
+                    response_text, response_id, usage = self.llm_client.repair_response(
+                        instructions=self.extraction_prompt + repair_hint,
+                        input_data=input_data,
+                        previous_response_id=self.previous_response_id,
+                    )
+
+                # Track API usage
+                self.api_usage["total_requests"] += 1
+                self.api_usage["total_input_tokens"] += usage.input_tokens
+                self.api_usage["total_output_tokens"] += usage.output_tokens
+                self.stats.total_tokens_used += usage.total_tokens
+
+                # Log LLM response
+                self.logger.debug(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "level": "DEBUG",
+                            "event": "llm_response",
+                            "slice_id": slice_id,
+                            "response_id": response_id,
+                            "usage": {
+                                "input_tokens": usage.input_tokens,
+                                "output_tokens": usage.output_tokens,
+                                "reasoning_tokens": usage.reasoning_tokens,
+                                "total_tokens": usage.total_tokens,
+                            },
+                        }
+                    )
+                )
+
+                # Try to parse JSON
+                success, parsed = self._process_llm_response(response_text, slice_id)
+
+                if not success:
+                    last_error_type = "json"
+                    if attempt == max_retries:
+                        # CRITICAL: graph cannot continue without slice
+                        self._save_bad_response(
+                            slice_id,
+                            response_text,
+                            f"JSON validation failed after {max_retries} retries",
+                        )
+                        current_time = datetime.now().strftime("%H:%M:%S")
+                        print(
+                            f"[{current_time}] ERROR    | ❌ "
+                            f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                            f"{slice_id} | JSON validation failed after "
+                            f"{max_retries} retries"
+                        )
+                        print(
+                            f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
+                            f"{slice_id}"
+                        )
+                        self.logger.error(
+                            f"JSON validation failed for slice {slice_id} after "
+                            f"{max_retries} retries"
+                        )
+                        self._save_temp_dumps(f"critical_slice_failure_{slice_id}")
+                        return False  # Will lead to EXIT_RUNTIME_ERROR
+                    continue  # Next attempt
+
+                # Success! Confirm response
+                self.llm_client.confirm_response()
+
+                # JSON is valid, apply post-processing to fix IDs
+                if parsed and "chunk_graph_patch" in parsed:
+                    patch = parsed["chunk_graph_patch"]
+
+                    # NEW: Replace temporary IDs with final position-based IDs
+                    self._assign_final_ids(patch, slice_data)
+
+                    # Position validation and repair are no longer needed - IDs are now correct
+                    self._add_to_graph(patch, slice_data)
+
+                    # Intermediate validation
+                    if not self._validate_graph_intermediate():
+                        self.logger.error(f"Intermediate validation failed after {slice_id}")
+                        self._save_temp_dumps(f"validation_error_{slice_id}")
+                        return False
+
+                    # Update previous_response_id ONLY on success
+                    self.previous_response_id = response_id
+
+                    # Log success
+                    elapsed = int(time.time() - start_time)
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    print(
+                        f"[{current_time}] SLICE    | ✅ "
+                        f"{slice_order:03d}/{self.stats.total_slices} | "
+                        f"tokens_used={self._format_tokens(self.stats.total_tokens_used)} | "
+                        f"{elapsed}s | nodes={self.stats.total_nodes} | "
+                        f"edges={self.stats.total_edges}"
+                    )
+
+                    self.logger.info(
+                        json.dumps(
+                            {
+                                "timestamp": datetime.now().isoformat(),
+                                "level": "INFO",
+                                "event": "slice_complete",
+                                "slice_id": slice_id,
+                                "nodes_added": len(patch.get("nodes", [])),
+                                "edges_added": len(patch.get("edges", [])),
+                                "total_nodes": self.stats.total_nodes,
+                                "total_edges": self.stats.total_edges,
+                            }
+                        )
+                    )
+
+                    return True
+
+                return False
+
+            except TimeoutError as e:
+                last_error_type = "timeout"
+                current_time = datetime.now().strftime("%H:%M:%S")
+                if attempt == max_retries:
+                    # CRITICAL: graph cannot continue without slice
+                    print(
+                        f"[{current_time}] ERROR    | ❌ "
+                        f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                        f"{slice_id} | Timeout after {max_retries} retries"
+                    )
+                    print(
+                        f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
+                        f"{slice_id}"
+                    )
+                    self.logger.error(
+                        f"Timeout processing slice {slice_id} after {max_retries} " f"retries: {e}"
+                    )
+                    self._save_temp_dumps(f"timeout_failure_{slice_id}")
+                    return False  # Will lead to EXIT_RUNTIME_ERROR
+                # Wait before next attempt (30s, 60s, 90s)
+                wait_time = 30 * (attempt + 1)
+                print(
+                    f"[{current_time}] REPAIR   | ⏳ Timeout occurred, waiting {wait_time}s "
+                    f"before retry..."
+                )
+                time.sleep(wait_time)
+
+            except (openai.RateLimitError, openai.APIError) as e:
+                # These are handled in llm_client with their own retry
+                self.logger.error(f"API error processing slice {slice_id}: {e}")
+                raise  # Pass up
 
             except Exception as e:
-                self.logger.error(f"Repair failed for {slice_id}: {e}")
-                self._save_bad_response(slice_id, response_text, f"Repair error: {e}")
-                return False
-
-        # JSON is valid, apply post-processing to fix IDs
-        if parsed and "chunk_graph_patch" in parsed:
-            patch = parsed["chunk_graph_patch"]
-
-            # NEW: Replace temporary IDs with final position-based IDs
-            self._assign_final_ids(patch, slice_data)
-
-            # Position validation and repair are no longer needed - IDs are now correct
-            self._add_to_graph(patch, slice_data)
-
-            # Intermediate validation
-            if not self._validate_graph_intermediate():
-                self.logger.error(f"Intermediate validation failed after {slice_id}")
-                self._save_temp_dumps(f"validation_error_{slice_id}")
-                return False
-
-            # Update previous_response_id ONLY on success
-            self.previous_response_id = response_id
-
-            # Log success
-            self.logger.info(
-                json.dumps(
-                    {
-                        "timestamp": datetime.now().isoformat(),
-                        "level": "INFO",
-                        "event": "slice_complete",
-                        "slice_id": slice_id,
-                        "nodes_added": len(patch.get("nodes", [])),
-                        "edges_added": len(patch.get("edges", [])),
-                        "total_nodes": self.stats.total_nodes,
-                        "total_edges": self.stats.total_edges,
-                    }
+                # Unexpected errors - CRITICAL for graph
+                current_time = datetime.now().strftime("%H:%M:%S")
+                self.logger.error(f"Unexpected error processing slice {slice_id}: {e}")
+                print(
+                    f"[{current_time}] ERROR    | ❌ "
+                    f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                    f"{slice_id} | Unexpected error: {type(e).__name__}"
                 )
-            )
+                print(
+                    f"[{current_time}] FAILED   | ❌ Cannot continue without slice " f"{slice_id}"
+                )
+                self._save_temp_dumps(f"unexpected_error_{slice_id}")
+                return False  # Will lead to EXIT_RUNTIME_ERROR
 
-            return True
-
+        # Should never reach here
         return False
 
     def run(self) -> int:
@@ -1177,34 +1251,20 @@ class SliceProcessor:
         tpm_limit = self.config["tpm_limit"]
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(
-            f"[{timestamp}] START    | {self.stats.total_slices} slices | model={model} | tpm={tpm_limit//1000}k"
+            f"[{timestamp}] START    | {self.stats.total_slices} slices | "
+            f"model={model} | tpm={tpm_limit//1000}k"
         )
 
         # Process each slice
-        for i, slice_file in enumerate(slice_files, 1):
-            start_time = time.time()
+        for slice_file in slice_files:
             success = self._process_single_slice(slice_file)
-            elapsed = int(time.time() - start_time)
 
             if success:
                 self.stats.processed_slices += 1
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                print(
-                    f"[{timestamp}] SLICE    | ✅ {i:03d}/{self.stats.total_slices} | "
-                    f"tokens_used={self._format_tokens(self.stats.total_tokens_used)} | "
-                    f"{elapsed}s | nodes={self.stats.total_nodes} | edges={self.stats.total_edges}"
-                )
             else:
                 self.stats.failed_slices += 1
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                slice_id = slice_file.stem.replace(".slice", "")
-                print(
-                    f"[{timestamp}] ERROR    | ❌ {i:03d}/{self.stats.total_slices} | {slice_id} | Processing failed"
-                )
-
-                # If repair failed, we cannot continue (incomplete graph)
-                print(f"[{timestamp}] FAILED   | ❌ Cannot continue without slice {slice_id}")
-                self._save_temp_dumps("critical_error")
+                # Error messages already printed in _process_single_slice
+                # Graph processing cannot continue with missing slices
                 return EXIT_RUNTIME_ERROR
 
         # Check if any slices were processed

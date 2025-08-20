@@ -364,22 +364,32 @@ reasoning_summary = "auto"          # auto/concise/detailed for o*/gpt-5* models
 
 ## Error Handling
 
-### API Errors
-- **RateLimitError**: exponential backoff with retry
+### Recoverable Errors
+- **JSON validation errors** → up to max_retries repair attempts (default: 3)
+  - Uses two-phase confirmation: response confirmed only after successful JSON parsing
+  - On parsing failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
+  - Each retry adds hint to prompt about valid JSON format
+  - After exhausting retries → stops processing completely
+- **TimeoutError** → up to max_retries repair attempts with progressive delay
+  - Waits 30s * attempt_number before each retry (30s, 60s, 90s)
+  - Adds hint to prompt about being concise
+  - Uses same repair mechanism as JSON errors
+  - After exhausting retries → stops processing completely
+- **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
+  - RateLimitError and APIError handled by llm_client with own retry logic
 - **Embeddings limit**: truncate texts > 8192 tokens with logging
 - **Network errors**: retry with same context
 
-### LLM Response Errors
-- **Invalid JSON**: one repair-retry with error prompt
-  - Uses two-phase confirmation: response confirmed only after successful JSON parsing
-  - On parsing failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
+### Node Processing Behavior
+- **Failed nodes after retries**: save to `/logs/{node_id}_bad.json` and stop processing completely
+- **Critical failure handling**: After max_retries exhausted, refiner stops to ensure complete relationship analysis
 - **Invalid edges**: filter with logging
-- **Failed nodes**: save to `/logs/{node_id}_bad.json`
+- **Complete analysis required**: All nodes must be processed for accurate long-range relationship discovery
 
 ### Critical Errors
 - **Missing config params**: EXIT_CONFIG_ERROR
 - **Input file not found**: EXIT_INPUT_ERROR
-- **All retries exhausted**: EXIT_API_LIMIT_ERROR
+- **All API retries exhausted**: EXIT_API_LIMIT_ERROR
 - **File write errors**: EXIT_IO_ERROR
 
 ## Performance Notes

@@ -21,6 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import openai
+
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -448,13 +450,13 @@ class SliceProcessor:
 
     def _process_single_slice(self, slice_file: Path) -> bool:
         """
-        Process single slice.
+        Process single slice with retry mechanism for TimeoutError and JSON errors.
 
         Args:
             slice_file: Path to slice file
 
         Returns:
-            True if successful, False on error
+            True if successful, False on critical error (will stop processing)
         """
         try:
             # Load slice
@@ -477,239 +479,220 @@ class SliceProcessor:
             # Format input data
             input_data = self._format_slice_input(slice_data)
 
-            # Call LLM
+            # Get max_retries from config
+            max_retries = self.config.get("max_retries", 3)
+            last_error_type = None
             start_time = time.time()
 
-            # DEBUG log prompt
-            if self.config["log_level"].lower() == "debug":
-                self.logger.debug(
-                    json.dumps(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "level": "DEBUG",
-                            "event": "llm_request",
-                            "slice_id": slice_data.id,
-                            "prompt": self.extraction_prompt,
-                            "input_data": json.loads(input_data),
-                        }
-                    )
-                )
+            # Retry loop for recoverable errors
+            for attempt in range(max_retries + 1):  # 0, 1, 2, 3 = first try + 3 retries
+                try:
+                    if attempt == 0:
+                        # First attempt - normal request
+                        # DEBUG log prompt
+                        if self.config["log_level"].lower() == "debug":
+                            self.logger.debug(
+                                json.dumps(
+                                    {
+                                        "timestamp": datetime.now().isoformat(),
+                                        "level": "DEBUG",
+                                        "event": "llm_request",
+                                        "slice_id": slice_data.id,
+                                        "prompt": self.extraction_prompt,
+                                        "input_data": json.loads(input_data),
+                                    }
+                                )
+                            )
 
-            try:
-                # Track if repair was performed
-                repair_performed = False
-                repair_id = None  # Initialize to avoid undefined variable
-
-                response_text, response_id, usage = self.llm_client.create_response(
-                    instructions=self.extraction_prompt,
-                    input_data=input_data,
-                    previous_response_id=self.previous_response_id,
-                )
-
-                # Track API usage
-                self.api_usage["total_requests"] += 1
-                self.api_usage["total_input_tokens"] += usage.input_tokens
-                self.api_usage["total_output_tokens"] += usage.output_tokens
-
-                # DEBUG log response
-                if self.config["log_level"].lower() == "debug":
-                    self.logger.debug(
-                        json.dumps(
-                            {
-                                "timestamp": datetime.now().isoformat(),
-                                "level": "DEBUG",
-                                "event": "llm_response",
-                                "slice_id": slice_data.id,
-                                "response": response_text,
-                                "response_id": response_id,
-                                "usage": {
-                                    "input_tokens": usage.input_tokens,
-                                    "output_tokens": usage.output_tokens,
-                                    "reasoning_tokens": usage.reasoning_tokens,
-                                },
-                            }
+                        response_text, response_id, usage = self.llm_client.create_response(
+                            instructions=self.extraction_prompt,
+                            input_data=input_data,
+                            previous_response_id=self.previous_response_id,
                         )
+                    else:
+                        # Retry through repair
+                        current_time = datetime.now().strftime("%H:%M:%S")
+                        print(
+                            f"[{current_time}] REPAIR   | 🔧 Attempt {attempt}/{max_retries} "
+                            f"after {last_error_type}..."
+                        )
+
+                        # Add hint based on error type
+                        repair_hint = ""
+                        if last_error_type == "json":
+                            repair_hint = (
+                                "\nCRITICAL: Return ONLY a valid JSON object. "
+                                "No markdown formatting, no explanations, "
+                                "no text outside the JSON structure."
+                            )
+                        elif last_error_type == "timeout":
+                            repair_hint = (
+                                "\nIMPORTANT: Be concise to avoid timeout. "
+                                "Focus on essential concepts only."
+                            )
+
+                        response_text, response_id, usage = self.llm_client.repair_response(
+                            instructions=self.extraction_prompt + repair_hint,
+                            input_data=input_data,
+                            previous_response_id=self.previous_response_id,
+                        )
+
+                    # Track API usage
+                    self.api_usage["total_requests"] += 1
+                    self.api_usage["total_input_tokens"] += usage.input_tokens
+                    self.api_usage["total_output_tokens"] += usage.output_tokens
+
+                    # DEBUG log response
+                    if self.config["log_level"].lower() == "debug":
+                        self.logger.debug(
+                            json.dumps(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "level": "DEBUG",
+                                    "event": "llm_response",
+                                    "slice_id": slice_data.id,
+                                    "response": response_text,
+                                    "response_id": response_id,
+                                    "usage": {
+                                        "input_tokens": usage.input_tokens,
+                                        "output_tokens": usage.output_tokens,
+                                        "reasoning_tokens": usage.reasoning_tokens,
+                                    },
+                                }
+                            )
+                        )
+
+                    # Validate and parse JSON
+                    success, parsed_data = self._process_llm_response(response_text, slice_data.id)
+
+                    if not success:
+                        last_error_type = "json"
+                        if attempt == max_retries:
+                            # CRITICAL: cannot continue without slice (incremental!)
+                            self._save_bad_response(
+                                slice_data.id,
+                                response_text,
+                                f"JSON validation failed after {max_retries} retries",
+                            )
+                            current_time = datetime.now().strftime("%H:%M:%S")
+                            print(
+                                f"[{current_time}] ERROR    | ❌ "
+                                f"{slice_data.order:03d}/{self.stats.total_slices:03d} | "
+                                f"{slice_data.id} | JSON validation failed after "
+                                f"{max_retries} retries"
+                            )
+                            print(
+                                f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
+                                f"{slice_data.id} - would break incremental context"
+                            )
+                            self.logger.error(
+                                f"JSON validation failed for slice {slice_data.id} after "
+                                f"{max_retries} retries - stopping to preserve incremental context"
+                            )
+                            self._save_temp_dumps(reason="critical_slice_failure")
+                            return False  # Will lead to EXIT_RUNTIME_ERROR
+                        continue  # Next attempt
+
+                    # Success! Confirm response
+                    self.llm_client.confirm_response()
+
+                    # Apply concepts
+                    self._apply_concepts(parsed_data)
+
+                    # Update previous_response_id for next slice
+                    self.previous_response_id = response_id
+
+                    # Update statistics
+                    self.stats.total_tokens_used += usage.total_tokens
+                    duration_sec = round(time.time() - start_time, 0)
+                    duration_ms = int((time.time() - start_time) * 1000)
+
+                    # Output progress to terminal
+                    current_time = datetime.now().strftime("%H:%M:%S")
+
+                    # Format token information
+                    tokens_used = self._format_tokens(self.stats.total_tokens_used)
+                    tokens_current = self._format_tokens(usage.total_tokens)
+                    tokens_info = f"tokens_used={tokens_used} | tokens_current={tokens_current}"
+                    if usage.reasoning_tokens > 0:
+                        reasoning = self._format_tokens(usage.reasoning_tokens)
+                        tokens_info += f" incl. reasoning={reasoning}"
+
+                    print(
+                        f"[{current_time}] SLICE    | ✅ "
+                        f"{slice_data.order:03d}/{self.stats.total_slices:03d} | "
+                        f"{tokens_info} | {duration_sec}s | "
+                        f"concepts={len(self.concept_dictionary['concepts'])}"
                     )
 
-                # Process response
-                success, parsed_data = self._process_llm_response(response_text, slice_data.id)
-
-                if success:
-                    # НОВОЕ: Подтверждаем response после успешной валидации
-                    self.llm_client.confirm_response()
-                elif not success:
-                    # Repair attempt with clarifying prompt
-                    repair_performed = True  # Mark that repair is being performed
+                    # Log success
                     self.logger.info(
                         json.dumps(
                             {
                                 "timestamp": datetime.now().isoformat(),
                                 "level": "INFO",
-                                "event": "repair_attempt",
+                                "event": "slice_success",
                                 "slice_id": slice_data.id,
+                                "tokens_used": usage.total_tokens,
+                                "duration_ms": duration_ms,
+                                "concepts_total": len(self.concept_dictionary["concepts"]),
                             }
                         )
                     )
 
-                    # Add console output
+                    return True
+
+                except TimeoutError as e:
+                    last_error_type = "timeout"
                     current_time = datetime.now().strftime("%H:%M:%S")
-                    print(
-                        f"[{current_time}] REPAIR   | 🔧 Attempting to fix JSON validation error..."
-                    )
-                    print(
-                        f"[{current_time}] REPAIR   | "
-                        "📝 Adding clarification to prompt and retrying..."
-                    )
-
-                    # Form repair prompt with clarification
-                    repair_instructions = (
-                        f"{self.extraction_prompt}\n\n"
-                        "CRITICAL: Return ONLY a valid JSON object. "
-                        "No markdown formatting, no explanations, "
-                        "no text outside the JSON structure."
-                    )
-
-                    # Rollback to last successful response ID to avoid anchoring on broken JSON
-                    # This ensures clean context without the failed response
-                    repair_text, repair_id, repair_usage = self.llm_client.repair_response(
-                        instructions=repair_instructions,
-                        input_data=input_data,
-                        previous_response_id=self.previous_response_id,  # Rollback!
-                    )
-
-                    # Track API usage for repair
-                    self.api_usage["total_requests"] += 1
-                    self.api_usage["total_input_tokens"] += repair_usage.input_tokens
-                    self.api_usage["total_output_tokens"] += repair_usage.output_tokens
-
-                    success, parsed_data = self._process_llm_response(repair_text, slice_data.id)
-
-                    if success:
-                        # Repair successful
-                        # НОВОЕ: Подтверждаем repair response
-                        self.llm_client.confirm_response()
-                        current_time = datetime.now().strftime("%H:%M:%S")
-                        print(f"[{current_time}] REPAIR   | ✅ JSON validation fixed successfully!")
-                    else:
-                        # Save bad responses
-                        self._save_bad_response(
-                            slice_data.id,
-                            response_text,
-                            "JSON validation failed after repair",
-                            repair_text,
-                        )
-
-                        self.logger.error(
-                            json.dumps(
-                                {
-                                    "timestamp": datetime.now().isoformat(),
-                                    "level": "ERROR",
-                                    "event": "slice_failed",
-                                    "slice_id": slice_data.id,
-                                    "error": "JSON validation failed after repair",
-                                }
-                            )
-                        )
-
-                        # Output error to terminal
-                        current_time = datetime.now().strftime("%H:%M:%S")
+                    if attempt == max_retries:
+                        # CRITICAL: cannot continue without slice
                         print(
                             f"[{current_time}] ERROR    | ❌ "
                             f"{slice_data.order:03d}/{self.stats.total_slices:03d} | "
-                            f"{slice_data.id} | JSON validation failed after repair"
+                            f"{slice_data.id} | Timeout after {max_retries} retries"
                         )
-
-                        return False
-
-                    # Repair successful - use repair usage
-                    usage = repair_usage
-
-                # Apply concepts
-                self._apply_concepts(parsed_data)
-
-                # Update statistics
-                self.stats.total_tokens_used += usage.total_tokens
-                duration_sec = round(time.time() - start_time, 0)
-                duration_ms = int((time.time() - start_time) * 1000)
-
-                # Output progress to terminal
-                current_time = datetime.now().strftime("%H:%M:%S")
-
-                # Format token information
-                tokens_used = self._format_tokens(self.stats.total_tokens_used)
-                tokens_current = self._format_tokens(usage.total_tokens)
-                tokens_info = f"tokens_used={tokens_used} | tokens_current={tokens_current}"
-                if usage.reasoning_tokens > 0:
-                    reasoning = self._format_tokens(usage.reasoning_tokens)
-                    tokens_info += f" incl. reasoning={reasoning}"
-
-                print(
-                    f"[{current_time}] SLICE    | ✅ "
-                    f"{slice_data.order:03d}/{self.stats.total_slices:03d} | "
-                    f"{tokens_info} | {duration_sec}s | "
-                    f"concepts={len(self.concept_dictionary['concepts'])}"
-                )
-
-                # Log success
-                self.logger.info(
-                    json.dumps(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "level": "INFO",
-                            "event": "slice_success",
-                            "slice_id": slice_data.id,
-                            "tokens_used": usage.total_tokens,
-                            "duration_ms": duration_ms,
-                            "concepts_total": len(self.concept_dictionary["concepts"]),
-                        }
+                        print(
+                            f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
+                            f"{slice_data.id} - would break incremental context"
+                        )
+                        self.logger.error(
+                            f"Timeout processing slice {slice_data.id} after {max_retries} "
+                            f"retries: {e}"
+                        )
+                        self._save_temp_dumps(reason="timeout_failure")
+                        return False  # Will lead to EXIT_RUNTIME_ERROR
+                    # Wait before next attempt (30s, 60s, 90s)
+                    wait_time = 30 * (attempt + 1)
+                    print(
+                        f"[{current_time}] REPAIR   | ⏳ Timeout occurred, waiting {wait_time}s "
+                        f"before retry..."
                     )
-                )
+                    time.sleep(wait_time)
 
-                # Update previous_response_id only after successful processing
-                # This ensures we rollback to last successful state on repair
-                if repair_performed and repair_id:
-                    # If repair was successful, use repair_id
-                    self.previous_response_id = repair_id
-                else:
-                    # Otherwise use the original response_id
-                    self.previous_response_id = response_id
+                except (openai.RateLimitError, openai.APIError) as e:
+                    # These are handled in llm_client with their own retry
+                    self.logger.error(f"API error processing slice {slice_data.id}: {e}")
+                    raise  # Pass up to be handled by outer try
 
-                return True
-
-            except Exception as e:
-                # Handle API errors
-                error_type = type(e).__name__
-
-                # IMPORTANT: Reset variables to avoid undefined
-                response_text = None
-                response_id = None
-                usage = None
-
-                # Output error to terminal
-                current_time = datetime.now().strftime("%H:%M:%S")
-
-                # Special handling for rate limit
-                if "rate" in str(e).lower() or error_type == "RateLimitError":
-                    # LLM client will already handle retry with backoff
-                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | waiting for retry...")
-                else:
-                    print(f"[{current_time}] ERROR    | ⚠️ {error_type} | slice {slice_data.id}")
-
-                self.logger.error(
-                    json.dumps(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "level": "ERROR",
-                            "event": "api_error",
-                            "slice_id": slice_data.id,
-                            "error_type": error_type,
-                            "error": str(e),
-                        }
+                except Exception as e:
+                    # Unexpected errors - CRITICAL due to incremental nature
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    self.logger.error(f"Unexpected error processing slice {slice_data.id}: {e}")
+                    print(
+                        f"[{current_time}] ERROR    | ❌ "
+                        f"{slice_data.order:03d}/{self.stats.total_slices:03d} | "
+                        f"{slice_data.id} | Unexpected error: {type(e).__name__}"
                     )
-                )
+                    print(
+                        f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
+                        f"{slice_data.id} - would break incremental context"
+                    )
+                    self._save_temp_dumps(reason="unexpected_error")
+                    return False  # Will lead to EXIT_RUNTIME_ERROR
 
-                # If all retries exhausted, consider slice failed
-                return False
+            # Should never reach here
+            return False
 
         except Exception as e:
             # General processing error
@@ -767,6 +750,18 @@ class SliceProcessor:
                     success = self._process_single_slice(slice_file)
                     if success:
                         self.stats.processed_slices += 1
+                    else:
+                        # Critical error - cannot continue without slice (incremental context)
+                        self.logger.error(
+                            f"Critical error processing slice {slice_file.stem} - "
+                            f"stopping to preserve incremental context"
+                        )
+                        current_time = datetime.now().strftime("%H:%M:%S")
+                        print(
+                            f"[{current_time}] FAILED   | ❌ Processing stopped - "
+                            f"incremental context broken"
+                        )
+                        return EXIT_RUNTIME_ERROR
 
                     # Log intermediate progress
                     if self.stats.processed_slices % 10 == 0 and self.stats.processed_slices > 0:

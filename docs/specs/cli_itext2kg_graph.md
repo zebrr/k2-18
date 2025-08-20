@@ -188,21 +188,29 @@ Section `[itext2kg]` in config.toml:
 - **4 (API_LIMIT_ERROR)** - API limits exhausted
 - **5 (IO_ERROR)** - file write errors
 
-### Recovery Strategy
-1. Try to parse response
-2. If JSON error → repair with format emphasis
-   - Uses two-phase confirmation: response confirmed only after successful validation
-   - On validation failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
-3. Post-process IDs with `_assign_final_ids()` (no repair needed)
-4. If repair fails → save dumps and exit with RUNTIME_ERROR
+### Recoverable Errors
+- **JSON validation errors** → up to max_retries repair attempts (default: 3)
+  - Uses two-phase confirmation: response confirmed only after successful validation
+  - On validation failure, repair uses last confirmed response_id (prevents "Previous response not found" error)
+  - Each retry adds hint to prompt about valid JSON format
+  - After exhausting retries → saves temporary dumps → EXIT_RUNTIME_ERROR
+- **TimeoutError** → up to max_retries repair attempts with progressive delay
+  - Waits 30s * attempt_number before each retry (30s, 60s, 90s)
+  - Adds hint to prompt about being concise
+  - Uses same repair mechanism as JSON errors
+  - After exhausting retries → saves temporary dumps → EXIT_RUNTIME_ERROR
+- **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
+  - RateLimitError and APIError handled by llm_client with own retry logic
+- Post-process IDs with `_assign_final_ids()` (no repair needed)
 
-### Graceful Degradation
-- Save bad responses for debugging
-- Create temporary dumps on critical errors
+### Critical Behavior
+- **Graph CANNOT have missing slices** - all nodes and edges must be extracted
+- After exhausting all retries → saves temporary dumps → EXIT_RUNTIME_ERROR
+- Clear message: "Cannot continue without slice {slice_id}"
 - Exit immediately if slice fails (graph completeness required)
 
 ### Critical Failures
-- **Any slice fails** → save dumps → EXIT_RUNTIME_ERROR (3)
+- **Any slice fails after retries** → save dumps → EXIT_RUNTIME_ERROR (3)
 - **Missing ConceptDictionary** → EXIT_INPUT_ERROR (2)
 - **I/O error saving output** → save dumps → EXIT_IO_ERROR (5)
 
@@ -511,7 +519,7 @@ Add patch to graph with full processing.
 
 - **Empty staging** → EXIT_INPUT_ERROR (2)
 - **Missing ConceptDictionary.json** → EXIT_INPUT_ERROR (2)
-- **Corrupted slice.json** → log error, attempt to continue → EXIT_RUNTIME_ERROR (3)
+- **Corrupted slice.json** → log error, stop processing → EXIT_INPUT_ERROR (2)
 - **Invalid temporary IDs** → handled by _assign_final_ids() post-processing
 - **Duplicate Chunk/Assessment in intermediate validation** → EXIT_RUNTIME_ERROR (3)
 - **Ctrl+C interruption** → save temporary dumps → EXIT_RUNTIME_ERROR

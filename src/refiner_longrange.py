@@ -16,8 +16,11 @@ import json
 import logging
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+import openai
 
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -670,7 +673,6 @@ def analyze_candidate_pairs(
     api_usage = {"requests": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
     # Terminal output START
-    import time
     from datetime import datetime, timedelta, timezone
 
     start_time = time.time()
@@ -699,101 +701,176 @@ def analyze_candidate_pairs(
 
         request_start = time.time()
 
-        # Log prompt in DEBUG mode
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "LLM request",
-                extra={
-                    "event": "llm_request",
-                    "node_id": source_node["id"],
-                    "prompt": prompt[:1000] + "..." if len(prompt) > 1000 else prompt,
-                    "input_data": json.dumps(input_data, ensure_ascii=False)[:1000] + "...",
-                },
-            )
+        # Get max_retries from config
+        max_retries = config.get("max_retries", 3)
+        last_error_type = None
+        edges_response = None
 
-        try:
-            # Send request to LLM
-            response_text, response_id, usage = llm_client.create_response(
-                instructions=prompt,
-                input_data=json.dumps(input_data, ensure_ascii=False, indent=2),
-                previous_response_id=previous_response_id,
-            )
-
-            # Update API usage
-            api_usage["requests"] += 1
-            api_usage["input_tokens"] += usage.input_tokens
-            api_usage["output_tokens"] += usage.output_tokens
-
-            # Log response in DEBUG mode
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "LLM response",
-                    extra={
-                        "event": "llm_response",
-                        "node_id": source_node["id"],
-                        "response": (
-                            response_text[:1000] + "..."
-                            if len(response_text) > 1000
-                            else response_text
-                        ),
-                        "usage": usage,
-                    },
-                )
-
-            # Parse response
+        # Retry loop for recoverable errors
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 = first try + 3 retries
             try:
-                edges_response = json.loads(response_text)
-                # Confirm successful response
-                llm_client.confirm_response()
-                # Update previous_response_id for chain continuity
-                previous_response_id = response_id
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM response for node {source_node['id']}: {e}")
-                logger.debug(f"Raw response: {response_text}")
-
-                # One repair-retry
-                logger.info("Attempting repair retry with clarification")
-                repair_prompt = prompt + "\n\nPLEASE RETURN ONLY VALID JSON ARRAY, NO OTHER TEXT."
-
-                # No need to touch client internals! repair_response uses last_confirmed_response_id
-                repair_text, repair_id, repair_usage = llm_client.repair_response(
-                    instructions=repair_prompt,
-                    input_data=json.dumps(input_data, ensure_ascii=False, indent=2),
-                    # previous_response_id is optional - client uses last_confirmed_response_id
-                )
-
-                # Update API usage for repair
-                api_usage["requests"] += 1
-                api_usage["input_tokens"] += repair_usage.input_tokens
-                api_usage["output_tokens"] += repair_usage.output_tokens
-
-                try:
-                    edges_response = json.loads(repair_text)
-                    # Update previous_response_id to repair_id for chain continuity
-                    previous_response_id = repair_id
-                except json.JSONDecodeError as e2:
-                    logger.error(f"Failed to parse repaired response: {e2}")
-
-                    # Save bad response
-                    bad_response_path = Path(f"logs/{source_node['id']}_bad.json")
-                    bad_response_path.parent.mkdir(exist_ok=True)
-
-                    with open(bad_response_path, "w", encoding="utf-8") as f:
-                        json.dump(
-                            {
+                if attempt == 0:
+                    # First attempt - normal request
+                    # Log prompt in DEBUG mode
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "LLM request",
+                            extra={
+                                "event": "llm_request",
                                 "node_id": source_node["id"],
-                                "original_response": response_text,
-                                "repair_response": repair_text,
-                                "error": str(e2),
+                                "prompt": prompt[:1000] + "..." if len(prompt) > 1000 else prompt,
+                                "input_data": json.dumps(input_data, ensure_ascii=False)[:1000]
+                                + "...",
                             },
-                            f,
-                            ensure_ascii=False,
-                            indent=2,
                         )
 
-                    logger.error(f"Saved bad response to {bad_response_path}")
-                    continue  # Skip this node
+                    response_text, response_id, usage = llm_client.create_response(
+                        instructions=prompt,
+                        input_data=json.dumps(input_data, ensure_ascii=False, indent=2),
+                        previous_response_id=previous_response_id,
+                    )
+                else:
+                    # Retry through repair
+                    node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                    pass_prefix = "F" if pass_direction == "forward" else "B"
+                    print(
+                        f"[{node_timestamp}] REPAIR   | 🔧 {pass_prefix}{i + 1:03d} Attempt {attempt}/{max_retries} "
+                        f"after {last_error_type}..."
+                    )
 
+                    # Add hint based on error type
+                    repair_hint = ""
+                    if last_error_type == "json":
+                        repair_hint = "\n\nPLEASE RETURN ONLY VALID JSON ARRAY, NO OTHER TEXT."
+                    elif last_error_type == "timeout":
+                        repair_hint = "\n\nBE CONCISE. Focus on important edges."
+
+                    response_text, response_id, usage = llm_client.repair_response(
+                        instructions=prompt + repair_hint,
+                        input_data=json.dumps(input_data, ensure_ascii=False, indent=2),
+                        # repair automatically uses last_confirmed_response_id
+                    )
+
+                # Update API usage
+                api_usage["requests"] += 1
+                api_usage["input_tokens"] += usage.input_tokens
+                api_usage["output_tokens"] += usage.output_tokens
+
+                # Log response in DEBUG mode
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "LLM response",
+                        extra={
+                            "event": "llm_response",
+                            "node_id": source_node["id"],
+                            "response": (
+                                response_text[:1000] + "..."
+                                if len(response_text) > 1000
+                                else response_text
+                            ),
+                            "usage": usage,
+                        },
+                    )
+
+                # Parse response
+                try:
+                    edges_response = json.loads(response_text)
+                    # Confirm successful response
+                    llm_client.confirm_response()
+                    # Update previous_response_id for chain continuity
+                    previous_response_id = response_id
+                    break  # Success - exit retry loop
+                except json.JSONDecodeError as e:
+                    last_error_type = "json"
+                    if attempt == max_retries:
+                        logger.error(
+                            f"Failed to parse JSON for node {source_node['id']} "
+                            f"after {max_retries} retries: {e}"
+                        )
+                        # Save bad response
+                        bad_response_path = Path(f"logs/{source_node['id']}_bad.json")
+                        bad_response_path.parent.mkdir(exist_ok=True)
+
+                        with open(bad_response_path, "w", encoding="utf-8") as f:
+                            json.dump(
+                                {
+                                    "node_id": source_node["id"],
+                                    "response": response_text,
+                                    "error": str(e),
+                                    "attempts": max_retries + 1,
+                                },
+                                f,
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+
+                        logger.error(f"CRITICAL: Saved bad response to {bad_response_path}")
+                        node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                        pass_prefix = "F" if pass_direction == "forward" else "B"
+                        print(
+                            f"[{node_timestamp}] ERROR    | ❌ {pass_prefix}{i + 1:03d} | "
+                            f"JSON parsing failed after {max_retries} retries"
+                        )
+                        print(
+                            f"[{node_timestamp}] FAILED   | ❌ Cannot continue refiner processing - "
+                            f"incomplete analysis would miss critical relationships"
+                        )
+                        # Return what we have so far and stop
+                        return all_new_edges, api_usage
+                    # Continue to next attempt
+
+            except TimeoutError as e:
+                last_error_type = "timeout"
+                if attempt == max_retries:
+                    logger.error(
+                        f"CRITICAL: Timeout for node {source_node['id']} after {max_retries} retries: {e}"
+                    )
+                    node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                    pass_prefix = "F" if pass_direction == "forward" else "B"
+                    print(
+                        f"[{node_timestamp}] ERROR    | ❌ {pass_prefix}{i + 1:03d} | "
+                        f"Timeout after {max_retries} retries - cannot continue"
+                    )
+                    print(
+                        f"[{node_timestamp}] FAILED   | ❌ Cannot continue refiner processing - "
+                        f"incomplete analysis would miss critical relationships"
+                    )
+                    # Return what we have so far and stop
+                    return all_new_edges, api_usage
+                # Wait before next attempt (30s, 60s, 90s)
+                wait_time = 30 * (attempt + 1)
+                node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                print(
+                    f"[{node_timestamp}] REPAIR   | ⏳ Timeout occurred, waiting {wait_time}s "
+                    f"before retry..."
+                )
+                time.sleep(wait_time)
+
+            except (openai.RateLimitError, openai.APIError) as e:
+                # These are handled in llm_client with their own retry
+                logger.error(f"API error processing node {source_node['id']}: {e}")
+                node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                print(f"[{node_timestamp}] ERROR    | ⚠️ {type(e).__name__} | will retry...")
+                raise  # Pass up to be handled by llm_client
+
+            except Exception as e:
+                # Unexpected errors - critical, stop processing
+                logger.error(f"CRITICAL: Unexpected error processing node {source_node['id']}: {e}")
+                node_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
+                pass_prefix = "F" if pass_direction == "forward" else "B"
+                print(
+                    f"[{node_timestamp}] ERROR    | ❌ {pass_prefix}{i + 1:03d} | "
+                    f"Unexpected error: {type(e).__name__}"
+                )
+                print(
+                    f"[{node_timestamp}] FAILED   | ❌ Cannot continue refiner processing - "
+                    f"unexpected error indicates critical problem"
+                )
+                # Return what we have so far and stop
+                return all_new_edges, api_usage
+
+        # Process valid response if we got one
+        if edges_response is not None:
             # Validation and response processing
             valid_edges = validate_llm_edges(
                 edges_response, source_node["id"], candidates, graph, logger
@@ -821,18 +898,6 @@ def analyze_candidate_pairs(
                 f"[{i + 1}/{len(candidate_pairs)}] Node {source_node['id']}: "
                 f"{added_count} new edges from {len(candidates)} candidates"
             )
-
-        except Exception as e:
-            # Error output to terminal
-            error_timestamp = datetime.now(utc3_tz).strftime("%H:%M:%S")
-
-            if "RateLimitError" in str(e):
-                print(f"[{error_timestamp}] ERROR    | ⚠️ RateLimitError | will retry...")
-            else:
-                print(f"[{error_timestamp}] ERROR    | ⚠️ {type(e).__name__}: {str(e)[:50]}...")
-
-            logger.error(f"Error processing node {source_node['id']}: {e}")
-            continue
 
     # Terminal output END
     end_time = time.time()

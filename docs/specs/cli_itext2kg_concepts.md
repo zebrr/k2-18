@@ -75,7 +75,7 @@ This pattern prevents invalid responses from corrupting the context chain and en
   - Prevents "anchoring" on broken JSON structure in context
   - Repair prompt adds explicit error indication and valid JSON requirement
   - Successful repairs are auto-confirmed by llm_client
-- **Graceful degradation**: process continues on partial failures
+- **No partial processing**: stops completely on any slice failure
 - **Temporary dumps**: state saving on critical errors
 - **Interrupt handling**: correct Ctrl+C handling with result saving
 
@@ -102,7 +102,7 @@ This pattern prevents invalid responses from corrupting the context chain and en
    - Repair-reprompt on errors (1 attempt with automatic rollback)
    - Incremental concept dictionary update
 3. **Error handling** with graceful degradation:
-   - Continue on partial failures
+   - Stop on any slice failure to maintain context chain
    - Save temporary dumps on critical errors
 4. **Final validation** of ConceptDictionary invariants
 5. **Save results** with metadata to output
@@ -212,22 +212,35 @@ Section `[itext2kg]` in config.toml:
 - **5 (IO_ERROR)** - file write errors
 
 ### Recoverable Errors
-- **JSON validation errors** → repair-reprompt with automatic rollback
+- **JSON validation errors** → up to max_retries repair attempts (default: 3)
   - Uses two-phase confirmation: response confirmed only after successful validation
   - On validation failure, `repair_response()` uses last confirmed response_id
-  - Prevents "Previous response not found" error and context corruption
-  - Repair responses are auto-confirmed internally by llm_client
+  - Each retry adds hint to prompt about valid JSON format
+  - After exhausting retries → saves temporary dumps → EXIT_RUNTIME_ERROR
+- **TimeoutError** → up to max_retries repair attempts with progressive delay
+  - Waits 30s * attempt_number before each retry (30s, 60s, 90s)
+  - Adds hint to prompt about being concise
+  - Uses same repair mechanism as JSON errors
+  - After exhausting retries → saves temporary dumps → EXIT_RUNTIME_ERROR
 - **API errors** → exponential backoff via llm_client (20s → 40s → 80s...)
+  - RateLimitError and APIError handled by llm_client with own retry logic
 - **Rate limits** → automatic wait via TPMBucket with recovery
 
+### Critical Behavior
+- **NO slices are skipped** - incremental processing requires complete context chain
+- After exhausting all retries → saves temporary dumps → EXIT_RUNTIME_ERROR
+- Reason logged: "Cannot continue without slice - would break incremental context"
+- Each slice must know about concepts from previous slices via previous_response_id
+- Skipping a slice would cause duplicate concepts in subsequent slices
+
 ### Non-recoverable Errors
-- **All slices failed** → temporary dumps → EXIT_RUNTIME_ERROR (3)
+- **Slice processing failure after retries** → temporary dumps → EXIT_RUNTIME_ERROR (3)
 - **Configuration errors** → EXIT_CONFIG_ERROR (1)
 - **I/O errors** → temporary dumps → EXIT_IO_ERROR (5)
 
 ### Partial Failures
-- Process continues if at least some slices successful
-- Statistics saved in logs and temporary dumps
+- **NOT SUPPORTED** - all slices must be processed for incremental context
+- If any critical slice fails → full stop with EXIT_RUNTIME_ERROR
 
 ## Public Classes
 
@@ -445,8 +458,8 @@ Final validation and save results with comprehensive metadata.
 ## Boundary Cases
 
 - **Empty staging** → EXIT_INPUT_ERROR (2)
-- **Corrupted slice.json** → log error, skip slice, continue
-- **Invalid LLM response after repair** → save to logs/{slice_id}_bad.json, skip slice
+- **Corrupted slice.json** → log error, stop processing (EXIT_INPUT_ERROR)
+- **Invalid LLM response after max_retries** → save to logs/{slice_id}_bad.json, stop processing (EXIT_RUNTIME_ERROR)
 - **Ctrl+C interruption** → save temporary dumps → EXIT_RUNTIME_ERROR
 - **Validation failed (final)** → temporary dumps with validation_failed prefix
 - **All slices have no concepts** → save empty ConceptDictionary.json → SUCCESS

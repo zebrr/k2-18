@@ -585,13 +585,13 @@ class TestGenerateHtml:
                         info_calls = [str(call) for call in logger.info.call_args_list]
                         assert any("Loaded graph_core.js" in str(call) for call in info_calls)
                         
-                        # Check it's included in vendor_js_content for embed mode
+                        # Check graph_core is passed separately to template
                         call_kwargs = mock_template.render.call_args[1]
-                        vendor_js = call_kwargs["vendor_js_content"]
-                        # The vendor_js_content should include the graph core module
-                        assert "// Graph Core Module" in vendor_js
-                        # And the actual content
-                        assert mock_graph_core in vendor_js
+                        # graph_core.js is now loaded separately and passed as graph_core_content
+                        assert "graph_core_content" in call_kwargs
+                        graph_core_content = call_kwargs["graph_core_content"]
+                        # And the actual content should be there
+                        assert mock_graph_core in graph_core_content
 
 
 @pytest.mark.viz

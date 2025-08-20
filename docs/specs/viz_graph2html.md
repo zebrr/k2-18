@@ -700,18 +700,138 @@ All 9 edge types from the schema have distinct visual styles:
    - Exports UIControls object
    - Features:
      * Top header filters for node types (Chunks, Concepts, Assessments)
-     * Dynamic counters showing visible/total nodes and edges
+     * Dynamic counters showing visible/total nodes and edges (using `.not('.hidden')` selector)
      * Right side panel with Dictionary and TOP nodes tabs
      * Node hover effects with red highlighting
      * Edge highlighting on node hover
      * Tooltips with 500ms delay
      * Info popup with graph statistics (i key)
      * **Node Information Popup**: Detailed node information with metrics, edges, and navigation
+       - Displays difficulty as traffic light with 5 circles
+       - Shows edges with target node difficulty circles
+       - Supports navigation by clicking on connected nodes
+       - Width: 690px (15% wider than original design)
      * **Concept Definition Popup**: Concept definition with aliases and mention count
      * **Popup Management**: Exclusive popup display (only one at a time)
-     * **Educational Tooltips**: Explanations for PageRank, Betweenness, and Learning Effort metrics
+     * **Educational Tooltips**: Click-based explanations for metrics (not hover)
      * Keyboard shortcuts (Esc, i, d)
+   - Key methods:
+     * `init()` - Initializes all UI components
+     * `toggleNodeType()` - Shows/hides nodes by type using 'hidden' class
+     * `updateCounters()` - Updates visible/total counters
+     * `showNodePopup()` - Displays detailed node information
+     * `showConceptPopup()` - Displays concept definition
+     * `renderDifficulty()` - Renders difficulty as colored circles (1-5 scale)
+     * `renderEdgeItem()` - Renders edge with type, target, difficulty, and weight
+     * `toggleMetricTooltip()` - Shows/hides click-based metric explanations
+     * `formatMetricValue()` - Formats numeric metrics with appropriate precision
    - Auto-initializes via "k2-graph-ready" event
+
+## UI State Management
+
+### Element Visibility System
+The visualization uses CSS classes to control element visibility:
+- **Nodes**: `.hidden` class hides nodes from view
+- **Edges**: `.hidden-edge` class hides edges when either endpoint is hidden
+- **Counters**: Use `.not('.hidden')` and `.not('.hidden-edge')` selectors for accurate counts
+- **Batch operations**: All visibility changes wrapped in `cy.batch()` for performance
+
+### Popup Management
+- **Exclusive display**: Only one popup can be active at a time
+- **Priority order**: Node Popup > Concept Popup > Info Popup > Side Panel
+- **Close mechanisms**:
+  - Click outside popup (backdrop click)
+  - Press Escape key
+  - Click close button (×)
+  - Open another popup (automatic close)
+
+### Filter State
+- Maintained in `UIControls.state.visibleTypes` object
+- Types: `Chunk`, `Concept`, `Assessment`
+- Default: All types visible on initialization
+- Persisted during session (not saved between sessions)
+
+## Data Structure Requirements
+
+### Node Data Fields
+Required fields for proper visualization:
+- **id** (string): Unique node identifier
+- **type** (string): One of: "Chunk", "Concept", "Assessment"
+- **text** (string): Display label and content
+- **difficulty** (number): 1-5 scale for complexity visualization
+- **pagerank** (number): For node size calculation
+- **betweenness_centrality** (number): Network centrality metric
+- **learning_effort** (number): Educational effort metric
+- **cluster_id** (number, optional): For cluster-based coloring
+- **prerequisite_depth** (number): For animation sequence
+- **degree_in** (number): Incoming edge count
+- **degree_out** (number): Outgoing edge count
+- **definition** (string, optional): Source text for node content
+
+### Edge Data Fields
+- **id** (string): Unique edge identifier
+- **source** (string): Source node ID
+- **target** (string): Target node ID
+- **type** (string): Relationship type (PREREQUISITE, ELABORATES, etc.)
+- **weight** (number, optional): Edge importance weight
+
+### Concept Dictionary Structure
+```javascript
+{
+  "concepts": [
+    {
+      "id": "concept_001",
+      "name": "Machine Learning",
+      "definition": "A subset of artificial intelligence...",
+      "aliases": ["ML", "Машинное обучение"],
+      "mention_count": {
+        "chunk_001": 3,
+        "chunk_002": 1
+      }
+    }
+  ]
+}
+```
+
+## Window Global Objects
+
+The following objects are exposed globally for debugging and integration:
+- **window.graphData**: Complete graph data structure
+- **window.conceptData**: Concept dictionary
+- **window.cy**: Cytoscape instance (after initialization)
+- **window.graphCore**: GraphCore instance
+- **window.vizConfig**: Visualization configuration
+- **window.colorsConfig**: Color scheme configuration
+- **window.uiConfig**: UI settings configuration
+- **window.nodeShapes**: Node shape mappings
+
+## Initialization Sequence
+
+1. **DOMContentLoaded event**:
+   - Load configurations into window objects
+   - Initialize GraphCore with container
+   - Call `graphCore.initialize()` with data
+   - Store cy instance globally
+
+2. **GraphCore initialization**:
+   - Prepare graph elements
+   - Generate Cytoscape styles
+   - Create cy instance
+   - Setup hover labels
+   - Trigger animations
+
+3. **k2-graph-ready event**:
+   - Dispatched after GraphCore completes
+   - UIControls listens and auto-initializes
+   - Passes cy, graphCore, and data references
+
+4. **UIControls initialization**:
+   - Create filter checkboxes in header
+   - Create side panel with tabs
+   - Setup hover effects
+   - Create all popup containers
+   - Bind keyboard handlers
+   - Update initial counters
 
 ## Usage Examples
 
@@ -772,6 +892,20 @@ cy.nodes().size()    // Count nodes via Cytoscape
 
 ## Known Issues and Fixes
 
-- **Fixed**: Chrome on Windows showing unwanted scrollbars in info popup (overflow management with nested containers)
-- Node and Concept popups use exclusive display (only one popup at a time)
-- Educational tooltips provide context for learning metrics
+### Fixed Issues
+- **Chrome scrollbar issue**: Fixed unwanted scrollbars in info popup on Windows (resolved with overflow management and nested containers)
+- **Counter updates**: Fixed counter not updating on filter change (now using `.not('.hidden')` selector instead of `:visible`)
+- **Tooltip positioning**: Fixed metric tooltips going off-screen (positioned to left of info icon)
+
+### Implementation Details
+- **Popup borders**: All popups use unified blue border (#3498db) under headers for consistency
+- **Node difficulty visualization**: Displayed as 5 colored circles (traffic light pattern: green 1-2, yellow 3, red 4-5)
+- **Edge difficulty column**: Shows target node difficulty as smaller circles in edge list
+- **Metric tooltips**: Changed from hover to click interaction for better mobile compatibility
+- **Popup width**: Node popup width increased to 690px (15% wider) for better content display
+- **Background colors**: Info sections use light blue background (#f0f7ff) with blue left border
+
+### Browser Compatibility
+- Tested on Chrome, Firefox, Safari, Edge
+- Mobile responsive design for tablets (phones have limited support)
+- Touch interactions supported for node selection and dragging

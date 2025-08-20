@@ -700,9 +700,11 @@ const UIControls = {
     
     // Helper Methods
     updateCounters() {
-        const visibleNodes = this.cy.nodes(':visible').length;
+        // Count nodes without 'hidden' class
+        const visibleNodes = this.cy.nodes().not('.hidden').length;
         const totalNodes = this.cy.nodes().length;
-        const visibleEdges = this.cy.edges(':visible').length;
+        // Count edges without 'hidden-edge' class
+        const visibleEdges = this.cy.edges().not('.hidden-edge').length;
         const totalEdges = this.cy.edges().length;
         
         document.getElementById('visible-nodes').textContent = visibleNodes;

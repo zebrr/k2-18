@@ -317,13 +317,14 @@ body {
 }
 
 #header {
-  background: white;
-  box-shadow: var(--shadow-md);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-md) var(--space-lg);
   display: flex;
   justify-content: space-between;
   align-items: center;
   z-index: 1000;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 #header .brand {
@@ -333,29 +334,32 @@ body {
 }
 
 #header .logo {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, var(--color-chunk) 0%, var(--color-concept) 100%);
+  width: 60px; /* Increased for better K2-18 readability */
+  height: 40px; /* Increased height */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: var(--font-bold);
-  color: white;
-  font-size: var(--text-lg);
+  color: #764ba2;
+  font-size: var(--text-base); /* Larger font for better readability */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.5px; /* Tighter letter spacing */
 }
 
 #header h1 {
   font-size: var(--text-xl);
   font-weight: var(--font-semibold);
-  color: var(--color-text-primary);
+  color: white;
   margin: 0;
   letter-spacing: var(--tracking-tight);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 #header .subtitle {
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  color: rgba(255, 255, 255, 0.9);
   font-weight: var(--font-normal);
 }
 
@@ -466,30 +470,31 @@ body {
     gap: var(--space-xs);
     cursor: pointer;
     font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .filter-checkbox input[type="checkbox"] {
     cursor: pointer;
+    accent-color: white;
 }
 
 .filter-checkbox:hover {
-    color: var(--color-text-primary);
+    color: white;
 }
 
 #stats-container .counters {
     font-size: var(--text-sm);
-    color: var(--color-text-muted);
+    color: rgba(255, 255, 255, 0.8);
 }
 
 #stats-container .counters strong {
-    color: var(--color-text-primary);
+    color: white;
     font-weight: var(--font-semibold);
 }
 
 #stats-container .separator {
     margin: 0 var(--space-xs);
-    color: var(--color-border);
+    color: rgba(255, 255, 255, 0.4);
 }
 
 /* Side Panel */
@@ -520,7 +525,7 @@ body {
     transform: translateY(-50%);
     width: 45px;
     height: 70px;
-    background: var(--color-chunk); /* Яркий синий фон */
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* Gradient like header */
     border: 2px solid white;
     border-right: none;
     border-radius: 12px 0 0 12px;
@@ -532,12 +537,11 @@ body {
     z-index: 201;
     box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
     transition: all var(--transition-base);
-    /* Добавим фильтр для белой иконки на синем фоне */
-    filter: brightness(1.1);
+    color: white; /* White icon color */
 }
 
 .side-panel-tab:hover {
-    background: #2980b9; /* Темнее при наведении */
+    background: linear-gradient(135deg, #5a72e5 0%, #6b4299 100%); /* Darker gradient on hover */
     transform: translateY(-50%) translateX(-4px);
     box-shadow: -4px 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -1024,7 +1028,7 @@ edge.hover-connected {
     gap: var(--space-sm);
     padding-bottom: var(--space-md);
     padding-right: 40px; /* Space for close button */
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 2px solid var(--color-chunk);
     margin-bottom: var(--space-md);
     flex-wrap: wrap;
 }
@@ -1134,12 +1138,12 @@ edge.hover-connected {
 
 .node-definition-scroll {
     padding: var(--space-md);
-    background: #fff3e0;
+    background: #f0f7ff; /* Unified blue background like in info-popup */
     border-radius: var(--radius-md);
     font-size: var(--text-sm);
+    border-left: 3px solid var(--color-chunk); /* Add blue border like encoding-note */
     line-height: 1.6;
     color: var(--color-text-secondary);
-    border: 1px solid #ffe0b2;
 }
 
 .metrics-section {
@@ -1404,7 +1408,7 @@ edge.hover-connected {
 
 .concept-popup .popup-header {
     padding-bottom: var(--space-md);
-    border-bottom: 2px solid var(--color-concept);
+    border-bottom: 2px solid var(--color-chunk);
     margin-bottom: var(--space-md);
 }
 

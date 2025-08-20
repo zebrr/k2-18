@@ -179,8 +179,8 @@ Detailed specifications for each component are in `/docs/specs/`:
 
 **Incomplete Processing**
 - Check exit codes and logs in `/logs/`
-- Most utilities support resuming from last successful slice
 - Use `previous_response_id` for context continuity
+- Utilities do not support resuming from last successful slice
 
 ## Development
 

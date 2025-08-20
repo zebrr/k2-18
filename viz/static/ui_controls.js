@@ -91,7 +91,7 @@ const UIControls = {
                 </label>
             </div>
             <div class="counters">
-                <span>Видимые: <strong id="visible-nodes">0</strong>/<strong id="total-nodes">0</strong></span>
+                <span>Узлы: <strong id="visible-nodes">0</strong>/<strong id="total-nodes">0</strong></span>
                 <span class="separator">|</span>
                 <span>Рёбра: <strong id="visible-edges">0</strong>/<strong id="total-edges">0</strong></span>
             </div>
@@ -179,6 +179,7 @@ const UIControls = {
         document.body.appendChild(panel);
         document.body.appendChild(tabButton);
         this.sidePanel = panel;
+        this.sidePanelTab = tabButton; // Store tab button reference
         
         // Add event listeners
         tabButton.addEventListener('click', () => this.toggleSidePanel());
@@ -196,6 +197,14 @@ const UIControls = {
     toggleSidePanel() {
         this.state.sidePanelOpen = !this.state.sidePanelOpen;
         this.sidePanel.classList.toggle('open', this.state.sidePanelOpen);
+        
+        // Move tab button with panel (like left panel behavior)
+        const PANEL_WIDTH = 320; // Actual panel width from CSS
+        if (this.state.sidePanelOpen) {
+            this.sidePanelTab.style.right = `${PANEL_WIDTH}px`;
+        } else {
+            this.sidePanelTab.style.right = '0';
+        }
     },
     
     switchTab(tabName) {

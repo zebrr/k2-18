@@ -1,7 +1,7 @@
 {
   "nodes": [
     {
-      "id": "chunk_1",
+      "id": "test:c:1",
       "type": "Chunk",
       "text": "Introduction to sorting algorithms",
       "node_offset": 0,
@@ -9,7 +9,7 @@
       "difficulty": 1
     },
     {
-      "id": "chunk_2",
+      "id": "test:c:2",
       "type": "Chunk",
       "text": "Bubble sort implementation",
       "node_offset": 100,
@@ -17,7 +17,7 @@
       "difficulty": 2
     },
     {
-      "id": "chunk_3",
+      "id": "test:c:3",
       "type": "Chunk",
       "text": "Quick sort algorithm",
       "node_offset": 200,
@@ -25,7 +25,7 @@
       "difficulty": 3
     },
     {
-      "id": "chunk_4",
+      "id": "test:c:4",
       "type": "Chunk",
       "text": "Complexity analysis",
       "node_offset": 300,
@@ -62,7 +62,7 @@
       "difficulty": 3
     },
     {
-      "id": "chunk_5",
+      "id": "test:c:5",
       "type": "Chunk",
       "text": "Comparison of sorting methods",
       "node_offset": 500,
@@ -70,7 +70,7 @@
       "difficulty": 2
     },
     {
-      "id": "chunk_6",
+      "id": "test:c:6",
       "type": "Chunk",
       "text": "Real-world applications",
       "node_offset": 600,
@@ -80,92 +80,92 @@
   ],
   "edges": [
     {
-      "source": "chunk_1",
-      "target": "chunk_2",
+      "source": "test:c:1",
+      "target": "test:c:2",
       "type": "PREREQUISITE",
       "weight": 0.9
     },
     {
-      "source": "chunk_1",
-      "target": "chunk_3",
+      "source": "test:c:1",
+      "target": "test:c:3",
       "type": "PREREQUISITE",
       "weight": 0.85
     },
     {
-      "source": "chunk_2",
-      "target": "chunk_4",
+      "source": "test:c:2",
+      "target": "test:c:4",
       "type": "ELABORATES",
       "weight": 0.7
     },
     {
-      "source": "chunk_3",
-      "target": "chunk_4",
+      "source": "test:c:3",
+      "target": "test:c:4",
       "type": "ELABORATES",
       "weight": 0.75
     },
     {
-      "source": "chunk_1",
+      "source": "test:c:1",
       "target": "concept_sorting",
       "type": "MENTIONS",
       "weight": 0.8
     },
     {
-      "source": "chunk_4",
+      "source": "test:c:4",
       "target": "concept_complexity",
       "type": "MENTIONS",
       "weight": 0.9
     },
     {
-      "source": "chunk_3",
+      "source": "test:c:3",
       "target": "concept_recursion",
       "type": "MENTIONS",
       "weight": 0.6
     },
     {
-      "source": "chunk_2",
-      "target": "chunk_3",
+      "source": "test:c:2",
+      "target": "test:c:3",
       "type": "PARALLEL",
       "weight": 0.5
     },
     {
       "source": "assessment_1",
-      "target": "chunk_3",
+      "target": "test:c:3",
       "type": "TESTS",
       "weight": 0.8
     },
     {
-      "source": "chunk_4",
-      "target": "chunk_5",
+      "source": "test:c:4",
+      "target": "test:c:5",
       "type": "HINT_FORWARD",
       "weight": 0.4
     },
     {
-      "source": "chunk_5",
-      "target": "chunk_2",
+      "source": "test:c:5",
+      "target": "test:c:2",
       "type": "REFER_BACK",
       "weight": 0.3
     },
     {
-      "source": "chunk_5",
-      "target": "chunk_3",
+      "source": "test:c:5",
+      "target": "test:c:3",
       "type": "REFER_BACK",
       "weight": 0.35
     },
     {
-      "source": "chunk_1",
-      "target": "chunk_6",
+      "source": "test:c:1",
+      "target": "test:c:6",
       "type": "PREREQUISITE",
       "weight": 0.7
     },
     {
-      "source": "chunk_6",
+      "source": "test:c:6",
       "target": "concept_sorting",
       "type": "EXAMPLE_OF",
       "weight": 0.6
     },
     {
-      "source": "chunk_5",
-      "target": "chunk_6",
+      "source": "test:c:5",
+      "target": "test:c:6",
       "type": "ELABORATES",
       "weight": 0.65
     }

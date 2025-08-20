@@ -51,7 +51,7 @@ Raw Content (.md, .txt, .html)
 
 - Python 3.11+
 - OpenAI API access (Responses API)
-- Memory: ~2GB per 100 pages of text
+- Memory: Not tested (entire corpus processed in memory)
 - OS: Windows, macOS
 
 ## Installation
@@ -167,19 +167,15 @@ Detailed specifications for each component are in `/docs/specs/`:
 
 ### Common Issues
 
-**Out of Memory**
-- The pipeline processes everything in memory
-- Estimate: ~2GB RAM per 100 pages
-- Solution: Process smaller batches or increase available memory
-
 **API Rate Limits**
-- Check your OpenAI Tier TPM limits
+- Check your OpenAI API Tier TPM limits
 - Adjust `tpm_limit` in config
 - Pipeline will auto-retry with backoff
 
 **Incomplete Processing**
 - Check exit codes and logs in `/logs/`
 - Use `previous_response_id` for context continuity
+- Use `timeout` and `max_retries ` to manage retries
 - Utilities do not support resuming from last successful slice
 
 ## Development
@@ -188,9 +184,8 @@ Detailed specifications for each component are in `/docs/specs/`:
 
 1. Follow TDD approach - write tests first
 2. All functions must have type hints
-3. Update relevant specifications in `/docs/specs/`
-4. Run quality checks before commits
-5. Keep specifications in sync with code
+3. Run quality checks before commits
+4. Update relevant specifications in `/docs/specs/`
 
 ### Code Quality
 
@@ -212,22 +207,13 @@ mypy src/
 source .venv/bin/activate  # Linux/macOS
 .venv\Scripts\activate     # Windows
 
-# Quick unit tests (< 10 seconds)
-pytest tests/ -m "not integration and not slow" -v
+# Run all tests but integration (fast!)
+pytest tests/ -v -m "not integration"
 
-# All unit tests with coverage
-pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
-
-# Integration SLOW (~5m) tests (require API key)
-pytest tests/ -m "integration" -v
-
-# Full test suite
+# Full test suite incl. integration (~5-7m and require OpenAI API key)
 pytest tests/ -v
 
-# Generate HTML coverage report (/htmlcov/index.html)
-pytest tests/ --cov=src --cov-report=html
 ```
-
 Test markers:
 - `integration` - Tests requiring real API calls
 - `slow` - Tests taking >30 seconds

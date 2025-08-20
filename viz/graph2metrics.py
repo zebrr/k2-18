@@ -873,6 +873,9 @@ def compute_all_metrics(
     # Generate demo path
     graph_data = generate_demo_path(G, graph_data, config, logger)
 
+    # Generate course sequence
+    graph_data = generate_course_sequence(graph_data, logger)
+
     # Link nodes to concepts
     graph_data = link_nodes_to_concepts(graph_data)
 
@@ -1545,6 +1548,62 @@ def generate_demo_path(
         logger.info(f"{mode_prefix}Generated {strategy_name} demo path with {len(path)} nodes")
         if path and len(path) <= 10:
             logger.debug(f"Demo path: {' → '.join(path)}")
+
+    return graph_data
+
+
+def generate_course_sequence(
+    graph_data: Dict[str, Any],
+    logger: Optional[logging.Logger] = None,
+) -> Dict[str, Any]:
+    """Generate course sequence from Chunk nodes ordered by position.
+
+    Args:
+        graph_data: Graph data with nodes
+        logger: Optional logger instance
+
+    Returns:
+        Graph data with course_sequence in _meta
+    """
+    if logger:
+        logger.info("Generating course sequence from Chunk nodes")
+
+    # Find all Chunk nodes
+    chunk_nodes = [node for node in graph_data.get("nodes", []) if node.get("type") == "Chunk"]
+
+    if logger:
+        logger.debug(f"Found {len(chunk_nodes)} Chunk nodes")
+
+    # Extract position and build sequence
+    course_sequence = []
+    for node in chunk_nodes:
+        node_id = node.get("id", "")
+        # ID format: {slug}:c:{position}
+        if ":c:" in node_id:
+            try:
+                position = int(node_id.split(":c:")[1])
+                course_sequence.append(
+                    {
+                        "id": node_id,
+                        "cluster_id": node.get("cluster_id", 0),
+                        "position": position,
+                    }
+                )
+            except (ValueError, IndexError) as e:
+                if logger:
+                    logger.warning(f"Could not extract position from Chunk ID '{node_id}': {e}")
+
+    # Sort by position
+    course_sequence.sort(key=lambda x: x["position"])
+
+    # Add to _meta
+    if "_meta" not in graph_data:
+        graph_data["_meta"] = {}
+
+    graph_data["_meta"]["course_sequence"] = course_sequence
+
+    if logger:
+        logger.info(f"Generated course sequence with {len(course_sequence)} items")
 
     return graph_data
 

@@ -506,7 +506,7 @@ body {
     width: 320px;
     background: rgba(255, 255, 255, 0.95);
     border-left: 1px solid var(--color-border);
-    transition: right 0.3s ease-out;
+    transition: right var(--transition-base); /* Sync with button transition */
     z-index: 200;
     overflow: hidden;
     display: flex;
@@ -536,7 +536,7 @@ body {
     font-size: 28px;
     z-index: 201;
     box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
-    transition: all var(--transition-base);
+    transition: right var(--transition-base), transform var(--transition-base), background var(--transition-base), box-shadow var(--transition-base); /* Specific transitions */
     color: white; /* White icon color */
 }
 
@@ -685,6 +685,84 @@ body {
     color: var(--color-text-muted);
     font-size: var(--text-sm);
     padding: var(--space-xl);
+}
+
+/* Course Panel - Left side panel with course content */
+.course-panel {
+    position: fixed;
+    left: -320px;
+    top: 60px;
+    width: 320px;
+    height: calc(100vh - 60px);
+    background: white;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: left 0.3s ease;
+    z-index: 998;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.course-panel.open {
+    left: 0;
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+}
+
+.course-panel-button {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 45px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-left: none;
+    border-radius: 0 12px 12px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    z-index: 999;
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+    color: white;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.course-panel-button:hover {
+    background: linear-gradient(135deg, #5a72e5 0%, #6b4299 100%);
+    transform: translateY(-50%) translateX(4px);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.course-panel-button.panel-open {
+    left: 320px;
+}
+
+.course-item {
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.course-item:hover {
+    transform: translateX(4px);
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Animation for flashing nodes when clicked from course panel */
+@keyframes node-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.flashing {
+    animation: node-flash 0.5s ease-in-out 2;
 }
 
 /* Node States for Cytoscape */

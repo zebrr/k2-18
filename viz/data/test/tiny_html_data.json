@@ -1,7 +1,7 @@
 {
   "nodes": [
     {
-      "id": "chunk_intro",
+      "id": "test:c:1",
       "type": "Chunk",
       "text": "Introduction to algorithms and complexity",
       "node_offset": 0,
@@ -44,7 +44,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_sorting",
+      "id": "test:c:2",
       "type": "Chunk",
       "text": "Sorting algorithms overview",
       "node_offset": 100,
@@ -67,7 +67,7 @@
       ]
     },
     {
-      "id": "chunk_bubble",
+      "id": "test:c:3",
       "type": "Chunk",
       "text": "Bubble sort implementation and analysis",
       "node_offset": 200,
@@ -108,7 +108,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_quicksort",
+      "id": "test:c:4",
       "type": "Chunk",
       "text": "Quicksort divide-and-conquer approach",
       "node_offset": 300,
@@ -171,7 +171,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_optimization",
+      "id": "test:c:5",
       "type": "Chunk",
       "text": "Optimizing quicksort with pivot selection",
       "node_offset": 450,
@@ -212,7 +212,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_bigO",
+      "id": "test:c:6",
       "type": "Chunk",
       "text": "Big O notation for complexity analysis",
       "node_offset": 550,
@@ -255,7 +255,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_merge",
+      "id": "test:c:7",
       "type": "Chunk",
       "text": "Merge sort implementation and analysis",
       "node_offset": 650,
@@ -278,7 +278,7 @@
       ]
     },
     {
-      "id": "chunk_heap",
+      "id": "test:c:8",
       "type": "Chunk",
       "text": "Heap sort using binary heap",
       "node_offset": 700,
@@ -321,7 +321,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_searching",
+      "id": "test:c:9",
       "type": "Chunk",
       "text": "Introduction to searching algorithms",
       "node_offset": 800,
@@ -342,7 +342,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_binary_search",
+      "id": "test:c:10",
       "type": "Chunk",
       "text": "Binary search in sorted arrays",
       "node_offset": 850,
@@ -405,7 +405,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_datastruct",
+      "id": "test:c:11",
       "type": "Chunk",
       "text": "Basic data structures overview",
       "node_offset": 1000,
@@ -426,7 +426,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_trees",
+      "id": "test:c:12",
       "type": "Chunk",
       "text": "Introduction to tree data structures",
       "node_offset": 1050,
@@ -469,7 +469,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_graphs",
+      "id": "test:c:13",
       "type": "Chunk",
       "text": "Graph algorithms and traversal",
       "node_offset": 1150,
@@ -512,7 +512,7 @@
       "concepts": []
     },
     {
-      "id": "chunk_dynamic",
+      "id": "test:c:14",
       "type": "Chunk",
       "text": "Dynamic programming fundamentals",
       "node_offset": 1250,
@@ -557,7 +557,7 @@
   ],
   "edges": [
     {
-      "source": "chunk_intro",
+      "source": "test:c:1",
       "target": "concept_complexity",
       "type": "MENTIONS",
       "weight": 0.35,
@@ -567,8 +567,8 @@
       "target_cluster_id": 2
     },
     {
-      "source": "chunk_intro",
-      "target": "chunk_sorting",
+      "source": "test:c:1",
+      "target": "test:c:2",
       "type": "PREREQUISITE",
       "weight": 0.9,
       "inverse_weight": 1.1111111111111112,
@@ -578,14 +578,14 @@
     },
     {
       "source": "concept_complexity",
-      "target": "chunk_sorting",
+      "target": "test:c:2",
       "type": "PREREQUISITE",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_sorting",
+      "source": "test:c:2",
       "target": "concept_sorting",
       "type": "MENTIONS",
       "weight": 0.4,
@@ -593,16 +593,16 @@
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_sorting",
-      "target": "chunk_bubble",
+      "source": "test:c:2",
+      "target": "test:c:3",
       "type": "PREREQUISITE",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_bubble",
-      "target": "chunk_quicksort",
+      "source": "test:c:3",
+      "target": "test:c:4",
       "type": "PARALLEL",
       "weight": 0.6,
       "inverse_weight": 1.6666666666666667,
@@ -612,7 +612,7 @@
     },
     {
       "source": "concept_sorting",
-      "target": "chunk_bubble",
+      "target": "test:c:3",
       "type": "ELABORATES",
       "weight": 0.65,
       "inverse_weight": 1.5384615384615383,
@@ -620,7 +620,7 @@
     },
     {
       "source": "concept_sorting",
-      "target": "chunk_quicksort",
+      "target": "test:c:4",
       "type": "ELABORATES",
       "weight": 0.7,
       "inverse_weight": 1.4285714285714286,
@@ -629,7 +629,7 @@
       "target_cluster_id": 1
     },
     {
-      "source": "chunk_quicksort",
+      "source": "test:c:4",
       "target": "concept_recursion",
       "type": "MENTIONS",
       "weight": 0.35,
@@ -638,7 +638,7 @@
     },
     {
       "source": "assessment_sorting",
-      "target": "chunk_bubble",
+      "target": "test:c:3",
       "type": "TESTS",
       "weight": 0.9,
       "inverse_weight": 1.1111111111111112,
@@ -646,7 +646,7 @@
     },
     {
       "source": "assessment_sorting",
-      "target": "chunk_quicksort",
+      "target": "test:c:4",
       "type": "TESTS",
       "weight": 0.9,
       "inverse_weight": 1.1111111111111112,
@@ -655,16 +655,16 @@
       "target_cluster_id": 1
     },
     {
-      "source": "chunk_quicksort",
-      "target": "chunk_optimization",
+      "source": "test:c:4",
+      "target": "test:c:5",
       "type": "PREREQUISITE",
       "weight": 0.95,
       "inverse_weight": 1.0526315789473684,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_optimization",
-      "target": "chunk_quicksort",
+      "source": "test:c:5",
+      "target": "test:c:4",
       "type": "REVISION_OF",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
@@ -672,7 +672,7 @@
     },
     {
       "source": "concept_recursion",
-      "target": "chunk_optimization",
+      "target": "test:c:5",
       "type": "PREREQUISITE",
       "weight": 0.8,
       "inverse_weight": 1.25,
@@ -680,14 +680,14 @@
     },
     {
       "source": "assessment_final",
-      "target": "chunk_optimization",
+      "target": "test:c:5",
       "type": "TESTS",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_sorting",
+      "source": "test:c:2",
       "target": "assessment_final",
       "type": "HINT_FORWARD",
       "weight": 0.4,
@@ -697,15 +697,15 @@
       "target_cluster_id": 1
     },
     {
-      "source": "chunk_intro",
-      "target": "chunk_bigO",
+      "source": "test:c:1",
+      "target": "test:c:6",
       "type": "PREREQUISITE",
       "weight": 0.8,
       "inverse_weight": 1.25,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_bigO",
+      "source": "test:c:6",
       "target": "concept_bigO",
       "type": "MENTIONS",
       "weight": 0.45,
@@ -721,15 +721,15 @@
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_sorting",
-      "target": "chunk_merge",
+      "source": "test:c:2",
+      "target": "test:c:7",
       "type": "PREREQUISITE",
       "weight": 0.8,
       "inverse_weight": 1.25,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_merge",
+      "source": "test:c:7",
       "target": "concept_divconquer",
       "type": "MENTIONS",
       "weight": 0.4,
@@ -740,22 +740,22 @@
     },
     {
       "source": "concept_divconquer",
-      "target": "chunk_quicksort",
+      "target": "test:c:4",
       "type": "ELABORATES",
       "weight": 0.75,
       "inverse_weight": 1.3333333333333333,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_sorting",
-      "target": "chunk_heap",
+      "source": "test:c:2",
+      "target": "test:c:8",
       "type": "PREREQUISITE",
       "weight": 0.75,
       "inverse_weight": 1.3333333333333333,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_heap",
+      "source": "test:c:8",
       "target": "concept_heap",
       "type": "MENTIONS",
       "weight": 0.5,
@@ -766,30 +766,30 @@
     },
     {
       "source": "concept_heap",
-      "target": "chunk_trees",
+      "target": "test:c:12",
       "type": "PREREQUISITE",
       "weight": 0.7,
       "inverse_weight": 1.4285714285714286,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_intro",
-      "target": "chunk_searching",
+      "source": "test:c:1",
+      "target": "test:c:9",
       "type": "PREREQUISITE",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_searching",
-      "target": "chunk_binary_search",
+      "source": "test:c:9",
+      "target": "test:c:10",
       "type": "PREREQUISITE",
       "weight": 0.9,
       "inverse_weight": 1.1111111111111112,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_binary_search",
+      "source": "test:c:10",
       "target": "concept_divconquer",
       "type": "MENTIONS",
       "weight": 0.35,
@@ -799,16 +799,16 @@
       "target_cluster_id": 1
     },
     {
-      "source": "chunk_merge",
-      "target": "chunk_bubble",
+      "source": "test:c:7",
+      "target": "test:c:3",
       "type": "PARALLEL",
       "weight": 0.65,
       "inverse_weight": 1.5384615384615383,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_merge",
-      "target": "chunk_heap",
+      "source": "test:c:7",
+      "target": "test:c:8",
       "type": "PARALLEL",
       "weight": 0.6,
       "inverse_weight": 1.6666666666666667,
@@ -816,23 +816,23 @@
     },
     {
       "source": "assessment_sorting",
-      "target": "chunk_merge",
+      "target": "test:c:7",
       "type": "TESTS",
       "weight": 0.85,
       "inverse_weight": 1.1764705882352942,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_intro",
-      "target": "chunk_datastruct",
+      "source": "test:c:1",
+      "target": "test:c:11",
       "type": "PREREQUISITE",
       "weight": 0.95,
       "inverse_weight": 1.0526315789473684,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_datastruct",
-      "target": "chunk_trees",
+      "source": "test:c:11",
+      "target": "test:c:12",
       "type": "PREREQUISITE",
       "weight": 0.9,
       "inverse_weight": 1.1111111111111112,
@@ -841,7 +841,7 @@
       "target_cluster_id": 3
     },
     {
-      "source": "chunk_trees",
+      "source": "test:c:12",
       "target": "concept_tree",
       "type": "MENTIONS",
       "weight": 0.5,
@@ -857,15 +857,15 @@
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_trees",
-      "target": "chunk_graphs",
+      "source": "test:c:12",
+      "target": "test:c:13",
       "type": "PREREQUISITE",
       "weight": 0.8,
       "inverse_weight": 1.25,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_graphs",
+      "source": "test:c:13",
       "target": "concept_recursion",
       "type": "MENTIONS",
       "weight": 0.3,
@@ -875,15 +875,15 @@
       "target_cluster_id": 1
     },
     {
-      "source": "chunk_optimization",
-      "target": "chunk_dynamic",
+      "source": "test:c:5",
+      "target": "test:c:14",
       "type": "PREREQUISITE",
       "weight": 0.7,
       "inverse_weight": 1.4285714285714286,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_dynamic",
+      "source": "test:c:14",
       "target": "concept_memoization",
       "type": "MENTIONS",
       "weight": 0.45,
@@ -900,14 +900,14 @@
     },
     {
       "source": "assessment_final",
-      "target": "chunk_dynamic",
+      "target": "test:c:14",
       "type": "TESTS",
       "weight": 0.75,
       "inverse_weight": 1.3333333333333333,
       "is_inter_cluster_edge": false
     },
     {
-      "source": "chunk_binary_search",
+      "source": "test:c:10",
       "target": "assessment_trees",
       "type": "HINT_FORWARD",
       "weight": 0.35,
@@ -917,8 +917,8 @@
       "target_cluster_id": 3
     },
     {
-      "source": "chunk_graphs",
-      "target": "chunk_dynamic",
+      "source": "test:c:13",
+      "target": "test:c:14",
       "type": "REFER_BACK",
       "weight": 0.45,
       "inverse_weight": 2.2222222222222223,
@@ -939,6 +939,78 @@
       "strategy_name": "showcase",
       "max_nodes": 100,
       "actual_nodes": 4
-    }
+    },
+    "course_sequence": [
+      {
+        "id": "test:c:1",
+        "cluster_id": 0,
+        "position": 1
+      },
+      {
+        "id": "test:c:2",
+        "cluster_id": 2,
+        "position": 2
+      },
+      {
+        "id": "test:c:3",
+        "cluster_id": 2,
+        "position": 3
+      },
+      {
+        "id": "test:c:4",
+        "cluster_id": 1,
+        "position": 4
+      },
+      {
+        "id": "test:c:5",
+        "cluster_id": 1,
+        "position": 5
+      },
+      {
+        "id": "test:c:6",
+        "cluster_id": 0,
+        "position": 6
+      },
+      {
+        "id": "test:c:7",
+        "cluster_id": 2,
+        "position": 7
+      },
+      {
+        "id": "test:c:8",
+        "cluster_id": 2,
+        "position": 8
+      },
+      {
+        "id": "test:c:9",
+        "cluster_id": 0,
+        "position": 9
+      },
+      {
+        "id": "test:c:10",
+        "cluster_id": 0,
+        "position": 10
+      },
+      {
+        "id": "test:c:11",
+        "cluster_id": 0,
+        "position": 11
+      },
+      {
+        "id": "test:c:12",
+        "cluster_id": 3,
+        "position": 12
+      },
+      {
+        "id": "test:c:13",
+        "cluster_id": 3,
+        "position": 13
+      },
+      {
+        "id": "test:c:14",
+        "cluster_id": 1,
+        "position": 14
+      }
+    ]
   }
 }

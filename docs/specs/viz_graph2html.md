@@ -40,6 +40,7 @@ python -m viz.graph2html --test
   - `animation_controller.js` - Animation sequences controller
   - `graph_core.js` - Core graph initialization module
   - `ui_controls.js` - UI controls and user interactions
+  - `course_panel.js` - Left-side course content panel module
   - `debug_helpers.js` - Debug utilities (test mode only)
 
 #### Test Mode (`--test`)
@@ -410,7 +411,9 @@ cytoscape.use(cytoscapeCoseBilkent);
 ```
 
 5. **graph_core.js** - Application initialization module
-6. **debug_helpers.js** - Debug utilities (test mode only)
+6. **ui_controls.js** - User interface controls module
+7. **course_panel.js** - Course content panel module
+8. **debug_helpers.js** - Debug utilities (test mode only)
 
 ### Library Loading Modes
 
@@ -706,6 +709,18 @@ All 9 edge types from the schema have distinct visual styles:
      * Edge highlighting on node hover
      * Tooltips with 500ms delay
      * Info popup with graph statistics (i key)
+
+5. **course_panel.js**
+   - Left-side course content panel
+   - Exports CoursePanel object
+   - Features:
+     * Sequential display of Chunk nodes sorted by position
+     * Parses node IDs with format `{slug}:c:{position}`
+     * Cluster color indicators for each node
+     * Hover highlighting using pulse class
+     * Click to zoom without popup
+     * Sliding panel with 320px width
+     * Tab button that moves with panel
      * **Node Information Popup**: Detailed node information with metrics, edges, and navigation
        - Displays difficulty as traffic light with 5 circles
        - Shows edges with target node difficulty circles

@@ -143,6 +143,7 @@ Main orchestrator function that calls all metric computation functions in proper
   8. Compute advanced metrics (clustering, bridges)
   9. Add all metrics to nodes
   10. Transfer inter-cluster edge attributes to output
+  11. Generate course sequence from Chunk nodes
 
 #### compute_edge_weights(G: nx.DiGraph, logger: Optional[Logger]) -> nx.DiGraph
 Adds inverse_weight to all edges for distance algorithms.
@@ -381,6 +382,32 @@ Generates educational demo path for tour mode with 3 strategies.
 - `_build_educational_subgraph(G, edge_types)` - Extracts subgraph with only educational edges
 - `_add_high_value_nodes(G, current_path, target, metric)` - Adds top nodes by specified metric
 - `_ensure_path_connectivity(G, path_nodes)` - Fills gaps in path with intermediate nodes
+
+#### generate_course_sequence(graph_data: Dict, logger: Optional[Logger] = None) -> Dict
+Generates sequential course content order from Chunk nodes.
+- **Input**: 
+  - graph_data (Dict) - Graph with nodes containing Chunk types
+  - logger (Optional[Logger]) - Logger instance for warnings
+- **Returns**: Enhanced graph_data with course_sequence in _meta
+- **Algorithm**: 
+  1. Find all nodes with type="Chunk"
+  2. Parse node IDs with format `{slug}:c:{position}`
+  3. Extract position number after `:c:`
+  4. Sort by position ascending
+  5. Include cluster_id from node attributes
+- **Output structure in _meta.course_sequence**: 
+  ```json
+  [
+    {"id": "lesson1:c:1", "cluster_id": 0, "position": 1},
+    {"id": "lesson1:c:2", "cluster_id": 1, "position": 2},
+    ...
+  ]
+  ```
+- **Edge cases**:
+  - Invalid ID format: Skip node with warning
+  - Missing position: Skip node with warning
+  - Empty result: Returns empty list
+- **Purpose**: Powers left-side course content panel in visualization
 
 #### create_mention_index(graph_data: Dict, concepts_data: Dict) -> Dict
 Creates index of concept mentions in nodes.

@@ -364,6 +364,19 @@ def generate_html(
     else:
         logger.warning("ui_controls.js not found - UI controls disabled")
 
+    # Load course panel module
+    course_panel_content = ""
+    course_panel_path = viz_dir / "static" / "course_panel.js"
+    if course_panel_path.exists():
+        try:
+            with open(course_panel_path, encoding="utf-8") as f:
+                course_panel_content = f.read()
+            logger.info(f"Loaded course_panel.js ({len(course_panel_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to load course_panel.js: {e}")
+    else:
+        logger.warning("course_panel.js not found - Course panel disabled")
+
     # Add cose-bilkent registration script
     if embed:
         # For embedded mode, add registration after vendor_js_content
@@ -421,6 +434,7 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "animation_controller_content": animation_controller_content if embed else "",
         "graph_core_content": graph_core_content if embed else "",
         "ui_controls_content": ui_controls_content if embed else "",
+        "course_panel_content": course_panel_content if embed else "",
         # CDN tags
         "script_tags": script_tags,
         "link_tags": link_tags,

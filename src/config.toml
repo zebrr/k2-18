@@ -47,7 +47,7 @@ auto_mentions_weight = 0.35  # Weak connection, can be strengthened by refiner
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
 tpm_safety_margin   = 0.15
 log_level           = "info"
-timeout             = 300
+timeout             = 360
 max_retries         = 3
 poll_interval       = 10
 
@@ -119,6 +119,6 @@ backward_sim_threshold = 0.75        # Порог схожести для backwa
 api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
 tpm_safety_margin   = 0.15
 log_level           = "info"
-timeout             = 300
+timeout             = 360
 max_retries         = 3
 poll_interval       = 7

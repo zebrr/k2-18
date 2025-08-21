@@ -101,14 +101,14 @@ embedding_tpm_limit = 1000000                   # Реальный лимит д
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
 truncate_tokens     = 8000                      # Обрезка текстов (API лимит 8192)
-sim_threshold       = 0.70
+sim_threshold       = 0.65
 max_pairs_per_node  = 20
 faiss_M             = 32
 faiss_metric        = "INNER_PRODUCT"
 
 # НОВЫЕ параметры для двух проходов
 enable_backward_pass = true          # Включить второй проход (по умолчанию true)
-backward_sim_threshold = 0.75        # Порог схожести для backward (может быть выше)
+backward_sim_threshold = 0.70        # Порог схожести для backward (может быть выше)
 
 # УДАЛЕНО: веса теперь прописаны в промптах fw/bw
 # weight_low = 0.3

@@ -353,7 +353,7 @@ class GraphCore {
                 tile: true,
                 tilingPaddingHorizontal: 300,   // Большой отступ по горизонтали
                 tilingPaddingVertical: 10,      // Маленький по вертикали
-                numIter: 4000,
+                numIter: 1500,
                 nestingFactor: 0.05
             };
         }

@@ -68,7 +68,7 @@ K2-18 includes a powerful visualization module that enriches your knowledge grap
 
 Perfect for quality control, curriculum analysis, and presenting results to stakeholders.
 
-For detailed documentation, see [Visualization Module Guide](./viz/README-VIZ.md).
+For detailed documentation, see [Visualization Module Guide](./viz/README.md).
 
 ## Requirements
 

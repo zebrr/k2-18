@@ -1,0 +1,5 @@
+# CODEOWNERS for K2-18 Project
+# All changes require review from @zebrr
+
+# Global owner - controls everything
+* @zebrr

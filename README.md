@@ -39,6 +39,16 @@ Raw Content (.md, .txt, .html)
 5. Refiner Longrange  → Knowledge Graph (with long-range connections added)
 ```
 
+## Use Cases
+
+After running the pipeline, you can:
+
+- **Import into Neo4j**: Use the JSON graph directly with Neo4j's import tools (see Neo4j documentation for import details)
+- **Build Learning Paths**: Find optimal prerequisite chains between topics
+- **Curriculum Analysis**: Identify knowledge gaps and redundancies
+- **Adaptive Learning**: Power recommendation systems with concept dependencies
+- **Content Quality**: Detect missing prerequisites or circular dependencies
+
 ### Key Features
 
 - **Incremental Processing**: Handles books of 100-1000 pages by processing in chunks
@@ -46,6 +56,19 @@ Raw Content (.md, .txt, .html)
 - **Smart Deduplication**: Uses embeddings to identify and merge semantically identical content
 - **Long-range Connections**: Discovers relationships between concepts separated by many pages (forward/backward pass)
 - **Language Support**: Any UTF-8 text content
+
+## Visualization & Analytics Module
+
+K2-18 includes a powerful visualization module that enriches your knowledge graphs with educational metrics and creates interactive visualizations.
+
+**What it does:**
+- Computes 12 network metrics revealing graph structure and learning paths
+- Identifies fundamental concepts, knowledge bridges, and topic clusters
+- Generates a standalone interactive HTML that works in any browser
+
+Perfect for quality control, curriculum analysis, and presenting results to stakeholders.
+
+For detailed documentation, see [Visualization Module Guide](./viz/README-VIZ.md).
 
 ## Requirements
 
@@ -152,9 +175,21 @@ All data formats are defined by JSON schemas in `/src/schemas/`:
 
 ## Documentation
 
-Detailed specifications for each component are in `/docs/specs/`:
-- CLI utilities: `cli_*.md`
-- Utility modules: `util_*.md`
+- **Component specifications**: [`/docs/specs/`](docs/specs/)
+  - Pipeline utilities: `cli_slicer.md`, `cli_itext2kg_concepts.md`, `cli_itext2kg_graph.md`, `cli_dedup.md`, `cli_refiner_longrange.md`  
+  - Core modules: `util_llm_client.md`, `util_config.md`, `util_validation.md`, `util_tokenizer.md`, etc.
+  
+- **Data schemas**: [`/src/schemas/`](src/schemas/)
+  - `ConceptDictionary.schema.json` - concept vocabulary structure
+  - `LearningChunkGraph.schema.json` - knowledge graph structure
+  
+- **LLM prompts**: [`/src/prompts/`](src/prompts/)
+  - `itext2kg_concepts_extraction.md` - concept extraction from text
+  - `itext2kg_graph_extraction.md` - knowledge graph construction
+  - `refiner_longrange_fw.md` - forward pass for long-range connections
+  - `refiner_longrange_bw.md` - backward pass for long-range connections
+  
+**⚠️ Important**: Current prompts are optimized for Computer Science or Economics content in Russian. For other domains (management, history, biology, etc.) or languages, prompts **REQUIRE** adaptation to domain-specific terminology and concept patterns.
 
 ## Limitations
 
@@ -165,14 +200,14 @@ Detailed specifications for each component are in `/docs/specs/`:
 
 ## Troubleshooting
 
-### Common Issues
+### API Rate Limits
 
-**API Rate Limits**
-- Check your OpenAI API Tier TPM limits
+- Check your OpenAI API Tier limits
 - Adjust `tpm_limit` in config
 - Pipeline will auto-retry with backoff
 
-**Incomplete Processing**
+### Incomplete Processing
+
 - Check exit codes and logs in `/logs/`
 - Use `previous_response_id` for context continuity
 - Use `timeout` and `max_retries ` to manage retries
@@ -238,4 +273,4 @@ This software is provided **“AS IS”**, without warranty of any kind. Use may
 
 - Check `/docs/specs/` for detailed component documentation
 - Review logs in `/logs/` for debugging
-- Open an Issue
+- Open a Github Issue

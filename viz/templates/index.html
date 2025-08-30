@@ -106,6 +106,19 @@
         {% if course_panel_content %}
         {{ course_panel_content|safe }}
         {% endif %}
+        
+        // Mode modules (if available)
+        {% if path_finder_content %}
+        {{ path_finder_content|safe }}
+        {% endif %}
+        
+        {% if clusters_bridges_content %}
+        {{ clusters_bridges_content|safe }}
+        {% endif %}
+        
+        {% if tour_mode_content %}
+        {{ tour_mode_content|safe }}
+        {% endif %}
     </script>
     {% else %}
     <!-- External modules in correct order -->
@@ -114,6 +127,9 @@
     <script src="../static/graph_core.js"></script>
     <script src="../static/ui_controls.js"></script>
     <script src="../static/course_panel.js"></script>
+    <script src="../static/path_finder.js"></script>
+    <script src="../static/clusters_bridges.js"></script>
+    <script src="../static/tour_mode.js"></script>
     {% endif %}
     
     <!-- Graph initialization using GraphCore -->

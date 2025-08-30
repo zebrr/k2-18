@@ -95,9 +95,9 @@ window.CoursePanel = (function() {
         panelElement.style.cssText = `
             position: fixed;
             left: -${PANEL_WIDTH}px;
-            top: 60px;
+            top: 106px;
             width: ${PANEL_WIDTH}px;
-            height: calc(100vh - 60px);
+            height: calc(100vh - 106px);
             background: white;
             box-shadow: 2px 0 5px rgba(0,0,0,0.1);
             transition: left 0.3s ease;

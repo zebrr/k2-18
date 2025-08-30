@@ -181,7 +181,7 @@ body {
 /* Cytoscape Container - Updated */
 #cy {
   position: absolute;
-  top: 56px;
+  top: 0;  /* No offset - fills parent cy-wrapper */
   left: 0;
   right: 0;
   bottom: 0;
@@ -268,8 +268,8 @@ body {
     font-size: var(--text-xs);
   }
   
-  #cy {
-    top: 48px;
+  #cy-wrapper {
+    top: 48px !important;
   }
   
   #controls-placeholder {
@@ -286,8 +286,8 @@ body {
     display: none;
   }
   
-  #cy {
-    top: 0;
+  #cy-wrapper {
+    top: 0 !important;
   }
 }
 
@@ -373,7 +373,7 @@ body {
 
 #cy {
   position: absolute;
-  top: 0;
+  top: 0;  /* No offset - fills parent cy-wrapper */
   left: 0;
   right: 0;
   bottom: 0;
@@ -497,11 +497,77 @@ body {
     color: rgba(255, 255, 255, 0.4);
 }
 
+/* Filter Panel - новая панель под шапкой */
+.filter-panel {
+    background: linear-gradient(135deg, #b3bef6 0%, #c8a5d8 100%);  /* В два раза светлее шапки */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 10px 20px;
+    position: fixed;
+    top: 56px;  /* Высота header */
+    left: 0;
+    right: 0;
+    z-index: 999;  /* Выше чем course-panel (998) */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.filter-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;  /* Перенос при узком экране */
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.filter-label {
+    font-weight: 500;
+    color: white;
+    margin-right: 5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.filter-separator {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 20px;
+    margin: 0 10px;
+}
+
+.filter-panel .filter-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.filter-panel .filter-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.filter-panel .filter-checkbox span {
+    font-size: 14px;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Стиль для скрытых рёбер */
+.hidden-edge {
+    display: none !important;
+}
+
 /* Side Panel */
 .side-panel {
     position: fixed;
     right: -320px;
-    top: 56px; /* Below header only */
+    top: 106px; /* Below header (56px) + filter panel (50px) */
+    height: calc(100vh - 106px);
     bottom: 0;
     width: 320px;
     background: rgba(255, 255, 255, 0.95);
@@ -691,9 +757,9 @@ body {
 .course-panel {
     position: fixed;
     left: -320px;
-    top: 60px;
+    top: 106px;  /* header (56px) + filter-panel (50px) */
     width: 320px;
-    height: calc(100vh - 60px);
+    height: calc(100vh - 106px);
     background: white;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
     transition: left 0.3s ease;
@@ -1062,9 +1128,14 @@ edge.hover-connected {
     line-height: 1.4;
 }
 
-/* Adjust cy-wrapper for header only */
+/* Adjust cy-wrapper for header and filter panel */
 #cy-wrapper {
-    top: 56px !important; /* Account for header only */
+    position: fixed;
+    top: 106px !important; /* Account for header (56px) + filter panel (50px) */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
 }
 
 /* Node and Concept Popups */
@@ -1610,4 +1681,114 @@ edge.hover-connected {
     .filter-checkbox span {
         font-size: var(--text-xs);
     }
+}
+
+/* Responsive styles for filter panel */
+@media (max-width: 768px) {
+    .filter-container {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .filter-separator {
+        display: none;
+    }
+    
+    .filter-group {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .filter-panel {
+        padding: 8px 15px;
+    }
+    
+    #cy-wrapper {
+        top: 130px !important;  /* More space for two rows of filters */
+    }
+    
+    .side-panel {
+        top: 130px;
+        height: calc(100vh - 130px);
+    }
+    
+    .course-panel {
+        top: 130px;
+        height: calc(100vh - 130px);
+    }
+}
+
+/* Mode buttons in header */
+.mode-buttons {
+    display: flex;
+    gap: 12px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.mode-btn:hover {
+    color: rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+}
+
+.mode-btn.active {
+    color: #3498db;
+    font-weight: 700;
+    background: rgba(52, 152, 219, 0.15);
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.mode-btn .mode-icon {
+    font-size: 14px;
+}
+
+.mode-btn .mode-text {
+    display: inline-block;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+}
+
+.mode-btn.active .mode-text {
+    letter-spacing: 1.2px;
+}
+
+/* Hide text on small screens */
+@media (max-width: 768px) {
+    .mode-btn .mode-text {
+        display: none;
+    }
+    .mode-btn {
+        padding: 4px 6px;
+    }
+    .mode-buttons {
+        gap: 8px;
+    }
+}
+
+/* Ensure buttons are behind popups backdrop */
+.popup-backdrop ~ * .mode-buttons {
+    pointer-events: none;
 }

@@ -377,6 +377,43 @@ def generate_html(
     else:
         logger.warning("course_panel.js not found - Course panel disabled")
 
+    # Load mode modules
+    path_finder_content = ""
+    path_finder_path = viz_dir / "static" / "path_finder.js"
+    if path_finder_path.exists():
+        try:
+            with open(path_finder_path, encoding="utf-8") as f:
+                path_finder_content = f.read()
+            logger.info(f"Loaded path_finder.js ({len(path_finder_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to load path_finder.js: {e}")
+    else:
+        logger.warning("path_finder.js not found - Path Mode disabled")
+
+    clusters_bridges_content = ""
+    clusters_bridges_path = viz_dir / "static" / "clusters_bridges.js"
+    if clusters_bridges_path.exists():
+        try:
+            with open(clusters_bridges_path, encoding="utf-8") as f:
+                clusters_bridges_content = f.read()
+            logger.info(f"Loaded clusters_bridges.js ({len(clusters_bridges_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to load clusters_bridges.js: {e}")
+    else:
+        logger.warning("clusters_bridges.js not found - Clusters Mode disabled")
+
+    tour_mode_content = ""
+    tour_mode_path = viz_dir / "static" / "tour_mode.js"
+    if tour_mode_path.exists():
+        try:
+            with open(tour_mode_path, encoding="utf-8") as f:
+                tour_mode_content = f.read()
+            logger.info(f"Loaded tour_mode.js ({len(tour_mode_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to load tour_mode.js: {e}")
+    else:
+        logger.warning("tour_mode.js not found - Tour Mode disabled")
+
     # Add cose-bilkent registration script
     if embed:
         # For embedded mode, add registration after vendor_js_content
@@ -423,7 +460,7 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "node_shapes": {
             "Chunk": config.get("node_shapes", {}).get("chunk_shape", "hexagon"),
             "Concept": config.get("node_shapes", {}).get("concept_shape", "star"),
-            "Assessment": config.get("node_shapes", {}).get("assessment_shape", "roundrectangle")
+            "Assessment": config.get("node_shapes", {}).get("assessment_shape", "roundrectangle"),
         },
         # Embedded content
         "embed_libraries": embed,
@@ -435,6 +472,9 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "graph_core_content": graph_core_content if embed else "",
         "ui_controls_content": ui_controls_content if embed else "",
         "course_panel_content": course_panel_content if embed else "",
+        "path_finder_content": path_finder_content if embed else "",
+        "clusters_bridges_content": clusters_bridges_content if embed else "",
+        "tour_mode_content": tour_mode_content if embed else "",
         # CDN tags
         "script_tags": script_tags,
         "link_tags": link_tags,

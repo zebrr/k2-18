@@ -41,6 +41,9 @@ python -m viz.graph2html --test
   - `graph_core.js` - Core graph initialization module
   - `ui_controls.js` - UI controls and user interactions
   - `course_panel.js` - Left-side course content panel module
+  - `path_finder.js` - Path Mode module (learning path discovery)
+  - `clusters_bridges.js` - Clusters Mode module (knowledge clusters visualization)
+  - `tour_mode.js` - Tour Mode module (automatic presentation tour)
   - `debug_helpers.js` - Debug utilities (test mode only)
 
 #### Test Mode (`--test`)
@@ -655,7 +658,34 @@ All 9 edge types from the schema have distinct visual styles:
 - Hide immediately on mouse leave
 - Prevents label flashing on quick mouse movements
 
+### HTML Structure
+
+#### Container Hierarchy
+```html
+<div id="app">
+    <header id="header">...</header>
+    <div id="filter-panel">...</div>  <!-- Dynamically created -->
+    <div id="cy-wrapper">  <!-- Fixed position, top: 106px -->
+        <div id="cy"></div>  <!-- Absolute position, fills wrapper -->
+    </div>
+</div>
+```
+
+#### Positioning Details
+- **#header**: Fixed, height 56px, z-index 1000
+- **#filter-panel**: Fixed, top 56px, height ~50px, z-index 999
+- **#cy-wrapper**: Fixed, top 106px (header + filter panel), bottom 0
+- **#cy**: Absolute, top 0 (fills parent wrapper), bottom 0
+- **Side panels**: Fixed, top 106px, height calc(100vh - 106px)
+
 ### Interactive Features
+
+#### Filter Panel
+- Separate panel positioned below header (56px top offset)
+- Light gradient background (#b3bef6 to #c8a5d8)
+- Animated appearance after graph loads (~4 seconds delay)
+- Two filter groups: Nodes and Edges
+- Responsive layout for mobile devices
 
 #### Node Interactions
 - Hover: 20% size increase, label display
@@ -702,13 +732,17 @@ All 9 edge types from the schema have distinct visual styles:
    - User interface controls and interactions
    - Exports UIControls object
    - Features:
-     * Top header filters for node types (Chunks, Concepts, Assessments)
-     * Dynamic counters showing visible/total nodes and edges (using `.not('.hidden')` selector)
+     * Mode toggle buttons in header center (Path, Clusters, Tour)
+     * Separate filter panel below header for node and edge filtering
+     * Node type filters (Chunks, Concepts, Assessments)
+     * Edge category filters (Strong, Medium, Weak)
+     * Dynamic counters in header showing visible/total nodes and edges
      * Right side panel with Dictionary and TOP nodes tabs
      * Node hover effects with red highlighting
      * Edge highlighting on node hover
      * Tooltips with 500ms delay
      * Info popup with graph statistics (i key)
+     * Mode switching with keyboard shortcuts (P, C, T)
 
 5. **course_panel.js**
    - Left-side course content panel
@@ -732,7 +766,10 @@ All 9 edge types from the schema have distinct visual styles:
      * Keyboard shortcuts (Esc, i, d)
    - Key methods:
      * `init()` - Initializes all UI components
-     * `toggleNodeType()` - Shows/hides nodes by type using 'hidden' class
+     * `createFilterPanel()` - Creates separate filter panel below header
+     * `toggleNodeType()` - Shows/hides nodes by type with edge visibility logic
+     * `toggleEdgeCategory()` - Shows/hides edges by category (strong/medium/weak)
+     * `getEdgeCategory()` - Maps edge types to categories
      * `updateCounters()` - Updates visible/total counters
      * `showNodePopup()` - Displays detailed node information
      * `showConceptPopup()` - Displays concept definition
@@ -742,12 +779,69 @@ All 9 edge types from the schema have distinct visual styles:
      * `formatMetricValue()` - Formats numeric metrics with appropriate precision
    - Auto-initializes via "k2-graph-ready" event
 
+6. **path_finder.js**
+   - Path Mode module for learning path discovery
+   - Exports PathFinder object
+   - Status: Stub implementation (will be completed in VIZ-FRONT-08)
+   - Features:
+     * Listens for 'mode-changed' events
+     * Activates when mode === 'path'
+     * Placeholder for future path finding algorithms
+
+7. **clusters_bridges.js**
+   - Clusters Mode module for knowledge cluster visualization
+   - Exports ClustersBridges object
+   - Status: Stub implementation (will be completed in VIZ-FRONT-09)
+   - Features:
+     * Listens for 'mode-changed' events
+     * Activates when mode === 'clusters'
+     * Placeholder for cluster visualization logic
+
+8. **tour_mode.js**
+   - Tour Mode module for automatic presentation tour
+   - Exports TourMode object
+   - Status: Stub implementation (will be completed in VIZ-FRONT-10)
+   - Features:
+     * Listens for 'mode-changed' events
+     * Activates when mode === 'tour'
+     * Placeholder for tour presentation logic
+
+## Mode System
+
+The visualization supports three exclusive modes controlled by toggle buttons in the header:
+
+### Mode Buttons
+- Located in center of header between brand and stats
+- Three minimalist toggle buttons: 🛤️ PATH, 🎨 CLUSTERS, ▶️ TOUR
+- Clean design without borders or heavy backgrounds
+- Only one mode can be active at a time
+- Visual states:
+  - **Normal**: White text (90% opacity), bold uppercase font
+  - **Hover**: Full white opacity with subtle lift animation
+  - **Active**: Blue color (#3498db) with light background highlight
+
+### Keyboard Shortcuts
+- **P** - Toggle Path Mode
+- **C** - Toggle Clusters Mode  
+- **T** - Toggle Tour Mode
+- **Esc** - Deactivate current mode (if no popups are open)
+
+### Mode Modules
+- **path_finder.js** - Learning path discovery (stub, implementation in VIZ-FRONT-08)
+- **clusters_bridges.js** - Cluster visualization (stub, implementation in VIZ-FRONT-09)
+- **tour_mode.js** - Presentation tour (stub, implementation in VIZ-FRONT-10)
+
+### Event System
+- Custom event `mode-changed` dispatched on mode toggle
+- Event detail: `{ mode: 'path'|'clusters'|'tour'|null }`
+- Mode modules listen and activate/deactivate accordingly
+
 ## UI State Management
 
 ### Element Visibility System
 The visualization uses CSS classes to control element visibility:
 - **Nodes**: `.hidden` class hides nodes from view
-- **Edges**: `.hidden-edge` class hides edges when either endpoint is hidden
+- **Edges**: `.hidden-edge` class hides edges when either endpoint is hidden or category is disabled
 - **Counters**: Use `.not('.hidden')` and `.not('.hidden-edge')` selectors for accurate counts
 - **Batch operations**: All visibility changes wrapped in `cy.batch()` for performance
 
@@ -761,9 +855,16 @@ The visualization uses CSS classes to control element visibility:
   - Open another popup (automatic close)
 
 ### Filter State
-- Maintained in `UIControls.state.visibleTypes` object
-- Types: `Chunk`, `Concept`, `Assessment`
-- Default: All types visible on initialization
+- Node visibility maintained in `UIControls.state.visibleTypes` object
+  - Types: `Chunk`, `Concept`, `Assessment`
+- Edge visibility maintained in `UIControls.state.visibleEdgeCategories` object
+  - Categories: `strong` (PREREQUISITE, TESTS)
+  - Categories: `medium` (ELABORATES, EXAMPLE_OF, PARALLEL, REVISION_OF)
+  - Categories: `weak` (HINT_FORWARD, REFER_BACK, MENTIONS)
+- Active mode maintained in `UIControls.state.activeMode`
+  - Possible values: `'path'`, `'clusters'`, `'tour'`, `null`
+  - Only one mode can be active at a time
+- Default: All types and categories visible on initialization, no active mode
 - Persisted during session (not saved between sessions)
 
 ## Data Structure Requirements

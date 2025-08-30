@@ -20,6 +20,11 @@ const UIControls = {
             'Concept': true,
             'Assessment': true
         },
+        visibleEdgeCategories: {
+            'strong': true,
+            'medium': true,
+            'weak': true
+        },
         sidePanelOpen: false,
         activeTab: 'dictionary',
         hoveredNode: null,
@@ -28,7 +33,8 @@ const UIControls = {
         nodePopupOpen: false,
         conceptPopupOpen: false,
         currentPopupNode: null,
-        currentPopupConcept: null
+        currentPopupConcept: null,
+        activeMode: null  // New: Track active mode ('path' | 'clusters' | 'tour' | null)
     },
     
     // Initialization
@@ -43,6 +49,8 @@ const UIControls = {
         
         // Create UI components
         this.createTopPanel();
+        this.createModeButtons();  // New: Create mode buttons in header
+        this.createFilterPanel();  // New filter panel
         this.createSidePanel();
         this.setupHoverEffects();
         this.createInfoPopup();
@@ -74,22 +82,8 @@ const UIControls = {
             header.appendChild(statsContainer);
         }
         
-        // Add filters and counters to stats container
+        // Add only counters to stats container (filters moved to separate panel)
         statsContainer.innerHTML = `
-            <div class="filters">
-                <label class="filter-checkbox">
-                    <input type="checkbox" id="filter-chunk" checked>
-                    <span>Chunks</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" id="filter-concept" checked>
-                    <span>Concepts</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" id="filter-assessment" checked>
-                    <span>Assessments</span>
-                </label>
-            </div>
             <div class="counters">
                 <span>Узлы: <strong id="visible-nodes">0</strong>/<strong id="total-nodes">0</strong></span>
                 <span class="separator">|</span>
@@ -99,8 +93,153 @@ const UIControls = {
         
         // Make stats container visible
         statsContainer.style.visibility = 'visible';
+    },
+    
+    // Mode Buttons Implementation - NEW buttons in header center
+    createModeButtons() {
+        const header = document.getElementById('header');
+        if (!header) {
+            console.warn('[UIControls] Header not found, cannot add mode buttons');
+            return;
+        }
         
-        // Add event listeners for checkboxes
+        // Create mode buttons container
+        const modeButtons = document.createElement('div');
+        modeButtons.className = 'mode-buttons';
+        modeButtons.innerHTML = `
+            <button class="mode-btn" data-mode="path" title="Path Mode (P)">
+                <span class="mode-icon">🛤️</span>
+                <span class="mode-text">Path</span>
+            </button>
+            <button class="mode-btn" data-mode="clusters" title="Clusters (C)">
+                <span class="mode-icon">🎨</span>
+                <span class="mode-text">Clusters</span>
+            </button>
+            <button class="mode-btn" data-mode="tour" title="Tour (T)">
+                <span class="mode-icon">▶️</span>
+                <span class="mode-text">Tour</span>
+            </button>
+        `;
+        
+        // Insert buttons into header
+        header.appendChild(modeButtons);
+        
+        // Bind click handlers
+        modeButtons.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                this.toggleMode(mode);
+            });
+        });
+        
+        console.log('[UIControls] Mode buttons created');
+    },
+    
+    // Toggle mode logic
+    toggleMode(mode) {
+        const buttons = document.querySelectorAll('.mode-btn');
+        
+        // Handle null mode (deactivation via Esc)
+        if (mode === null) {
+            this.state.activeMode = null;
+            buttons.forEach(btn => btn.classList.remove('active'));
+            console.log('[UIControls] All modes deactivated');
+        } else if (this.state.activeMode === mode) {
+            // If mode is already active, deactivate it
+            this.state.activeMode = null;
+            buttons.forEach(btn => btn.classList.remove('active'));
+            console.log(`[UIControls] Mode deactivated: ${mode}`);
+        } else {
+            // Deactivate previous mode and activate new one
+            this.state.activeMode = mode;
+            buttons.forEach(btn => {
+                if (btn.dataset.mode === mode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            console.log(`[UIControls] Mode activated: ${mode}`);
+        }
+        
+        // Dispatch custom event for other modules to listen
+        const event = new CustomEvent('mode-changed', {
+            detail: { mode: this.state.activeMode }
+        });
+        document.dispatchEvent(event);
+    },
+    
+    // Filter Panel Implementation - NEW panel below header
+    createFilterPanel() {
+        const header = document.getElementById('header');
+        if (!header) {
+            console.warn('[UIControls] Header not found, cannot create filter panel');
+            return;
+        }
+        
+        // Create filter panel container
+        const filterPanel = document.createElement('div');
+        filterPanel.id = 'filter-panel';
+        filterPanel.className = 'filter-panel';
+        
+        // HTML structure with node and edge filters
+        filterPanel.innerHTML = `
+            <div class="filter-container">
+                <div class="filter-group">
+                    <span class="filter-label">Узлы:</span>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-chunk" checked>
+                        <span>Chunks</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-concept" checked>
+                        <span>Concepts</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-assessment" checked>
+                        <span>Assessments</span>
+                    </label>
+                </div>
+                <div class="filter-separator">|</div>
+                <div class="filter-group">
+                    <span class="filter-label">Связи:</span>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-edges-strong" checked>
+                        <span>Сильные</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-edges-medium" checked>
+                        <span>Средние</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-edges-weak" checked>
+                        <span>Слабые</span>
+                    </label>
+                </div>
+            </div>
+        `;
+        
+        // Initially hidden with animation preparation
+        filterPanel.style.opacity = '0';
+        filterPanel.style.transform = 'translateY(-10px)';
+        filterPanel.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+        
+        // Insert after header
+        header.parentNode.insertBefore(filterPanel, header.nextSibling);
+        
+        // Show panel after graph animation completes (~4 seconds)
+        setTimeout(() => {
+            filterPanel.style.opacity = '1';
+            filterPanel.style.transform = 'translateY(0)';
+        }, 4000);
+        
+        // Alternative: Listen for custom event from graph_core.js
+        window.addEventListener('graph-animation-complete', () => {
+            filterPanel.style.opacity = '1';
+            filterPanel.style.transform = 'translateY(0)';
+        }, { once: true });
+        
+        // Bind event handlers for node filters
         document.getElementById('filter-chunk').addEventListener('change', (e) => {
             this.toggleNodeType('Chunk', e.target.checked);
         });
@@ -112,6 +251,19 @@ const UIControls = {
         document.getElementById('filter-assessment').addEventListener('change', (e) => {
             this.toggleNodeType('Assessment', e.target.checked);
         });
+        
+        // Bind event handlers for edge filters
+        document.getElementById('filter-edges-strong').addEventListener('change', (e) => {
+            this.toggleEdgeCategory('strong', e.target.checked);
+        });
+        
+        document.getElementById('filter-edges-medium').addEventListener('change', (e) => {
+            this.toggleEdgeCategory('medium', e.target.checked);
+        });
+        
+        document.getElementById('filter-edges-weak').addEventListener('change', (e) => {
+            this.toggleEdgeCategory('weak', e.target.checked);
+        });
     },
     
     toggleNodeType(type, visible) {
@@ -120,32 +272,83 @@ const UIControls = {
         
         // Use batch for performance
         this.cy.batch(() => {
-            // Process nodes
-            this.cy.nodes().forEach(node => {
-                if (node.data('type') === type) {
-                    if (visible) {
-                        node.removeClass('hidden');
-                    } else {
-                        node.addClass('hidden');
-                    }
-                }
-            });
+            const nodes = this.cy.nodes(`[type="${type}"]`);
             
-            // Process edges - show only if both ends are visible
-            this.cy.edges().forEach(edge => {
-                const source = edge.source();
-                const target = edge.target();
-                
-                if (source.hasClass('hidden') || target.hasClass('hidden')) {
-                    edge.addClass('hidden-edge');
+            if (visible) {
+                nodes.removeClass('hidden');
+                // Show edges only if both ends are visible AND category is enabled
+                nodes.connectedEdges().forEach(edge => {
+                    const source = edge.source();
+                    const target = edge.target();
+                    const edgeType = edge.data('type');
+                    const category = this.getEdgeCategory(edgeType);
+                    
+                    if (!source.hasClass('hidden') && 
+                        !target.hasClass('hidden') && 
+                        this.state.visibleEdgeCategories[category]) {
+                        edge.removeClass('hidden-edge');
+                    }
+                });
+            } else {
+                nodes.addClass('hidden');
+                // Hide all incident edges
+                nodes.connectedEdges().addClass('hidden-edge');
+            }
+        });
+        
+        // Update counters
+        this.updateCounters();
+    },
+    
+    // Edge filtering methods
+    toggleEdgeCategory(category, visible) {
+        // Update state
+        this.state.visibleEdgeCategories[category] = visible;
+        
+        // Define edge types for each category
+        const edgeTypes = {
+            'strong': ['PREREQUISITE', 'TESTS'],
+            'medium': ['ELABORATES', 'EXAMPLE_OF', 'PARALLEL', 'REVISION_OF'],
+            'weak': ['HINT_FORWARD', 'REFER_BACK', 'MENTIONS']
+        };
+        
+        // Apply filtering
+        const types = edgeTypes[category];
+        this.cy.batch(() => {
+            types.forEach(type => {
+                const edges = this.cy.edges(`[type="${type}"]`);
+                if (visible) {
+                    // Show edges only if both nodes are visible
+                    edges.forEach(edge => {
+                        const source = edge.source();
+                        const target = edge.target();
+                        if (!source.hasClass('hidden') && !target.hasClass('hidden')) {
+                            edge.removeClass('hidden-edge');
+                        }
+                    });
                 } else {
-                    edge.removeClass('hidden-edge');
+                    edges.addClass('hidden-edge');
                 }
             });
         });
         
         // Update counters
         this.updateCounters();
+    },
+    
+    getEdgeCategory(edgeType) {
+        const categories = {
+            'PREREQUISITE': 'strong',
+            'TESTS': 'strong',
+            'ELABORATES': 'medium',
+            'EXAMPLE_OF': 'medium',
+            'PARALLEL': 'medium',
+            'REVISION_OF': 'medium',
+            'HINT_FORWARD': 'weak',
+            'REFER_BACK': 'weak',
+            'MENTIONS': 'weak'
+        };
+        return categories[edgeType] || 'medium';
     },
     
     // Side Panel Implementation
@@ -696,6 +899,9 @@ const UIControls = {
                     this.hideInfoPopup();
                 } else if (this.state.sidePanelOpen) {
                     this.toggleSidePanel();
+                } else if (this.state.activeMode) {
+                    // Deactivate active mode
+                    this.toggleMode(null);
                 }
             } else if (e.key === 'i' && !e.ctrlKey && !e.metaKey) {
                 // Toggle info popup
@@ -703,6 +909,30 @@ const UIControls = {
             } else if (e.key === 'd' && !e.ctrlKey && !e.metaKey) {
                 // Toggle dictionary panel
                 this.toggleSidePanel();
+            } else if (e.key === 'p' || e.key === 'P') {
+                // Close popup if open, then toggle Path Mode
+                if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
+                    this.hideNodePopup();
+                    this.hideConceptPopup();
+                    this.hideInfoPopup();
+                }
+                this.toggleMode('path');
+            } else if (e.key === 'c' || e.key === 'C') {
+                // Close popup if open, then toggle Clusters Mode
+                if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
+                    this.hideNodePopup();
+                    this.hideConceptPopup();
+                    this.hideInfoPopup();
+                }
+                this.toggleMode('clusters');
+            } else if (e.key === 't' || e.key === 'T') {
+                // Close popup if open, then toggle Tour Mode
+                if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
+                    this.hideNodePopup();
+                    this.hideConceptPopup();
+                    this.hideInfoPopup();
+                }
+                this.toggleMode('tour');
             }
         });
     },

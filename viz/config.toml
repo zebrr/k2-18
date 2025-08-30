@@ -74,10 +74,14 @@ vendor_js = [
   "vendor/layout-base.js",              # 2. Базовая зависимость для cose-bilkent
   "vendor/cose-base.js",                # 3. Зависит от layout-base
   "vendor/cytoscape-cose-bilkent.js",  # 4. Зависит от cose-base
-  "vendor/cytoscape-navigator.js"      # 5. Независимое расширение (если show_minimap = true)
+  "vendor/cytoscape-navigator.js",     # 5. Независимое расширение (если show_minimap = true)
+  "vendor/marked.min.js",               # 6. Markdown parser
+  "vendor/highlight.min.js",            # 7. Code highlighting
+  "vendor/mathjax-tex-mml-chtml.js"    # 8. Math formulas (MathJax)
 ]
 vendor_css = [
-  "vendor/cytoscape.js-navigator.css"       # если show_minimap = true
+  "vendor/cytoscape.js-navigator.css",      # если show_minimap = true
+  "vendor/github-dark.min.css"              # стиль для подсветки кода
 ]
 
 # Язык по умолчанию
@@ -160,6 +164,20 @@ viewport_culling = true             # рендерить только видим
 max_nodes_animated = 500            # выше - без анимации появления
 batch_animations = true             # группировка анимаций
 progressive_loading = false         # загрузка по частям
+
+[text_formatting]
+# Enable text formatting features
+enable_markdown = true
+enable_code_highlighting = true
+enable_math = true
+math_renderer = "mathjax"  # using MathJax
+
+[tooltip]
+# Tooltip settings for hover
+max_width = 400  # pixels
+preview_length = 300  # characters
+show_delay = 500  # milliseconds
+hide_delay = 200  # milliseconds
 
 [anomaly_detection]
 # Critical thresholds (violation = stop)

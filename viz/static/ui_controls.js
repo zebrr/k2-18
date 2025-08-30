@@ -631,6 +631,14 @@ const UIControls = {
             }
             evt.stopPropagation();
             const node = evt.target;
+            
+            // Hide tooltip when opening popup
+            this.hideTooltip();
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            
             this.showNodePopup(node);
         });
     },
@@ -683,10 +691,16 @@ const UIControls = {
     
     showTooltip(node, position) {
         const text = node.data('text') || node.data('label') || node.id();
-        const truncated = this.truncateText(text, 100);
+        const config = window.tooltipConfig || { preview_length: 300, max_width: 400 };
+        
+        // Truncate to configured length
+        const truncated = text.length > config.preview_length 
+            ? text.substring(0, config.preview_length) + '...'
+            : text;
         
         this.tooltip.textContent = truncated;
         this.tooltip.style.display = 'block';
+        this.tooltip.style.maxWidth = config.max_width + 'px';
         
         // Position near cursor
         const offset = 10;
@@ -1078,15 +1092,15 @@ const UIControls = {
             <div class="popup-content">
                 <div class="node-text-section">
                     <h4>Содержание:</h4>
-                    <div class="node-text-scroll">
-                        ${nodeData.text || 'Текст недоступен'}
+                    <div class="node-text-scroll formatted-content">
+                        ${this.formatTextContent(nodeData.text || 'Текст недоступен')}
                     </div>
                 </div>
                 ${nodeData.definition ? `
                 <div class="node-definition-section">
                     <h4>Источник:</h4>
-                    <div class="node-definition-scroll">
-                        ${nodeData.definition}
+                    <div class="node-definition-scroll formatted-content">
+                        ${this.formatTextContent(nodeData.definition)}
                     </div>
                 </div>
                 ` : ''}
@@ -1137,10 +1151,17 @@ const UIControls = {
             </div>
         `;
         
-        this.nodePopup.querySelector('.node-popup').innerHTML = html;
+        const popupElement = this.nodePopup.querySelector('.node-popup');
+        popupElement.innerHTML = html;
         this.nodePopup.style.display = 'flex';
         this.state.nodePopupOpen = true;
         this.state.currentPopupNode = nodeId;
+        
+        // Make sure tooltip is hidden when popup opens
+        this.hideTooltip();
+        
+        // Render formatted content (MathJax, highlighting)
+        this.renderFormattedContent(popupElement);
         
         console.log(`[UIControls] Node popup shown for: ${nodeId}`);
     },
@@ -1294,7 +1315,7 @@ const UIControls = {
             <div class="popup-content">
                 <div class="definition-section">
                     <h4>Определение:</h4>
-                    <p>${definition}</p>
+                    <div class="formatted-content">${this.formatTextContent(definition)}</div>
                 </div>
                 ${aliases.length > 0 ? `
                 <div class="aliases-section">
@@ -1308,10 +1329,14 @@ const UIControls = {
             </div>
         `;
         
-        this.conceptPopup.querySelector('.concept-popup').innerHTML = html;
+        const popupElement = this.conceptPopup.querySelector('.concept-popup');
+        popupElement.innerHTML = html;
         this.conceptPopup.style.display = 'flex';
         this.state.conceptPopupOpen = true;
         this.state.currentPopupConcept = conceptId;
+        
+        // Render formatted content (MathJax, highlighting)
+        this.renderFormattedContent(popupElement);
         
         console.log(`[UIControls] Concept popup shown for: ${conceptId}`);
     },
@@ -1387,6 +1412,54 @@ const UIControls = {
                 }
             };
             document.addEventListener('click', this.tooltipClickHandler);
+        }
+    },
+    
+    // Text formatting functions for popups
+    formatTextContent(content) {
+        if (!content || !window.textFormattingConfig) return content;
+        
+        let formatted = content;
+        
+        // 1. Parse Markdown if enabled
+        if (window.textFormattingConfig.enable_markdown && window.marked) {
+            try {
+                formatted = marked.parse(formatted);
+            } catch (e) {
+                console.error('Markdown parsing error:', e);
+                return content; // Return original on error
+            }
+        }
+        
+        // 2. Process math if enabled (both $...$ and $$...$$)
+        if (window.textFormattingConfig.enable_math) {
+            // Process display math $$...$$
+            formatted = formatted.replace(/\$\$(.*?)\$\$/gs, (match, math) => {
+                return `<div class="math-display">\\[${math}\\]</div>`;
+            });
+            // Process inline math $...$
+            formatted = formatted.replace(/\$(.*?)\$/g, (match, math) => {
+                return `<span class="math-inline">\\(${math}\\)</span>`;
+            });
+        }
+        
+        return formatted;
+    },
+    
+    // After inserting formatted content, trigger rendering
+    renderFormattedContent(element) {
+        if (!element) return;
+        
+        // Highlight code blocks
+        if (window.textFormattingConfig && window.textFormattingConfig.enable_code_highlighting && window.hljs) {
+            element.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
+        
+        // Render math with MathJax
+        if (window.textFormattingConfig && window.textFormattingConfig.enable_math && window.MathJax) {
+            MathJax.typesetPromise([element]).catch((e) => console.error('MathJax error:', e));
         }
     },
     

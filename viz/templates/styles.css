@@ -854,17 +854,17 @@ edge.hover-connected {
 /* Tooltip */
 .node-tooltip {
     position: fixed;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.9);
     color: white;
-    padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    z-index: 10000;
     pointer-events: none;
-    z-index: 300;
-    max-width: 300px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 400px;
     box-shadow: var(--shadow-lg);
 }
 
@@ -1332,7 +1332,7 @@ node.node-pulse:after {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9998;
+    z-index: 10001;
     animation: fadeIn 0.2s ease-out;
 }
 
@@ -1840,6 +1840,54 @@ node.node-pulse:after {
 .edges-list::-webkit-scrollbar-thumb:hover,
 .node-popup .popup-content::-webkit-scrollbar-thumb:hover {
     background: #555;
+}
+
+/* Formatted content styles */
+.formatted-content {
+    line-height: 1.6;
+}
+
+/* Math display */
+.math-display {
+    text-align: center;
+    margin: 1em 0;
+    overflow-x: auto;
+}
+
+.math-inline {
+    white-space: nowrap;
+}
+
+/* Code blocks - work with github-dark theme */
+.formatted-content pre {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 0.5em 0;
+    border-radius: 4px;
+}
+
+.formatted-content code {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+/* Markdown content */
+.formatted-content h1, 
+.formatted-content h2,
+.formatted-content h3 {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    font-weight: bold;
+}
+
+.formatted-content p {
+    margin: 0.5em 0;
+}
+
+.formatted-content ul,
+.formatted-content ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
 }
 
 /* Responsive adjustments */

@@ -41,6 +41,14 @@ CDN_URLS = {
     "cytoscape.js-navigator.css": (
         "https://unpkg.com/cytoscape.js-navigator@2.0.2/cytoscape.js-navigator.css"
     ),
+    "marked.min.js": "https://unpkg.com/marked@14/marked.min.js",
+    "mathjax-tex-mml-chtml.js": "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js",
+    "highlight.min.js": (
+        "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/highlight.min.js"
+    ),
+    "github-dark.min.css": (
+        "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/styles/github-dark.min.css"
+    ),
 }
 
 # Critical library loading order for cose-bilkent
@@ -294,6 +302,18 @@ def generate_html(
     colors_config = config.get("colors", {})
     ui_config = config.get("ui", {})
     path_mode_config = config.get("path_mode", {})
+    text_formatting_config = config.get(
+        "text_formatting",
+        {
+            "enable_markdown": True,
+            "enable_code_highlighting": True,
+            "enable_math": True,
+            "math_renderer": "mathjax",
+        },
+    )
+    tooltip_config = config.get(
+        "tooltip", {"max_width": 400, "preview_length": 300, "show_delay": 500, "hide_delay": 200}
+    )
 
     minify = html_config.get("minify_json", True)
     embed = html_config.get("embed_libraries", True)
@@ -459,6 +479,8 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "colors_config": colors_config,
         "ui_config": ui_config,
         "path_mode_config": path_mode_config,
+        "text_formatting": text_formatting_config,
+        "tooltip_config": tooltip_config,
         "node_shapes": {
             "Chunk": config.get("node_shapes", {}).get("chunk_shape", "hexagon"),
             "Concept": config.get("node_shapes", {}).get("concept_shape", "star"),

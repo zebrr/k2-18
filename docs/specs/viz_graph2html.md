@@ -279,8 +279,18 @@ Section `[graph2html]` in `/viz/config.toml`:
 
 ### Required Parameters
 - **output_filename** (str) - Output HTML filename
-- **vendor_js** (list[str]) - JavaScript libraries to include
-- **vendor_css** (list[str]) - CSS libraries to include
+- **vendor_js** (list[str]) - JavaScript libraries to include:
+  - `vendor/cytoscape.min.js` - Core graph library
+  - `vendor/layout-base.js` - Layout dependency
+  - `vendor/cose-base.js` - Cose layout dependency
+  - `vendor/cytoscape-cose-bilkent.js` - Advanced layout
+  - `vendor/cytoscape-navigator.js` - Minimap (optional)
+  - `vendor/marked.min.js` - Markdown parser (for text formatting)
+  - `vendor/highlight.min.js` - Code syntax highlighting
+  - `vendor/mathjax-tex-mml-chtml.js` - Math formula rendering
+- **vendor_css** (list[str]) - CSS libraries to include:
+  - `vendor/cytoscape.js-navigator.css` - Minimap styles
+  - `vendor/github-dark.min.css` - Code highlighting theme
 
 ### Optional Parameters
 - **minify_json** (bool, default=true) - Minify embedded JSON data
@@ -355,6 +365,18 @@ The template receives the following context:
         "show_legend": bool,
         "show_minimap": bool,
         "show_stats": bool
+    },
+    "text_formatting": {           # From [text_formatting] section
+        "enable_markdown": bool,
+        "enable_code_highlighting": bool,
+        "enable_math": bool,
+        "math_renderer": str
+    },
+    "tooltip_config": {            # From [tooltip] section
+        "max_width": int,
+        "preview_length": int,
+        "show_delay": int,
+        "hide_delay": int
     },
     "node_shapes": {               # From [node_shapes] section
         "chunk_shape": str,
@@ -999,6 +1021,48 @@ window.conceptData   // Access concept dictionary
 cy.nodes().size()    // Count nodes via Cytoscape
 ```
 
+## Text Formatting Support
+
+The visualization supports rich text formatting for node and concept content:
+
+### Supported Fields
+- Node `text` field - full Markdown/Math/Code support
+- Node `definition` field - full formatting support  
+- Concept `definition` field - full formatting support
+
+### Formatting Features
+1. **Markdown**: Headers, bold, italic, lists, links
+2. **Mathematics**: LaTeX formulas with explicit delimiters:
+   - Inline math: `$formula$` 
+   - Display math: `$$formula$$`
+   - **Note**: Formulas must be explicitly wrapped in `$` delimiters in source data
+3. **Code Highlighting**: Syntax highlighting for code blocks
+
+### Libraries Used
+- marked.js v14 - Markdown parsing
+- MathJax v3 - Mathematical formula rendering
+- Highlight.js v11 - Code syntax highlighting
+- github-dark theme - Dark theme for code highlighting
+
+### Configuration
+See `[text_formatting]` and `[tooltip]` sections in config.toml:
+- `enable_markdown` - Enable Markdown parsing
+- `enable_code_highlighting` - Enable code syntax highlighting  
+- `enable_math` - Enable mathematical formula rendering
+- `math_renderer` - Math rendering engine (mathjax)
+- `max_width` - Maximum tooltip width in pixels (400px)
+- `preview_length` - Number of characters to show in tooltip (300)
+- `show_delay` - Delay before showing tooltip (500ms)
+- `hide_delay` - Delay before hiding tooltip (200ms)
+
+### Tooltip Improvements
+- Shows 300 characters of node text on hover
+- Maximum width of 400px with word wrapping
+- Multi-line text support with proper formatting
+- Plain text only (no HTML/Markdown formatting in tooltips)
+- Automatically hides when popup opens to prevent overlap
+- Higher z-index for popups (10001) ensures they appear above tooltips (10000)
+
 ## Notes
 
 - Template system uses Jinja2 with autoescape disabled for raw HTML
@@ -1009,6 +1073,8 @@ cy.nodes().size()    // Count nodes via Cytoscape
 - Both production and test modes use same template system
 - Minification settings are independent (JSON vs HTML)
 - Library order is critical for cose-bilkent layout to work
+- Text formatting is applied only to specific fields (text, definition) in popups
+- Tooltips remain plain text for performance and readability
 
 ## Known Issues and Fixes
 

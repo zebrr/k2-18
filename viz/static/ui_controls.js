@@ -567,6 +567,11 @@ const UIControls = {
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
             
+            // Skip hover effects for dimmed nodes in path mode
+            if (node.hasClass('path-dimmed') || node.style('ghost') === 'yes') {
+                return;
+            }
+            
             // Clear any existing timeout
             if (hoverTimeout) {
                 clearTimeout(hoverTimeout);
@@ -576,10 +581,13 @@ const UIControls = {
             // Make node red (same as pulse effect)
             node.addClass('hover-highlight');
             
-            // Highlight connected edges
+            // Highlight connected edges (but not if they're dimmed)
             const edges = node.connectedEdges();
-            edges.addClass('hover-connected');
-            console.log(`Hover: highlighting ${edges.length} edges for node ${node.id()}`);
+            edges.forEach(edge => {
+                if (!edge.hasClass('path-dimmed')) {
+                    edge.addClass('hover-connected');
+                }
+            });
             
             // Show tooltip after delay
             hoverTimeout = setTimeout(() => {
@@ -590,6 +598,11 @@ const UIControls = {
         this.cy.on('mouseout', 'node', (evt) => {
             const node = evt.target;
             
+            // Skip if dimmed
+            if (node.hasClass('path-dimmed') || node.style('ghost') === 'yes') {
+                return;
+            }
+            
             // Clear timeout
             if (hoverTimeout) {
                 clearTimeout(hoverTimeout);
@@ -598,14 +611,24 @@ const UIControls = {
             
             // Remove hover classes
             node.removeClass('hover-highlight');
-            node.connectedEdges().removeClass('hover-connected');
+            
+            // Remove hover-connected ONLY from edges that are not dimmed
+            node.connectedEdges().forEach(edge => {
+                if (!edge.hasClass('path-dimmed')) {
+                    edge.removeClass('hover-connected');
+                }
+            });
             
             // Hide tooltip
             this.hideTooltip();
         });
         
-        // Click on graph nodes
-        this.cy.on('click', 'node', (evt) => {
+        // Tap on graph nodes (unless in special mode)
+        this.cy.on('tap', 'node', (evt) => {
+            // Don't show popup if Path Mode is active
+            if (this.state.activeMode === 'path') {
+                return; // Let PathFinder handle the tap
+            }
             evt.stopPropagation();
             const node = evt.target;
             this.showNodePopup(node);

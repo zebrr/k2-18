@@ -782,11 +782,15 @@ All 9 edge types from the schema have distinct visual styles:
 6. **path_finder.js**
    - Path Mode module for learning path discovery
    - Exports PathFinder object
-   - Status: Stub implementation (will be completed in VIZ-FRONT-08)
+   - Status: Fully implemented in VIZ-PATH-01
    - Features:
-     * Listens for 'mode-changed' events
-     * Activates when mode === 'path'
-     * Placeholder for future path finding algorithms
+     * Two-click node selection with visual feedback
+     * Fast path algorithm with edge type ladder expansion
+     * Simple path algorithm weighted by node difficulty
+     * Path visualization with curve separation
+     * Metrics panel showing steps and difficulty
+     * Toast notifications for user feedback
+   - See full specification: `/docs/specs/viz_path_finder.md`
 
 7. **clusters_bridges.js**
    - Clusters Mode module for knowledge cluster visualization

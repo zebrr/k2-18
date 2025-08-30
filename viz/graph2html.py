@@ -293,6 +293,7 @@ def generate_html(
     viz_config = config.get("visualization", {})
     colors_config = config.get("colors", {})
     ui_config = config.get("ui", {})
+    path_mode_config = config.get("path_mode", {})
 
     minify = html_config.get("minify_json", True)
     embed = html_config.get("embed_libraries", True)
@@ -457,6 +458,7 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         "viz_config": viz_config,
         "colors_config": colors_config,
         "ui_config": ui_config,
+        "path_mode_config": path_mode_config,
         "node_shapes": {
             "Chunk": config.get("node_shapes", {}).get("chunk_shape", "hexagon"),
             "Concept": config.get("node_shapes", {}).get("concept_shape", "star"),

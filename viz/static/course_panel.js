@@ -59,7 +59,7 @@ window.CoursePanel = (function() {
             justify-content: center;
             cursor: pointer;
             font-size: 28px;
-            z-index: 999;
+            z-index: 1001; /* Above bottom badge (1000) */
             box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
             transition: all 0.3s ease;
             color: white;
@@ -101,7 +101,7 @@ window.CoursePanel = (function() {
             background: white;
             box-shadow: 2px 0 5px rgba(0,0,0,0.1);
             transition: left 0.3s ease;
-            z-index: 998;
+            z-index: 1001; /* Above bottom badge (1000) */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -317,6 +317,7 @@ window.CoursePanel = (function() {
     
     // Public API
     return {
-        init: init
+        init: init,
+        togglePanel: togglePanel  // Export toggle function for keyboard shortcut
     };
 })();

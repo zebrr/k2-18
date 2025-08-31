@@ -74,16 +74,12 @@ Initializes all UI components and event handlers.
 
 ### 1. Header Components
 
-#### Mode Buttons
-Three toggle buttons in header center for visualization modes:
-- **Path Mode** (🛤️) - Learning path discovery
-- **Clusters Mode** (🎨) - Cluster visualization
-- **Tour Mode** (▶️) - Automatic presentation
-
 #### Stats Counters
 Display in header right:
 - Visible/total nodes count
 - Visible/total edges count
+
+Note: Mode buttons have been moved to the Bottom Badge component.
 
 ### 2. Filter Panel
 
@@ -101,7 +97,7 @@ Separate panel below header with node and edge filters.
 
 #### Appearance
 - Initially hidden
-- Animates in after 4 seconds or 'graph-animation-complete' event
+- Animates in after 1 second or 'graph-animation-complete' event
 - Slide down animation with opacity fade
 
 ### 3. Side Panel (Right)
@@ -172,9 +168,35 @@ Click-based explanations for metrics:
 - Betweenness explanation
 - Learning Effort explanation
 
+### 6. Bottom Badge
+
+Compact information panel in the lower left corner of the screen.
+
+#### Structure
+- **Info button (ℹ️)** - Opens graph statistics popup
+- **Beta features label** - Indicator for experimental features
+- **Mode buttons**:
+  - Path Mode (🛤️) - Learning path discovery
+  - Clusters Mode (🎨) - Cluster visualization
+- **GitHub link** - Link to project repository
+
+#### Appearance
+- Position: fixed, bottom: 20px, left: 20px
+- Size: height 36px, width by content
+- Style: semi-transparent background with blur effect
+- Appears together with filter panel after animation completes
+
+#### Behavior
+- Appears 1 second after 'graph-animation-complete' event
+- Mode buttons show active state
+- GitHub link opens in new tab
+
 ## Core Methods
 
 ### Filter Methods
+
+#### Filter Panel Appearance
+Filter panel appears 1000ms after 'graph-animation-complete' event or 1000ms after initialization if animation is already complete.
 
 #### toggleNodeType(type, visible)
 Shows/hides nodes of specific type.
@@ -298,10 +320,10 @@ Triggers rendering of formatted content.
 ### Keyboard Shortcuts
 - **Escape**: Close popups/panels/modes (priority order)
 - **i**: Toggle info popup
-- **d**: Toggle dictionary panel
+- **d**: Toggle dictionary panel (right)
+- **t/T**: Toggle Table of Contents (left course panel)
 - **p/P**: Toggle Path mode
 - **c/C**: Toggle Clusters mode
-- **t/T**: Toggle Tour mode
 
 ### Custom Events
 
@@ -472,12 +494,29 @@ UIControls.toggleMode('path')        // Activate path mode
 4. Keyboard shortcuts work correctly
 5. Hover effects don't interfere with modes
 
+## Internal Methods
+
+### _createBottomBadge()
+Creates compact panel with control elements.
+- **Purpose**: Group secondary UI elements
+- **Returns**: HTMLElement - bottom badge element
+- **Contains**: Info button, mode buttons, GitHub link
+- **Side effects**: Adds event handlers
+
+## Visual Effects
+
+### Bottom Badge Effects
+- `.bottom-badge` - Main container
+- `.bottom-badge.visible` - Visible state
+- `.mode-btn.active` - Active mode button
+
 ## Known Limitations
 
 1. **Mobile Support**: Limited touch interaction support
 2. **Large Graphs**: Performance degrades with >1000 nodes
 3. **Text Overflow**: Very long text may exceed popup bounds
 4. **Math Rendering**: Requires explicit $ delimiters in source
+5. **Mode Buttons**: Located in bottom badge, Tour mode hidden from UI but available via API
 
 ## Dependencies
 

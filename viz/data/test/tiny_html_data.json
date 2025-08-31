@@ -928,6 +928,7 @@
     }
   ],
   "_meta": {
+    "title": "Алгоритмы и структуры данных: учебный граф",
     "demo_path": [
       "assessment_complexity",
       "chunk_optimization",

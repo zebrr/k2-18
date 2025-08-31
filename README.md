@@ -151,7 +151,7 @@ Main settings in `src/config.toml`:
 ```toml
 [slicer]
 max_tokens = 5000          # Chunk size in tokens
-overlap = 0                # Context window size manage by response_chain_depth (Responses API feat.)
+overlap = 0                # Context window size managed by response_chain_depth
 soft_boundary = true       # Respect semantic boundaries
 
 [itext2kg]

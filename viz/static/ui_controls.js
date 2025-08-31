@@ -49,7 +49,6 @@ const UIControls = {
         
         // Create UI components
         this.createTopPanel();
-        this.createModeButtons();  // New: Create mode buttons in header
         this.createFilterPanel();  // New filter panel
         this.createSidePanel();
         this.setupHoverEffects();
@@ -95,49 +94,10 @@ const UIControls = {
         statsContainer.style.visibility = 'visible';
     },
     
-    // Mode Buttons Implementation - NEW buttons in header center
-    createModeButtons() {
-        const header = document.getElementById('header');
-        if (!header) {
-            console.warn('[UIControls] Header not found, cannot add mode buttons');
-            return;
-        }
-        
-        // Create mode buttons container
-        const modeButtons = document.createElement('div');
-        modeButtons.className = 'mode-buttons';
-        modeButtons.innerHTML = `
-            <button class="mode-btn" data-mode="path" title="Path Mode (P)">
-                <span class="mode-icon">🛤️</span>
-                <span class="mode-text">Path</span>
-            </button>
-            <button class="mode-btn" data-mode="clusters" title="Clusters (C)">
-                <span class="mode-icon">🎨</span>
-                <span class="mode-text">Clusters</span>
-            </button>
-            <button class="mode-btn" data-mode="tour" title="Tour (T)">
-                <span class="mode-icon">▶️</span>
-                <span class="mode-text">Tour</span>
-            </button>
-        `;
-        
-        // Insert buttons into header
-        header.appendChild(modeButtons);
-        
-        // Bind click handlers
-        modeButtons.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const mode = btn.dataset.mode;
-                this.toggleMode(mode);
-            });
-        });
-        
-        console.log('[UIControls] Mode buttons created');
-    },
-    
     // Toggle mode logic
     toggleMode(mode) {
-        const buttons = document.querySelectorAll('.mode-btn');
+        // Update selector to target buttons in bottom badge
+        const buttons = document.querySelectorAll('.bottom-badge .mode-btn');
         
         // Handle null mode (deactivation via Esc)
         if (mode === null) {
@@ -227,11 +187,11 @@ const UIControls = {
         // Insert after header
         header.parentNode.insertBefore(filterPanel, header.nextSibling);
         
-        // Show panel after graph animation completes (~4 seconds)
+        // Show panel after graph animation completes (~1 second)
         setTimeout(() => {
             filterPanel.style.opacity = '1';
             filterPanel.style.transform = 'translateY(0)';
-        }, 4000);
+        }, 1000);
         
         // Alternative: Listen for custom event from graph_core.js
         window.addEventListener('graph-animation-complete', () => {
@@ -714,14 +674,69 @@ const UIControls = {
         }
     },
     
+    // Bottom Badge - NEW compact UI element
+    _createBottomBadge() {
+        const badge = document.createElement('div');
+        badge.className = 'bottom-badge';
+        badge.innerHTML = `
+            <button class="info-btn" title="График информация">ℹ️</button>
+            <span class="divider">|</span>
+            <span class="beta-label">β-features:</span>
+            <button class="mode-btn" data-mode="path" title="Path Mode (P)">
+                <span class="mode-icon">🛤️</span>
+                <span class="mode-text">Path</span>
+            </button>
+            <button class="mode-btn" data-mode="clusters" title="Clusters Mode (C)">
+                <span class="mode-icon">🎨</span>
+                <span class="mode-text">Clusters</span>
+            </button>
+            <span class="divider">|</span>
+            <a href="https://github.com/zebrr/k2-18" target="_blank" rel="noopener noreferrer" class="github-link">
+                <svg class="github-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                <span>K2-18</span>
+            </a>
+        `;
+        
+        // Initially hidden with animation preparation
+        badge.style.opacity = '0';
+        badge.style.transform = 'translateY(20px)';
+        badge.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        
+        // Event listeners for buttons
+        badge.querySelector('.info-btn').addEventListener('click', () => this.showGraphStats());
+        
+        badge.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                this.toggleMode(mode);
+            });
+        });
+        
+        return badge;
+    },
+    
     // Info Popup
     createInfoPopup() {
-        // Create info button
-        const button = document.createElement('button');
-        button.className = 'info-button';
-        button.innerHTML = 'ℹ️';
-        button.title = 'Информация о графе';
-        document.body.appendChild(button);
+        // Create bottom badge instead of standalone info button
+        const badge = this._createBottomBadge();
+        document.body.appendChild(badge);
+        this.bottomBadge = badge;
+        
+        // Show badge after 1 second (same as filter panel)
+        setTimeout(() => {
+            badge.classList.add('visible');
+            badge.style.opacity = '1';
+            badge.style.transform = 'translateY(0)';
+        }, 1000);
+        
+        // Alternative: Listen for custom event from graph_core.js
+        window.addEventListener('graph-animation-complete', () => {
+            badge.classList.add('visible');
+            badge.style.opacity = '1';
+            badge.style.transform = 'translateY(0)';
+        }, { once: true });
         
         // Create popup
         const popup = document.createElement('div');
@@ -737,8 +752,7 @@ const UIControls = {
         document.body.appendChild(popup);
         this.infoPopup = popup;
         
-        // Event listeners
-        button.addEventListener('click', () => this.toggleInfoPopup());
+        // Event listener for popup close button
         popup.querySelector('.close-button').addEventListener('click', () => this.hideInfoPopup());
     },
     
@@ -940,13 +954,16 @@ const UIControls = {
                     // Deactivate active mode
                     this.toggleMode(null);
                 }
-            } else if (e.key === 'i' && !e.ctrlKey && !e.metaKey) {
+            } else if (e.key === 'i' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                // Only trigger on plain i key, not Cmd+i, Ctrl+i, etc.
                 // Toggle info popup
                 this.toggleInfoPopup();
-            } else if (e.key === 'd' && !e.ctrlKey && !e.metaKey) {
+            } else if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                // Only trigger on plain d key, not Cmd+d, Ctrl+d, etc.
                 // Toggle dictionary panel
                 this.toggleSidePanel();
-            } else if (e.key === 'p' || e.key === 'P') {
+            } else if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                // Only trigger on plain P key, not Cmd+P, Ctrl+P, etc.
                 // Close popup if open, then toggle Path Mode
                 if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
                     this.hideNodePopup();
@@ -954,7 +971,8 @@ const UIControls = {
                     this.hideInfoPopup();
                 }
                 this.toggleMode('path');
-            } else if (e.key === 'c' || e.key === 'C') {
+            } else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                // Only trigger on plain C key, not Cmd+C, Ctrl+C, etc.
                 // Close popup if open, then toggle Clusters Mode
                 if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
                     this.hideNodePopup();
@@ -962,14 +980,12 @@ const UIControls = {
                     this.hideInfoPopup();
                 }
                 this.toggleMode('clusters');
-            } else if (e.key === 't' || e.key === 'T') {
-                // Close popup if open, then toggle Tour Mode
-                if (this.state.nodePopupOpen || this.state.conceptPopupOpen || this.state.infoPanelOpen) {
-                    this.hideNodePopup();
-                    this.hideConceptPopup();
-                    this.hideInfoPopup();
+            } else if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                // Only trigger on plain T key, not Cmd+T, Ctrl+T, etc.
+                // Toggle Table of Contents (Course Panel)
+                if (window.CoursePanel && window.CoursePanel.togglePanel) {
+                    window.CoursePanel.togglePanel();
                 }
-                this.toggleMode('tour');
             }
         });
     },

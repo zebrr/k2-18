@@ -334,6 +334,12 @@ CSS styles for the visualization interface. Includes:
 
 ### Template Context Variables
 
+#### UI Structure Changes
+- Mode buttons moved from header to bottom badge
+- Info button integrated into bottom badge
+- Tour mode not displayed in UI (remains in code)
+- Filter panel appears after 1 second (instead of 4)
+
 The template receives the following context:
 
 ```python

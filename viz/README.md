@@ -42,8 +42,8 @@ That's it. No servers. No installation. Works in browser.
 ### Main Interface
 
 **Top Panel**
-- Checkboxes to show/hide node types (Chunks, Concepts, Assessments)
 - Live counters of visible nodes and edges
+- Checkboxes to show/hide node types (Chunks, Concepts, Assessments) and edges
 
 **Right Panel** (click 📚 tab to open)
 - **Dictionary tab**: All concepts with usage counts, click for definitions
@@ -59,12 +59,12 @@ That's it. No servers. No installation. Works in browser.
 - Drag to pan, scroll to zoom
 - Hover - shows preview text and highlights all connections
 
-### Planned Features (NOT READY)
+### Planned Features
 
 Three advanced modes accessible via buttons under header:
-- 🛤️ **Path Mode** - Find learning paths between concepts
-- 🎨 **Clusters** - Visualize topic groupings
-- ▶️ **Tour** - Automated presentation
+- 🛤️ **Path Mode** - Find learning paths between concepts (in Beta)
+- 🎨 **Clusters** - Visualize topic groupings (in Beta)
+- ▶️ **Tour** - Automated presentation (NOT READY)
 
 Currently these buttons may be visible but don't work yet.
 

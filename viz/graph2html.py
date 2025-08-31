@@ -318,6 +318,9 @@ def generate_html(
     minify = html_config.get("minify_json", True)
     embed = html_config.get("embed_libraries", True)
 
+    # Extract title from graph metadata or use default
+    graph_title = graph_data.get("_meta", {}).get("title", "Knowledge Graph Visualization")
+
     # Process vendor files
     vendor_js = html_config.get("vendor_js", [])
     vendor_css = html_config.get("vendor_css", [])
@@ -474,6 +477,8 @@ if (typeof cytoscape !== 'undefined' && typeof cytoscapeCoseBilkent !== 'undefin
         # Data
         "graph_data_json": minify_json_data(graph_data, minify),
         "concepts_data_json": minify_json_data(concepts_data, minify),
+        # Title from metadata
+        "title": graph_title,
         # Configuration
         "viz_config": viz_config,
         "colors_config": colors_config,

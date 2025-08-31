@@ -753,17 +753,21 @@ body {
     padding: var(--space-xl);
 }
 
-/* Course Panel - Left side panel with course content */
+/* Course Panel - Left side panel with course content 
+   WARNING: Some styles are overridden by inline styles in course_panel.js!
+   Specifically: z-index is set to 1001 inline (line 104 in course_panel.js)
+   This CSS serves as fallback and for development reference */
 .course-panel {
     position: fixed;
     left: -320px;
     top: 106px;  /* header (56px) + filter-panel (50px) */
     width: 320px;
-    height: calc(100vh - 106px);
+    height: calc(100vh - 106px - 66px);  /* header+filter (106px) + bottom space for badge (66px = 20px bottom + 36px badge + 10px gap) */
+    bottom: 66px;  /* Stop above bottom badge */
     background: white;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
     transition: left 0.3s ease;
-    z-index: 998;
+    z-index: 1001;  /* Above bottom badge (1000) - NOTE: Overridden by inline style in JS */
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -774,6 +778,9 @@ body {
     box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
 }
 
+/* WARNING: Most course-panel-button styles are set inline in course_panel.js (line 46-67)!
+   Including: position, dimensions, z-index (1001), colors, and transitions.
+   These CSS rules may not apply due to inline style priority */
 .course-panel-button {
     position: fixed;
     left: 0;
@@ -781,6 +788,7 @@ body {
     transform: translateY(-50%);
     width: 45px;
     height: 80px;
+    z-index: 1001;  /* Same as course panel, above bottom badge (1000) - NOTE: Overridden by inline */
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-left: none;
@@ -897,8 +905,8 @@ edge.hover-connected {
 
 .info-popup {
     position: fixed;
-    left: 70px;
-    bottom: var(--space-lg);
+    left: 20px;  /* Align with bottom badge */
+    bottom: 70px;  /* Above bottom badge (36px height + 20px bottom + 14px gap) */
     width: 650px;
     max-height: 600px;
     background: white;
@@ -906,7 +914,7 @@ edge.hover-connected {
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     box-shadow: var(--shadow-xl);
-    z-index: 400;
+    z-index: 10000;  /* Above everything including panels */
     overflow: hidden; /* Prevent outer scrollbar */
 }
 
@@ -1943,7 +1951,8 @@ node.node-pulse:after {
     
     .course-panel {
         top: 130px;
-        height: calc(100vh - 130px);
+        height: calc(100vh - 130px - 66px);  /* Account for bottom badge on mobile too */
+        bottom: 66px;
     }
 }
 
@@ -2053,4 +2062,120 @@ node.node-pulse:after {
 /* Smooth transitions for cluster overlays */
 .cluster-overlay-transition {
     transition: overlay-opacity 0.3s ease-in-out;
+}
+
+/* ========================================
+   Bottom Badge - Compact UI Element
+   ======================================== */
+
+.bottom-badge {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 1000;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    font-size: 14px;
+    height: 36px;
+}
+
+.bottom-badge.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.bottom-badge .info-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s ease;
+}
+
+.bottom-badge .info-btn:hover {
+    transform: scale(1.1);
+}
+
+.bottom-badge .divider {
+    color: rgba(0, 0, 0, 0.2);
+    user-select: none;
+}
+
+.bottom-badge .beta-label {
+    color: rgba(0, 0, 0, 0.6);
+    font-weight: 500;
+    user-select: none;
+}
+
+.bottom-badge .mode-btn {
+    background: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    font-size: 13px;
+    height: 28px;
+    color: rgba(0, 0, 0, 0.7);  /* Same as other text in badge */
+}
+
+.bottom-badge .mode-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.3);
+}
+
+.bottom-badge .mode-btn.active {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgb(59, 130, 246);
+    color: rgb(59, 130, 246);
+}
+
+.bottom-badge .mode-icon {
+    font-size: 14px;
+}
+
+.bottom-badge .mode-text {
+    font-weight: 500;
+}
+
+.bottom-badge .github-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(0, 0, 0, 0.7);
+    text-decoration: none;
+    transition: color 0.2s ease;
+    font-weight: 500;
+}
+
+.bottom-badge .github-link:hover {
+    color: rgba(0, 0, 0, 0.9);
+}
+
+.bottom-badge .github-icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+}
+
+.bottom-badge .github-link:hover .github-icon {
+    opacity: 1;
 }

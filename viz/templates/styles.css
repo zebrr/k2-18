@@ -2021,3 +2021,36 @@ node.node-pulse:after {
 .popup-backdrop ~ * .mode-buttons {
     pointer-events: none;
 }
+
+/* ========================================
+   Cluster Mode Styles
+   ======================================== */
+
+/* Cluster mode overlay animation */
+.cy-cluster-mode .node[overlay-opacity] {
+    transition: overlay-opacity 0.3s ease;
+}
+
+/* Bridge node emphasis in cluster mode */
+.cy-cluster-mode .node.bridge-node {
+    border-width: 4px !important;
+    border-color: #ff6b6b !important;
+    border-opacity: 1 !important;
+}
+
+/* Inter-cluster edge styling */
+.cy-cluster-mode .edge.inter-cluster {
+    line-style: dashed !important;
+    line-dash-pattern: 8 4 !important;
+}
+
+/* Cluster hover effect */
+.cluster-highlight {
+    transition: all 0.3s ease;
+    background-opacity: 1 !important;
+}
+
+/* Smooth transitions for cluster overlays */
+.cluster-overlay-transition {
+    transition: overlay-opacity 0.3s ease-in-out;
+}

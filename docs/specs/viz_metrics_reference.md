@@ -1,76 +1,81 @@
-# K2-18 VIZ: Референс алгоритмов вычисления метрик графа
+# K2-18 VIZ: Graph Metrics Computation Algorithms Reference
 
-## 1. Введение
+## 1. Introduction
 
-Этот документ — единый источник правды для вычисления метрик образовательного графа знаний в проекте K2-18.
+This document is the single source of truth for computing metrics of the educational knowledge graph in the K2-18 project.
 
-### Покрываемые метрики
-**10 метрик для узлов:**
-1. degree_in — входящая степень
-2. degree_out — исходящая степень  
-3. degree_centrality — нормализованная степень
-4. pagerank — важность узла
-5. betweenness_centrality — узел как мост
-6. out-closeness — исходящая близость
-7. component_id — компонента связности
-8. prerequisite_depth — уровень в дереве зависимостей
-9. learning_effort — накопленная сложность
-10. educational_importance — важность в образовательном контексте
+### Covered Metrics
+**12 node metrics:**
+1. degree_in — incoming degree
+2. degree_out — outgoing degree  
+3. degree_centrality — normalized degree
+4. pagerank — node importance
+5. betweenness_centrality — node as bridge
+6. out-closeness — outgoing closeness
+7. component_id — connected component
+8. prerequisite_depth — level in dependency tree
+9. learning_effort — cumulative difficulty
+10. educational_importance — importance in educational context
+11. cluster_id — Louvain cluster ID
+12. bridge_score — composite bridge metric
 
-**1 метрика для рёбер:**
-1. inverse_weight — обратный вес для distance-based алгоритмов
+**4 edge metrics:**
+1. inverse_weight — inverse weight for distance-based algorithms
+2. is_inter_cluster_edge — flag for inter-cluster edges
+3. source_cluster_id — source node's cluster (for inter-cluster edges)
+4. target_cluster_id — target node's cluster (for inter-cluster edges)
 
-### Порядок вычисления
-Метрики ДОЛЖНЫ вычисляться в указанном порядке из-за зависимостей.
+### Computation Order
+Metrics MUST be computed in the specified order due to dependencies.
 
 ---
 
-## 2. Метрики узлов
+## 2. Node Metrics
 
 ### 2.1. degree_in, degree_out
 
-**Образовательный смысл:** Показывает, от скольких узлов зависит данный (in) и на сколько узлов он влияет (out). Высокий degree_in = много предпосылок, высокий degree_out = открывает много нового.
+**Educational meaning:** Shows how many nodes this one depends on (in) and how many nodes it affects (out). High degree_in = many prerequisites, high degree_out = opens many new concepts.
 
-**Алгоритм:** Простой подсчёт входящих и исходящих рёбер.
+**Algorithm:** Simple count of incoming and outgoing edges.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 deg_in = dict(G.in_degree())
 deg_out = dict(G.out_degree())
 ```
 
-**Граничные случаи:**
-- Изолированный узел: degree_in = 0, degree_out = 0
-- Пустой граф: все степени = 0
+**Edge cases:**
+- Isolated node: degree_in = 0, degree_out = 0
+- Empty graph: all degrees = 0
 
 ---
 
 ### 2.2. degree_centrality
 
-**Образовательный смысл:** Насколько узел "общительный" относительно размера графа. Показывает долю всех возможных связей, которые есть у узла. Если узел связан со всеми — близко к 1, если изолирован — 0.
+**Educational meaning:** How "connected" the node is relative to graph size. Shows the fraction of all possible connections the node has. If connected to all — close to 1, if isolated — 0.
 
-**Алгоритм:** `(degree_in + degree_out) / (n - 1)` для directed графов.
+**Algorithm:** `(degree_in + degree_out) / (n - 1)` for directed graphs.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 deg_cent = nx.degree_centrality(G.to_undirected())
 ```
 
-**Граничные случаи:**
-- Граф с 1 узлом: degree_centrality = 0
-- Полный граф: degree_centrality → 1
+**Edge cases:**
+- Graph with 1 node: degree_centrality = 0
+- Complete graph: degree_centrality → 1
 
-**Зависимости:** Использует degree_in и degree_out.
+**Dependencies:** Uses degree_in and degree_out.
 
 ---
 
-### 2.3. inverse_weight (для рёбер)
+### 2.3. inverse_weight (for edges)
 
-**Образовательный смысл:** Преобразование веса в "расстояние" — чем слабее связь, тем "дальше" узлы.
+**Educational meaning:** Transforms weight into "distance" — the weaker the connection, the "farther" the nodes.
 
-**Алгоритм:** `inverse_weight = 1.0 / weight`
+**Algorithm:** `inverse_weight = 1.0 / weight`
 
-**Python реализация:**
+**Python implementation:**
 ```python
 for u, v, d in G.edges(data=True):
     w = float(d.get('weight', 1.0))
@@ -78,21 +83,21 @@ for u, v, d in G.edges(data=True):
     G[u][v]['inverse_weight'] = inv
 ```
 
-**Граничные случаи:**
-- weight = 0 или отсутствует: inverse_weight = inf
+**Edge cases:**
+- weight = 0 or missing: inverse_weight = inf
 - weight = 1: inverse_weight = 1
 
-**Примечание:** ДОЛЖЕН быть вычислен ДО betweenness_centrality и out-closeness.
+**Note:** MUST be computed BEFORE betweenness_centrality and out-closeness.
 
 ---
 
 ### 2.4. pagerank
 
-**Образовательный смысл:** Важность узла с учётом важности указывающих на него узлов. Ключевая особенность — накопительный эффект: важность передаётся и накапливается по цепочкам. Узел важен не сам по себе, а если на него ссылаются другие важные узлы. Базовые концепты передают важность производным.
+**Educational meaning:** Node importance considering the importance of nodes pointing to it. Key feature — cumulative effect: importance is transferred and accumulated through chains. A node is important not by itself, but if other important nodes reference it. Basic concepts transfer importance to derived ones.
 
-**Алгоритм:** Итеративный алгоритм со случайными переходами. Висячие узлы (без исходящих рёбер) распределяют свою массу равномерно.
+**Algorithm:** Iterative algorithm with random jumps. Dangling nodes (without outgoing edges) distribute their mass uniformly.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 if G.number_of_edges():
     pr = nx.pagerank(G, alpha=0.85, weight="weight")
@@ -100,25 +105,25 @@ else:
     pr = {u: 1.0/n for u in G.nodes()}
 ```
 
-**Параметры конфига:**
-- `pagerank_damping` (default: 0.85) — вероятность следования по рёбрам
+**Config parameters:**
+- `pagerank_damping` (default: 0.85) — probability of following edges
 
-**Граничные случаи:**
-- Пустой граф: все узлы получают 1/n
-- Граф без рёбер: все узлы получают 1/n
-- Висячие узлы: их PageRank перераспределяется равномерно
+**Edge cases:**
+- Empty graph: all nodes get 1/n
+- Graph without edges: all nodes get 1/n
+- Dangling nodes: their PageRank is redistributed uniformly
 
-**Инвариант:** `sum(PageRank) = 1.0 ± 0.01`
+**Invariant:** `sum(PageRank) = 1.0 ± 0.01`
 
 ---
 
 ### 2.5. betweenness_centrality
 
-**Образовательный смысл:** Узел как "мост" между частями графа. Высокое значение = узел критичен для связности знаний.
+**Educational meaning:** Node as a "bridge" between parts of the graph. High value = node is critical for knowledge connectivity.
 
-**Алгоритм:** Доля кратчайших путей, проходящих через узел. Использует ОБРАТНЫЕ веса (меньший вес = "дороже" путь).
+**Algorithm:** Fraction of shortest paths passing through the node. Uses INVERSE weights (smaller weight = "more expensive" path).
 
-**Python реализация:**
+**Python implementation:**
 ```python
 if n >= 3:
     btw = nx.betweenness_centrality(G, weight="inverse_weight", normalized=True)
@@ -126,24 +131,24 @@ else:
     btw = {u: 0.0 for u in G.nodes()}
 ```
 
-**Параметры конфига:**
-- `betweenness_normalized` (default: true) — нормализация на `(n-1)*(n-2)`
+**Config parameters:**
+- `betweenness_normalized` (default: true) — normalization by `(n-1)*(n-2)`
 
-**Граничные случаи:**
-- Граф < 3 узлов: все betweenness = 0
-- Линейный граф: средний узел имеет максимальное значение
+**Edge cases:**
+- Graph < 3 nodes: all betweenness = 0
+- Linear graph: middle node has maximum value
 
-**Зависимости:** Требует предвычисленный inverse_weight на рёбрах.
+**Dependencies:** Requires pre-computed inverse_weight on edges.
 
 ---
 
 ### 2.6. out-closeness
 
-**Образовательный смысл:** Насколько узел "близок" к другим через исходящие пути. Высокое значение = узел может легко достичь многих других.
+**Educational meaning:** How "close" the node is to others through outgoing paths. High value = node can easily reach many others.
 
-**Алгоритм:** OUT-closeness для directed графов через реверс. Формула Wasserman-Faust для частичной достижимости.
+**Algorithm:** OUT-closeness for directed graphs via reversal. Wasserman-Faust formula for partial reachability.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 if n > 1:
     Gr = G.reverse(copy=True)
@@ -152,25 +157,25 @@ else:
     out_close = {u: 0.0 for u in G.nodes()}
 ```
 
-**Параметры конфига:**
-- `closeness_harmonic` (default: true) — использовать гармоническую централизацию для несвязных графов
+**Config parameters:**
+- `closeness_harmonic` (default: true) — use harmonic centralization for disconnected graphs
 
-**Граничные случаи:**
-- Граф с 1 узлом: out-closeness = 0
-- Изолированный узел: out-closeness = 0
-- Узел без исходящих рёбер: out-closeness = 0
+**Edge cases:**
+- Graph with 1 node: out-closeness = 0
+- Isolated node: out-closeness = 0
+- Node without outgoing edges: out-closeness = 0
 
-**Зависимости:** Требует предвычисленный inverse_weight на рёбрах.
+**Dependencies:** Requires pre-computed inverse_weight on edges.
 
 ---
 
 ### 2.7. component_id
 
-**Образовательный смысл:** Группировка узлов в связные подграфы. Узлы одной компоненты достижимы друг из друга.
+**Educational meaning:** Grouping nodes into connected subgraphs. Nodes of the same component are reachable from each other.
 
-**Алгоритм:** Weakly connected components с детерминированной нумерацией по порядку узлов в файле.
+**Algorithm:** Weakly connected components with deterministic numbering by node order in file.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 def component_ids(G, node_order):
     UG = G.to_undirected()
@@ -184,21 +189,21 @@ def component_ids(G, node_order):
     return mapping
 ```
 
-**Граничные случаи:**
-- Полностью связный граф: все узлы имеют component_id = 0
-- n изолированных узлов: component_id от 0 до n-1
+**Edge cases:**
+- Fully connected graph: all nodes have component_id = 0
+- n isolated nodes: component_id from 0 to n-1
 
-**Инвариант:** component_id начинается с 0 и идёт последовательно.
+**Invariant:** component_id starts from 0 and goes sequentially.
 
 ---
 
 ### 2.8. prerequisite_depth
 
-**Образовательный смысл:** Уровень узла в иерархии предварительных требований. 0 = базовые концепты, далее по возрастанию.
+**Educational meaning:** Node level in the prerequisite hierarchy. 0 = basic concepts, then increasing.
 
-**Алгоритм:** Максимальная длина пути по PREREQUISITE рёбрам от узлов без входящих PREREQUISITE.
+**Algorithm:** Maximum path length via PREREQUISITE edges from nodes without incoming PREREQUISITE.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 def prereq_subgraph(G):
     E = [(u, v, d) for u, v, d in G.edges(data=True) 
@@ -208,36 +213,36 @@ def prereq_subgraph(G):
     H.add_edges_from(E)
     return H
 
-# В функции scc_dag_depth_and_effort:
-# 1. Строим SCC (strongly connected components)
-# 2. Создаём condensed DAG
-# 3. Топологическая сортировка
+# In scc_dag_depth_and_effort function:
+# 1. Build SCC (strongly connected components)
+# 2. Create condensed DAG
+# 3. Topological sort
 # 4. DP: depth[c] = max(depth[pred]) + 1
 ```
 
-**Граничные случаи:**
-- Узлы без входящих PREREQUISITE: depth = 0
-- Циклы PREREQUISITE: все узлы цикла получают одинаковую глубину
-- Граф без PREREQUISITE рёбер: все узлы имеют depth = 0
+**Edge cases:**
+- Nodes without incoming PREREQUISITE: depth = 0
+- PREREQUISITE cycles: all cycle nodes get the same depth
+- Graph without PREREQUISITE edges: all nodes have depth = 0
 
-**Зависимости:** Анализирует только подграф PREREQUISITE рёбер.
+**Dependencies:** Analyzes only PREREQUISITE edges subgraph.
 
 ---
 
 ### 2.9. learning_effort
 
-**Образовательный смысл:** Накопленная сложность изучения с учётом всех предварительных требований.
+**Educational meaning:** Cumulative learning difficulty considering all prerequisites.
 
-**Алгоритм:** 
-1. Берём подграф PREREQUISITE
-2. Находим SCC и сворачиваем в DAG
-3. DP: `effort[c] = sum(difficulty в компоненте) + max(effort[предков])`
-4. Узлы одной SCC получают одинаковое значение
+**Algorithm:** 
+1. Take PREREQUISITE subgraph
+2. Find SCC and collapse into DAG
+3. DP: `effort[c] = sum(difficulty in component) + max(effort[ancestors])`
+4. Nodes of same SCC get same value
 
-**Python реализация:**
+**Python implementation:**
 ```python
 def scc_dag_depth_and_effort(H, default_difficulty=3.0):
-    # SCC компоненты
+    # SCC components
     comp_list = list(nx.strongly_connected_components(H))
     comp_index = {n: i for i, comp in enumerate(comp_list) for n in comp}
     
@@ -249,13 +254,13 @@ def scc_dag_depth_and_effort(H, default_difficulty=3.0):
         if cu != cv:
             C.add_edge(cu, cv)
     
-    # Суммы difficulty по компонентам
+    # Sum difficulties by component
     comp_difficulty = {}
     for i, comp in enumerate(comp_list):
         s = sum(H.nodes[n].get("difficulty", default_difficulty) for n in comp)
         comp_difficulty[i] = s
     
-    # Топологическая DP
+    # Topological DP
     topo = list(nx.topological_sort(C))
     comp_effort = {i: 0.0 for i in C.nodes()}
     for c in topo:
@@ -265,30 +270,30 @@ def scc_dag_depth_and_effort(H, default_difficulty=3.0):
         else:
             comp_effort[c] = comp_difficulty[c]
     
-    # Разворачиваем на узлы
+    # Expand to nodes
     effort = {n: float(comp_effort[comp_index[n]]) for n in H.nodes()}
     return effort
 ```
 
-**Параметры конфига:**
-- `default_difficulty` (default: 3) — значение если difficulty отсутствует в узле
+**Config parameters:**
+- `default_difficulty` (default: 3) — value if difficulty is missing in node
 
-**Граничные случаи:**
-- Узел без difficulty: используется default_difficulty
-- Изолированный узел: effort = его difficulty
-- Цикл PREREQUISITE: все узлы цикла получают сумму их difficulties + max(предков)
+**Edge cases:**
+- Node without difficulty: uses default_difficulty
+- Isolated node: effort = its difficulty
+- PREREQUISITE cycle: all cycle nodes get sum of their difficulties + max(ancestors)
 
-**Зависимости:** Использует prerequisite_depth логику (тот же подграф).
+**Dependencies:** Uses prerequisite_depth logic (same subgraph).
 
 ---
 
 ### 2.10. educational_importance
 
-**Образовательный смысл:** PageRank только по "образовательным" типам рёбер. Показывает важность в контексте обучения.
+**Educational meaning:** PageRank only on "educational" edge types. Shows importance in learning context.
 
-**Алгоритм:** PageRank на подграфе из рёбер типов PREREQUISITE, ELABORATES, TESTS, EXAMPLE_OF.
+**Algorithm:** PageRank on subgraph from edges of types PREREQUISITE, ELABORATES, TESTS, EXAMPLE_OF.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 def educational_subgraph(G):
     allowed = {"PREREQUISITE", "ELABORATES", "TESTS", "EXAMPLE_OF"}
@@ -306,34 +311,34 @@ else:
     edu_pr = {u: 1.0/n for u in G.nodes()}
 ```
 
-**Параметры конфига:**
+**Config parameters:**
 - `educational_edge_types` (default: ["PREREQUISITE", "ELABORATES", "TESTS", "EXAMPLE_OF"])
 - `pagerank_damping` (default: 0.85)
 
-**Граничные случаи:**
-- Граф без образовательных рёбер: равномерное распределение 1/n
-- Только образовательные рёбра: совпадает с обычным PageRank
+**Edge cases:**
+- Graph without educational edges: uniform distribution 1/n
+- Only educational edges: coincides with regular PageRank
 
-**Инвариант:** `sum(educational_importance) = 1.0 ± 0.01`
+**Invariant:** `sum(educational_importance) = 1.0 ± 0.01`
 
-**Зависимости:** Использует ту же логику что и PageRank, но на подграфе.
+**Dependencies:** Uses same logic as PageRank, but on subgraph.
 
 ---
 
-## 3. Продвинутые метрики (Advanced Metrics)
+## 3. Advanced Metrics
 
 ### 3.1. cluster_id (Louvain clustering)
 
-**Образовательный смысл:** Группировка тематически связанных узлов. Узлы одного кластера образуют смысловой блок знаний.
+**Educational meaning:** Grouping of thematically related nodes. Nodes of the same cluster form a semantic knowledge block.
 
-**Алгоритм:** Louvain community detection на undirected проекции графа с детерминированной перенумерацией.
+**Algorithm:** Louvain community detection on undirected graph projection with deterministic renumbering.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 import community as community_louvain
 
 UG = G.to_undirected()
-# Агрегация весов для двунаправленных рёбер
+# Aggregate weights for bidirectional edges
 for u, v in list(UG.edges()):
     if UG.has_edge(v, u):
         UG[u][v]['weight'] = G.get_edge_data(u, v, {}).get('weight', 1.0) + \
@@ -345,7 +350,7 @@ partition = community_louvain.best_partition(
     random_state=config['louvain_random_state']
 )
 
-# Детерминированная перенумерация по минимальному ID узла
+# Deterministic renumbering by minimum node ID
 clusters = {}
 for node, cluster in partition.items():
     clusters.setdefault(cluster, []).append(node)
@@ -359,34 +364,34 @@ for new_id, (old_id, nodes) in enumerate(sorted_clusters):
         cluster_map[node] = new_id
 ```
 
-**Параметры конфига:**
-- `louvain_resolution` (default: 1.0) — контроль размера кластеров
-- `louvain_random_state` (default: 42) — seed для детерминизма
+**Config parameters:**
+- `louvain_resolution` (default: 1.0) — cluster size control
+- `louvain_random_state` (default: 42) — seed for determinism
 
-**Граничные случаи:**
-- Пустой граф: пустой dict
-- Один узел: cluster_id = 0
-- Несвязные компоненты: каждая компонента кластеризуется отдельно
+**Edge cases:**
+- Empty graph: empty dict
+- Single node: cluster_id = 0
+- Disconnected components: each component is clustered separately
 
-**Зависимости:** Требует python-louvain>=0.16
+**Dependencies:** Requires python-louvain>=0.16
 
 ---
 
 ### 3.2. bridge_score
 
-**Образовательный смысл:** Узлы-мосты между разными тематическими блоками. Высокий bridge_score = узел связывает разные области знаний.
+**Educational meaning:** Bridge nodes between different thematic blocks. High bridge_score = node connects different knowledge areas.
 
-**Алгоритм:** Взвешенная комбинация betweenness centrality и доли межкластерных связей.
+**Algorithm:** Weighted combination of betweenness centrality and inter-cluster connection ratio.
 
-**Формула:** 
+**Formula:** 
 ```
 bridge_score = w_b * betweenness_norm + (1 - w_b) * inter_ratio
 ```
-где:
+where:
 - `w_b` = bridge_weight_betweenness (default: 0.7)
-- `inter_ratio` = доля соседей в других кластерах
+- `inter_ratio` = fraction of neighbors in other clusters
 
-**Python реализация:**
+**Python implementation:**
 ```python
 def compute_bridge_scores(G, cluster_map, betweenness_centrality, config):
     w_b = config.get('bridge_weight_betweenness', 0.7)
@@ -407,25 +412,25 @@ def compute_bridge_scores(G, cluster_map, betweenness_centrality, config):
     return bridge_scores
 ```
 
-**Параметры конфига:**
-- `bridge_weight_betweenness` (default: 0.7) — вес для betweenness компоненты
+**Config parameters:**
+- `bridge_weight_betweenness` (default: 0.7) — weight for betweenness component
 
-**Граничные случаи:**
-- Узел без соседей: inter_ratio = 0, использует только betweenness
-- Один кластер: все inter_ratio = 0
-- Нет кластеризации: использует только betweenness
+**Edge cases:**
+- Node without neighbors: inter_ratio = 0, uses only betweenness
+- Single cluster: all inter_ratio = 0
+- No clustering: uses only betweenness
 
-**Зависимости:** Требует предвычисленные cluster_id и betweenness_centrality.
+**Dependencies:** Requires pre-computed cluster_id and betweenness_centrality.
 
 ---
 
-### 3.3. Межкластерные метрики рёбер
+### 3.3. Inter-cluster Edge Metrics
 
-**Образовательный смысл:** Выявление связей между тематическими блоками для понимания междисциплинарных зависимостей.
+**Educational meaning:** Identifying connections between thematic blocks for understanding interdisciplinary dependencies.
 
-**Алгоритм:** Проверка принадлежности source и target разным кластерам.
+**Algorithm:** Check if source and target belong to different clusters.
 
-**Python реализация:**
+**Python implementation:**
 ```python
 for u, v, d in G.edges(data=True):
     src_cluster = cluster_map.get(u, -1)
@@ -439,58 +444,124 @@ for u, v, d in G.edges(data=True):
         G[u][v]['is_inter_cluster_edge'] = False
 ```
 
-**Инвариант:** `is_inter_cluster_edge = True ⟺ source_cluster_id ≠ target_cluster_id`
+**Invariant:** `is_inter_cluster_edge = True ⟺ source_cluster_id ≠ target_cluster_id`
 
 ---
 
-## 4. Полный список метрик
+## 4. Complete Metrics List
 
-### Метрики узлов (12):
-1. degree_in, degree_out — входящая/исходящая степень
-2. degree_centrality — нормализованная степень
-3. pagerank — важность с учетом источников
-4. betweenness_centrality — узел как мост
-5. out-closeness — исходящая близость
-6. component_id — компонента связности
-7. prerequisite_depth — уровень в иерархии
-8. learning_effort — накопленная сложность
-9. educational_importance — образовательная важность
-10. cluster_id — ID кластера (Louvain)
-11. bridge_score — композитная метрика моста
+### Node metrics (12):
+1. degree_in, degree_out — incoming/outgoing degree
+2. degree_centrality — normalized degree
+3. pagerank — importance considering sources
+4. betweenness_centrality — node as bridge
+5. out-closeness — outgoing closeness
+6. component_id — connected component
+7. prerequisite_depth — level in hierarchy
+8. learning_effort — cumulative difficulty
+9. educational_importance — educational importance
+10. cluster_id — Louvain cluster ID
+11. bridge_score — composite bridge metric
 
-### Метрики рёбер (4):
-1. inverse_weight — обратный вес
-2. is_inter_cluster_edge — флаг межкластерного ребра
-3. source_cluster_id — кластер источника (для межкластерных)
-4. target_cluster_id — кластер цели (для межкластерных)
+### Edge metrics (4):
+1. inverse_weight — inverse weight
+2. is_inter_cluster_edge — inter-cluster edge flag
+3. source_cluster_id — source cluster (for inter-cluster)
+4. target_cluster_id — target cluster (for inter-cluster)
 
 ---
 
-## 5. Итоговые замечания
+## 5. Computation Sequence
 
-### Последовательность вычисления
-1. **degree_in, degree_out** — базовые метрики
-2. **degree_centrality** — использует степени
-3. **inverse_weight** — подготовка для distance-based метрик
-4. **pagerank** — независимая метрика
-5. **betweenness_centrality** — требует inverse_weight
-6. **out-closeness** — требует inverse_weight
-7. **component_id** — независимая метрика
-8. **prerequisite_depth** — анализ PREREQUISITE подграфа
-9. **learning_effort** — расширение prerequisite_depth
-10. **educational_importance** — PageRank на подграфе
-11. **cluster_id** — Louvain кластеризация
-12. **bridge_score** — требует cluster_id и betweenness_centrality
+### Sequence Order
+1. **degree_in, degree_out** — basic metrics
+2. **degree_centrality** — uses degrees
+3. **inverse_weight** — preparation for distance-based metrics
+4. **pagerank** — independent metric
+5. **betweenness_centrality** — requires inverse_weight
+6. **out-closeness** — requires inverse_weight
+7. **component_id** — independent metric
+8. **prerequisite_depth** — PREREQUISITE subgraph analysis
+9. **learning_effort** — extension of prerequisite_depth
+10. **educational_importance** — PageRank on subgraph
+11. **cluster_id** — Louvain clustering
+12. **bridge_score** — requires cluster_id and betweenness_centrality
 
-### Обработка граничных случаев
-- Все метрики должны возвращать числовые значения (не NaN/Inf)
-- При делении на 0 или других исключениях — возвращать 0.0
-- Логировать аномальные ситуации
+### Edge Case Handling
+- All metrics must return numeric values (not NaN/Inf)
+- On division by 0 or other exceptions — return 0.0
+- Log anomalous situations
 
-### Проверка корректности
+### Correctness Verification
 - sum(PageRank) ≈ 1.0
 - sum(educational_importance) ≈ 1.0
-- component_id от 0 до k-1 (k компонент)
-- prerequisite_depth ≥ 0 для всех узлов
-- cluster_id от 0 до c-1 (c кластеров)
-- bridge_score ∈ [0, 1] для всех узлов
+- component_id from 0 to k-1 (k components)
+- prerequisite_depth ≥ 0 for all nodes
+- cluster_id from 0 to c-1 (c clusters)
+- bridge_score ∈ [0, 1] for all nodes
+
+---
+
+## 6. Helper Functions
+
+### 6.1. sanitize_graph_weights
+
+**Purpose:** Ensure numerical stability of edge weights before computing metrics.
+
+**Algorithm:**
+1. Remove self-loops via `nx.selfloop_edges()`
+2. Replace missing weights with 1.0
+3. Replace zero/negative weights with eps (1e-9)
+4. Ensure inverse_weight exists on all edges
+
+**Python implementation:**
+```python
+def sanitize_graph_weights(G: nx.DiGraph, eps: float = 1e-9) -> None:
+    # Remove self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+    
+    # Fix weights
+    for u, v, d in G.edges(data=True):
+        w = d.get('weight', 1.0)
+        if not w or w <= 0:
+            d['weight'] = eps
+        if 'inverse_weight' not in d:
+            d['inverse_weight'] = 1.0 / d['weight']
+```
+
+**When to apply:** Before `compute_louvain_clustering` and `compute_bridge_scores`
+
+**Edge cases:**
+- Empty graph: No operation
+- All weights invalid: All set to eps
+
+---
+
+### 6.2. safe_metric_value
+
+**Purpose:** Convert unsafe values to JSON-serializable format.
+
+**Algorithm:**
+- None → 0.0
+- NaN → 0.0  
+- ±inf → 0.0
+- Valid number → unchanged
+
+**Python implementation:**
+```python
+def safe_metric_value(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if math.isnan(value) or math.isinf(value):
+        return 0.0
+    return float(value)
+```
+
+**When to apply:** When saving metrics to JSON
+
+**Usage example:**
+```python
+for node in graph_data['nodes']:
+    for metric in ['pagerank', 'betweenness_centrality', ...]:
+        node[metric] = safe_metric_value(computed_metrics[node['id']][metric])
+```

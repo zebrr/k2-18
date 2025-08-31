@@ -230,10 +230,19 @@ Generate the complete HTML file for visualization.
   - logger (Logger) - Logger instance
   - test_mode (bool) - Test mode flag
 - **Returns**: str - Complete HTML document
+- **Algorithm**:
+  1. Setup Jinja2 environment and load templates
+  2. Load CSS from templates/styles.css
+  3. Extract configuration sections (viz, colors, ui, path_mode, text_formatting, tooltip)
+  4. Process vendor files based on embed_libraries setting
+  5. Load static JavaScript modules (edge_styles, animation_controller, graph_core, ui_controls, course_panel, path_finder, clusters_bridges, tour_mode)
+  6. Add cose-bilkent registration script
+  7. Prepare template context with all data and configurations
+  8. Render template and return HTML
 - **Raises**:
   - SystemExit(EXIT_IO_ERROR) - Template loading errors
   - SystemExit(EXIT_RUNTIME_ERROR) - Template rendering errors
-- **Note**: Adds cose-bilkent registration script automatically
+- **Note**: Loads all static modules and passes them to template context
 
 ### minify_html_content(html: str, config: Dict, logger: logging.Logger) -> str
 Minify HTML if configured.
@@ -294,7 +303,7 @@ Section `[graph2html]` in `/viz/config.toml`:
 
 ### Optional Parameters
 - **minify_json** (bool, default=true) - Minify embedded JSON data
-- **minify_html** (bool, default=true) - Minify final HTML output
+- **minify_html** (bool, default=true) - Minify final HTML output (configured in config.toml)
 - **embed_libraries** (bool, default=true) - Embed vs CDN mode
 - **default_language** (str, default="ru") - Default UI language
 - **enable_language_switch** (bool, default=true) - Show language toggle
@@ -366,6 +375,13 @@ The template receives the following context:
         "show_minimap": bool,
         "show_stats": bool
     },
+    "path_mode_config": {         # From [path_mode] section
+        "alpha_step": int,
+        "beta_difficulty": int,
+        "sigma_confidence": float,
+        "default_difficulty": int,
+        "edge_type_ladder": list
+    },
     "text_formatting": {           # From [text_formatting] section
         "enable_markdown": bool,
         "enable_code_highlighting": bool,
@@ -389,7 +405,14 @@ The template receives the following context:
     "vendor_js_content": str,      # Concatenated JS libraries
     "vendor_css_content": str,     # Concatenated CSS libraries
     "styles_content": str,         # styles.css content
+    "edge_styles_content": str,    # edge_styles.js content (empty if CDN mode)
+    "animation_controller_content": str,  # animation_controller.js content (empty if CDN mode)
     "graph_core_content": str,     # graph_core.js content (empty if CDN mode)
+    "ui_controls_content": str,    # ui_controls.js content (empty if CDN mode)
+    "course_panel_content": str,   # course_panel.js content (empty if CDN mode)
+    "path_finder_content": str,    # path_finder.js content (empty if CDN mode)
+    "clusters_bridges_content": str,  # clusters_bridges.js content (empty if CDN mode)
+    "tour_mode_content": str,      # tour_mode.js content (empty if CDN mode)
     
     # CDN tags (when embed_libraries=false)
     "script_tags": str,            # HTML script tags for CDN
@@ -484,7 +507,11 @@ CDN_URLS = {
     "cose-base.js": "https://unpkg.com/cose-base@2.2.0/cose-base.js",
     "cytoscape-cose-bilkent.js": "https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js",
     "cytoscape-navigator.js": "https://unpkg.com/cytoscape.js-navigator@2.0.2/cytoscape.js-navigator.js",
-    "cytoscape.js-navigator.css": "https://unpkg.com/cytoscape.js-navigator@2.0.2/cytoscape.js-navigator.css"
+    "cytoscape.js-navigator.css": "https://unpkg.com/cytoscape.js-navigator@2.0.2/cytoscape.js-navigator.css",
+    "marked.min.js": "https://unpkg.com/marked@14/marked.min.js",
+    "mathjax-tex-mml-chtml.js": "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js",
+    "highlight.min.js": "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/highlight.min.js",
+    "github-dark.min.css": "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/styles/github-dark.min.css"
 }
 ```
 
@@ -531,9 +558,20 @@ CDN_URLS = {
 - **cose-base.js** - Cose dependency (critical)
 - **cytoscape-cose-bilkent.js** - Layout plugin (critical)
 - **cytoscape-navigator.js** - Minimap (optional)
-- **edge_styles.js** - Edge styling module (custom)
-- **animation_controller.js** - Animation control module (custom)
-- **graph_core.js** - Main visualization controller (custom)
+- **marked.min.js** - Markdown parser (optional)
+- **highlight.min.js** - Code syntax highlighting (optional)
+- **mathjax-tex-mml-chtml.js** - Math formula rendering (optional)
+
+### Static JavaScript Modules (Custom)
+- **edge_styles.js** - Edge styling module
+- **animation_controller.js** - Animation control module
+- **graph_core.js** - Main visualization controller (see `/docs/specs/viz_graph_core.md`)
+- **ui_controls.js** - User interface controls (see `/docs/specs/viz_ui_controls.md`)
+- **course_panel.js** - Course content panel
+- **path_finder.js** - Path finding mode (see `/docs/specs/viz_path_finder.md`)
+- **clusters_bridges.js** - Cluster visualization mode (see `/docs/specs/viz_clusters_bridges.md`)
+- **tour_mode.js** - Tour presentation mode (stub)
+- **debug_helpers.js** - Debug utilities (test mode only)
 
 ## Performance Notes
 
@@ -581,399 +619,89 @@ All tests use mocks for filesystem operations and external dependencies.
 
 ## Visual Encoding System
 
-### Node Visual Encoding
-The visualization uses distinct shapes and colors for the three node types:
-
-#### Node Types and Shapes
-- **Chunk**: hexagon shape, blue (#3498db)
-  - Represents learning content chunks
-  - Size scaled by PageRank metric
-  - Opacity based on difficulty (0.5 for difficulty=1, 1.0 for difficulty=5)
-
-- **Concept**: star shape, green (#2ecc71)
-  - Represents semantic concepts
-  - Size scaled by PageRank metric
-  - Opacity based on difficulty
-
-- **Assessment**: roundrectangle shape, orange (#f39c12)
-  - Represents assessment/test nodes
-  - Size scaled by PageRank metric
-  - Opacity based on difficulty
-
-### Edge Visual Encoding
-All 9 edge types from the schema have distinct visual styles:
-
-#### Strong Dependencies (4px width)
-- **PREREQUISITE**: solid red (#e74c3c), 4px
-  - Strong educational dependency
-  - Most prominent visual weight
-  
-- **TESTS**: solid orange (#f39c12), 4px
-  - Assessment relationship
-  - High visual prominence
-
-#### Clear Relationships (2.5px width)
-- **ELABORATES**: dashed blue (#3498db), 2.5px
-  - Elaboration/detail relationship
-  - Dash pattern: [8, 4]
-  
-- **EXAMPLE_OF**: dotted purple (#9b59b6), 2.5px
-  - Example relationship
-  - Dot pattern: [2, 4]
-  
-- **PARALLEL**: solid gray (#95a5a6), 2.5px
-  - Parallel topic relationship
-  
-- **REVISION_OF**: dashed green (#27ae60), 2.5px
-  - Revision/update relationship
-  - Dash pattern: [6, 3]
-
-#### Weak References (1px width)
-- **HINT_FORWARD**: dotted light blue (#5dade2), 1px
-  - Hint to future content
-  - Dot pattern: [2, 6]
-  - Lower opacity (0.5)
-  
-- **REFER_BACK**: dotted pink (#ec7063), 1px
-  - Reference to past content
-  - Dot pattern: [2, 6]
-  - Lower opacity (0.5)
-  
-- **MENTIONS**: dashed light gray (#bdc3c7), 1px
-  - Simple mention
-  - Dash pattern: [4, 4]
-  - Lowest opacity (0.4)
-
-#### Inter-cluster Edges
-- Edges connecting nodes from different clusters are rendered 50% thicker
-- Higher z-index for visual prominence
-- Slightly increased opacity
+The visual encoding of nodes and edges is handled by the GraphCore module.
+See `/docs/specs/viz_graph_core.md` for complete details on:
+- Node shapes, colors, and sizing based on metrics
+- Edge styles for all 9 relationship types
+- Opacity mappings for difficulty visualization
+- Inter-cluster edge highlighting
 
 ### Animation System
 
-#### Node Appearance Animation
-1. Nodes grouped by `prerequisite_depth` metric
-2. Each depth level appears sequentially:
-   - 500ms fade-in animation per node
-   - 200ms delay between depth levels
-   - Opacity animated to difficulty-based value
-3. Lower depths (prerequisites) appear first
+Animations are managed by AnimationController and GraphCore modules.
+See `/docs/specs/viz_graph_core.md` for details on:
+- Node appearance sequencing by prerequisite depth
+- Edge animation timing
+- Physics simulation with cose-bilkent layout
 
-#### Edge Appearance Animation
-- All edges appear after nodes complete
-- 500ms fade-in to type-specific opacity
-- Inter-cluster edges highlighted with higher opacity
+### Label Display
 
-#### Physics Simulation
-- Runs after initial placement
-- 3000ms duration (configurable)
-- Uses cose-bilkent layout algorithm
-- Nodes remain draggable after simulation
-
-### Label Display Behavior
-
-#### Hover Labels
-- Labels hidden by default (no visual clutter)
-- Show on mouse hover with 500ms delay
-- White text with dark outline for readability
-- Font weight increased to 600
-- Hide immediately on mouse leave
-- Prevents label flashing on quick mouse movements
+Label display is handled by UIControls module through tooltips.
+See `/docs/specs/viz_ui_controls.md` for hover and tooltip behavior.
 
 ### HTML Structure
 
-#### Container Hierarchy
-```html
-<div id="app">
-    <header id="header">...</header>
-    <div id="filter-panel">...</div>  <!-- Dynamically created -->
-    <div id="cy-wrapper">  <!-- Fixed position, top: 106px -->
-        <div id="cy"></div>  <!-- Absolute position, fills wrapper -->
-    </div>
-</div>
-```
+The generated HTML contains:
+- Application container with header, filter panel, and graph canvas
+- All JavaScript modules embedded or linked via CDN
+- Graph and concept data as JSON
+- CSS styles for visualization
 
-#### Positioning Details
-- **#header**: Fixed, height 56px, z-index 1000
-- **#filter-panel**: Fixed, top 56px, height ~50px, z-index 999
-- **#cy-wrapper**: Fixed, top 106px (header + filter panel), bottom 0
-- **#cy**: Absolute, top 0 (fills parent wrapper), bottom 0
-- **Side panels**: Fixed, top 106px, height calc(100vh - 106px)
+For details on HTML structure and component layout, see template `/viz/templates/index.html`.
 
 ### Interactive Features
 
-#### Filter Panel
-- Separate panel positioned below header (56px top offset)
-- Light gradient background (#b3bef6 to #c8a5d8)
-- Animated appearance after graph loads (~4 seconds delay)
-- Two filter groups: Nodes and Edges
-- Responsive layout for mobile devices
-
-#### Node Interactions
-- Hover: 20% size increase, label display
-- Click: Opens node information popup with full details
-- Drag: Repositioning (maintained after physics)
-
-#### Edge Interactions
-- Hover: 50% width increase, full opacity
-- Click: Selection with orange highlight
-
-#### Dictionary Interactions
-- Click on concept: Opens concept definition popup
-- Hover on concept: Highlights nodes containing that concept
-
-#### TOP Nodes Interactions
-- Click on TOP node: Centers view on that node (no popup)
-- Hover on TOP node: Pulse effect on the node
-
-#### Popup Interactions
-- Click on edge target in node popup: Updates popup with target node
-- Click outside popup: Closes popup
-- Escape key: Closes active popup (priority: node > concept > info > side panel)
+All user interactions are managed by the UIControls module.
+See `/docs/specs/viz_ui_controls.md` for complete details on:
+- Filter panel functionality and appearance
+- Node/edge hover and click interactions
+- Dictionary and TOP nodes panels
+- Popup system and keyboard shortcuts
 
 ### JavaScript Module Architecture
 
-#### Static Modules (loaded in order)
-1. **edge_styles.js**
-   - Defines all 9 edge type styles
-   - Exports EdgeStyles global object
-   - Functions: generateEdgeStyles(), getEdgeColor(), isEducationalEdge()
+The visualization consists of several JavaScript modules loaded by the HTML:
 
-2. **animation_controller.js**
-   - Controls animation sequences
-   - Exports AnimationController class
-   - Methods: animateGraph(), highlightPath(), stopAnimation()
+#### Core Modules with Specifications
+- **graph_core.js** - Main visualization controller (`/docs/specs/viz_graph_core.md`)
+- **ui_controls.js** - UI management (`/docs/specs/viz_ui_controls.md`)
+- **path_finder.js** - Path mode (`/docs/specs/viz_path_finder.md`)
+- **clusters_bridges.js** - Clusters mode (`/docs/specs/viz_clusters_bridges.md`)
 
-3. **graph_core.js**
-   - Main visualization controller
-   - Integrates edge styles and animations
-   - Exports GraphCore class
-   - Provides base styles for UI interactions
-
-4. **ui_controls.js**
-   - User interface controls and interactions
-   - Exports UIControls object
-   - Features:
-     * Mode toggle buttons in header center (Path, Clusters, Tour)
-     * Separate filter panel below header for node and edge filtering
-     * Node type filters (Chunks, Concepts, Assessments)
-     * Edge category filters (Strong, Medium, Weak)
-     * Dynamic counters in header showing visible/total nodes and edges
-     * Right side panel with Dictionary and TOP nodes tabs
-     * Node hover effects with red highlighting
-     * Edge highlighting on node hover
-     * Tooltips with 500ms delay
-     * Info popup with graph statistics (i key)
-     * Mode switching with keyboard shortcuts (P, C, T)
-
-5. **course_panel.js**
-   - Left-side course content panel
-   - Exports CoursePanel object
-   - Features:
-     * Sequential display of Chunk nodes sorted by position
-     * Parses node IDs with format `{slug}:c:{position}`
-     * Cluster color indicators for each node
-     * Hover highlighting using pulse class
-     * Click to zoom without popup
-     * Sliding panel with 320px width
-     * Tab button that moves with panel
-     * **Node Information Popup**: Detailed node information with metrics, edges, and navigation
-       - Displays difficulty as traffic light with 5 circles
-       - Shows edges with target node difficulty circles
-       - Supports navigation by clicking on connected nodes
-       - Width: 690px (15% wider than original design)
-     * **Concept Definition Popup**: Concept definition with aliases and mention count
-     * **Popup Management**: Exclusive popup display (only one at a time)
-     * **Educational Tooltips**: Click-based explanations for metrics (not hover)
-     * Keyboard shortcuts (Esc, i, d)
-   - Key methods:
-     * `init()` - Initializes all UI components
-     * `createFilterPanel()` - Creates separate filter panel below header
-     * `toggleNodeType()` - Shows/hides nodes by type with edge visibility logic
-     * `toggleEdgeCategory()` - Shows/hides edges by category (strong/medium/weak)
-     * `getEdgeCategory()` - Maps edge types to categories
-     * `updateCounters()` - Updates visible/total counters
-     * `showNodePopup()` - Displays detailed node information
-     * `showConceptPopup()` - Displays concept definition
-     * `renderDifficulty()` - Renders difficulty as colored circles (1-5 scale)
-     * `renderEdgeItem()` - Renders edge with type, target, difficulty, and weight
-     * `toggleMetricTooltip()` - Shows/hides click-based metric explanations
-     * `formatMetricValue()` - Formats numeric metrics with appropriate precision
-   - Auto-initializes via "k2-graph-ready" event
-
-6. **path_finder.js**
-   - Path Mode module for learning path discovery
-   - Exports PathFinder object
-   - Status: Fully implemented in VIZ-PATH-01
-   - Features:
-     * Two-click node selection with visual feedback
-     * Fast path algorithm with edge type ladder expansion
-     * Simple path algorithm weighted by node difficulty
-     * Path visualization with curve separation
-     * Metrics panel showing steps and difficulty
-     * Toast notifications for user feedback
-   - See full specification: `/docs/specs/viz_path_finder.md`
-
-7. **clusters_bridges.js**
-   - Clusters Mode module for knowledge cluster visualization
-   - Exports ClustersBridges object
-   - Status: Stub implementation (will be completed in VIZ-FRONT-09)
-   - Features:
-     * Listens for 'mode-changed' events
-     * Activates when mode === 'clusters'
-     * Placeholder for cluster visualization logic
-
-8. **tour_mode.js**
-   - Tour Mode module for automatic presentation tour
-   - Exports TourMode object
-   - Status: Stub implementation (will be completed in VIZ-FRONT-10)
-   - Features:
-     * Listens for 'mode-changed' events
-     * Activates when mode === 'tour'
-     * Placeholder for tour presentation logic
+#### Supporting Modules
+- **edge_styles.js** - Edge type visual definitions
+- **animation_controller.js** - Animation sequencing
+- **course_panel.js** - Course content panel
+- **tour_mode.js** - Tour mode (stub)
+- **debug_helpers.js** - Debug utilities (test mode only)
 
 ## Mode System
 
-The visualization supports three exclusive modes controlled by toggle buttons in the header:
+The visualization supports three exclusive modes managed by UIControls.
+See `/docs/specs/viz_ui_controls.md` for mode management details.
 
-### Mode Buttons
-- Located in center of header between brand and stats
-- Three minimalist toggle buttons: 🛤️ PATH, 🎨 CLUSTERS, ▶️ TOUR
-- Clean design without borders or heavy backgrounds
-- Only one mode can be active at a time
-- Visual states:
-  - **Normal**: White text (90% opacity), bold uppercase font
-  - **Hover**: Full white opacity with subtle lift animation
-  - **Active**: Blue color (#3498db) with light background highlight
-
-### Keyboard Shortcuts
-- **P** - Toggle Path Mode
-- **C** - Toggle Clusters Mode  
-- **T** - Toggle Tour Mode
-- **Esc** - Deactivate current mode (if no popups are open)
-
-### Mode Modules
-- **path_finder.js** - Learning path discovery (stub, implementation in VIZ-FRONT-08)
-- **clusters_bridges.js** - Cluster visualization (stub, implementation in VIZ-FRONT-09)
-- **tour_mode.js** - Presentation tour (stub, implementation in VIZ-FRONT-10)
-
-### Event System
-- Custom event `mode-changed` dispatched on mode toggle
-- Event detail: `{ mode: 'path'|'clusters'|'tour'|null }`
-- Mode modules listen and activate/deactivate accordingly
+Mode implementations:
+- **Path Mode**: `/docs/specs/viz_path_finder.md`
+- **Clusters Mode**: `/docs/specs/viz_clusters_bridges.md`
+- **Tour Mode**: Not yet implemented (stub)
 
 ## UI State Management
 
-### Element Visibility System
-The visualization uses CSS classes to control element visibility:
-- **Nodes**: `.hidden` class hides nodes from view
-- **Edges**: `.hidden-edge` class hides edges when either endpoint is hidden or category is disabled
-- **Counters**: Use `.not('.hidden')` and `.not('.hidden-edge')` selectors for accurate counts
-- **Batch operations**: All visibility changes wrapped in `cy.batch()` for performance
-
-### Popup Management
-- **Exclusive display**: Only one popup can be active at a time
-- **Priority order**: Node Popup > Concept Popup > Info Popup > Side Panel
-- **Close mechanisms**:
-  - Click outside popup (backdrop click)
-  - Press Escape key
-  - Click close button (×)
-  - Open another popup (automatic close)
-
-### Filter State
-- Node visibility maintained in `UIControls.state.visibleTypes` object
-  - Types: `Chunk`, `Concept`, `Assessment`
-- Edge visibility maintained in `UIControls.state.visibleEdgeCategories` object
-  - Categories: `strong` (PREREQUISITE, TESTS)
-  - Categories: `medium` (ELABORATES, EXAMPLE_OF, PARALLEL, REVISION_OF)
-  - Categories: `weak` (HINT_FORWARD, REFER_BACK, MENTIONS)
-- Active mode maintained in `UIControls.state.activeMode`
-  - Possible values: `'path'`, `'clusters'`, `'tour'`, `null`
-  - Only one mode can be active at a time
-- Default: All types and categories visible on initialization, no active mode
-- Persisted during session (not saved between sessions)
+See `/docs/specs/viz_ui_controls.md` for complete UI state management details.
 
 ## Data Structure Requirements
 
-### Node Data Fields
-Required fields for proper visualization:
-- **id** (string): Unique node identifier
-- **type** (string): One of: "Chunk", "Concept", "Assessment"
-- **text** (string): Display label and content
-- **difficulty** (number): 1-5 scale for complexity visualization
-- **pagerank** (number): For node size calculation
-- **betweenness_centrality** (number): Network centrality metric
-- **learning_effort** (number): Educational effort metric
-- **cluster_id** (number, optional): For cluster-based coloring
-- **prerequisite_depth** (number): For animation sequence
-- **degree_in** (number): Incoming edge count
-- **degree_out** (number): Outgoing edge count
-- **definition** (string, optional): Source text for node content
+For required data structures and fields, see `/docs/specs/viz_graph_core.md`.
 
-### Edge Data Fields
-- **id** (string): Unique edge identifier
-- **source** (string): Source node ID
-- **target** (string): Target node ID
-- **type** (string): Relationship type (PREREQUISITE, ELABORATES, etc.)
-- **weight** (number, optional): Edge importance weight
-
-### Concept Dictionary Structure
-```javascript
-{
-  "concepts": [
-    {
-      "id": "concept_001",
-      "name": "Machine Learning",
-      "definition": "A subset of artificial intelligence...",
-      "aliases": ["ML", "Машинное обучение"],
-      "mention_count": {
-        "chunk_001": 3,
-        "chunk_002": 1
-      }
-    }
-  ]
-}
-```
-
-## Window Global Objects
-
-The following objects are exposed globally for debugging and integration:
-- **window.graphData**: Complete graph data structure
-- **window.conceptData**: Concept dictionary
-- **window.cy**: Cytoscape instance (after initialization)
-- **window.graphCore**: GraphCore instance
-- **window.vizConfig**: Visualization configuration
-- **window.colorsConfig**: Color scheme configuration
-- **window.uiConfig**: UI settings configuration
-- **window.nodeShapes**: Node shape mappings
 
 ## Initialization Sequence
 
-1. **DOMContentLoaded event**:
-   - Load configurations into window objects
-   - Initialize GraphCore with container
-   - Call `graphCore.initialize()` with data
-   - Store cy instance globally
-
-2. **GraphCore initialization**:
-   - Prepare graph elements
-   - Generate Cytoscape styles
-   - Create cy instance
-   - Setup hover labels
-   - Trigger animations
-
-3. **k2-graph-ready event**:
-   - Dispatched after GraphCore completes
-   - UIControls listens and auto-initializes
-   - Passes cy, graphCore, and data references
-
-4. **UIControls initialization**:
-   - Create filter checkboxes in header
-   - Create side panel with tabs
-   - Setup hover effects
-   - Create all popup containers
-   - Bind keyboard handlers
-   - Update initial counters
+1. **HTML Generation**: This module generates HTML with embedded data and scripts
+2. **Browser Loading**: HTML loads in browser, scripts execute
+3. **Module Initialization**: 
+   - GraphCore initializes visualization (see `/docs/specs/viz_graph_core.md`)
+   - UIControls sets up interface (see `/docs/specs/viz_ui_controls.md`)
+   - Mode modules register listeners
 
 ## Usage Examples
 
@@ -1023,45 +751,13 @@ cy.nodes().size()    // Count nodes via Cytoscape
 
 ## Text Formatting Support
 
-The visualization supports rich text formatting for node and concept content:
+The visualization supports rich text formatting via external libraries:
+- **Markdown**: marked.js for parsing
+- **Mathematics**: MathJax for LaTeX formulas (requires `$` delimiters)
+- **Code**: Highlight.js for syntax highlighting
 
-### Supported Fields
-- Node `text` field - full Markdown/Math/Code support
-- Node `definition` field - full formatting support  
-- Concept `definition` field - full formatting support
-
-### Formatting Features
-1. **Markdown**: Headers, bold, italic, lists, links
-2. **Mathematics**: LaTeX formulas with explicit delimiters:
-   - Inline math: `$formula$` 
-   - Display math: `$$formula$$`
-   - **Note**: Formulas must be explicitly wrapped in `$` delimiters in source data
-3. **Code Highlighting**: Syntax highlighting for code blocks
-
-### Libraries Used
-- marked.js v14 - Markdown parsing
-- MathJax v3 - Mathematical formula rendering
-- Highlight.js v11 - Code syntax highlighting
-- github-dark theme - Dark theme for code highlighting
-
-### Configuration
-See `[text_formatting]` and `[tooltip]` sections in config.toml:
-- `enable_markdown` - Enable Markdown parsing
-- `enable_code_highlighting` - Enable code syntax highlighting  
-- `enable_math` - Enable mathematical formula rendering
-- `math_renderer` - Math rendering engine (mathjax)
-- `max_width` - Maximum tooltip width in pixels (400px)
-- `preview_length` - Number of characters to show in tooltip (300)
-- `show_delay` - Delay before showing tooltip (500ms)
-- `hide_delay` - Delay before hiding tooltip (200ms)
-
-### Tooltip Improvements
-- Shows 300 characters of node text on hover
-- Maximum width of 400px with word wrapping
-- Multi-line text support with proper formatting
-- Plain text only (no HTML/Markdown formatting in tooltips)
-- Automatically hides when popup opens to prevent overlap
-- Higher z-index for popups (10001) ensures they appear above tooltips (10000)
+Configuration in `[text_formatting]` and `[tooltip]` sections of config.toml.
+For implementation details, see `/docs/specs/viz_ui_controls.md`.
 
 ## Notes
 
@@ -1076,22 +772,3 @@ See `[text_formatting]` and `[tooltip]` sections in config.toml:
 - Text formatting is applied only to specific fields (text, definition) in popups
 - Tooltips remain plain text for performance and readability
 
-## Known Issues and Fixes
-
-### Fixed Issues
-- **Chrome scrollbar issue**: Fixed unwanted scrollbars in info popup on Windows (resolved with overflow management and nested containers)
-- **Counter updates**: Fixed counter not updating on filter change (now using `.not('.hidden')` selector instead of `:visible`)
-- **Tooltip positioning**: Fixed metric tooltips going off-screen (positioned to left of info icon)
-
-### Implementation Details
-- **Popup borders**: All popups use unified blue border (#3498db) under headers for consistency
-- **Node difficulty visualization**: Displayed as 5 colored circles (traffic light pattern: green 1-2, yellow 3, red 4-5)
-- **Edge difficulty column**: Shows target node difficulty as smaller circles in edge list
-- **Metric tooltips**: Changed from hover to click interaction for better mobile compatibility
-- **Popup width**: Node popup width increased to 690px (15% wider) for better content display
-- **Background colors**: Info sections use light blue background (#f0f7ff) with blue left border
-
-### Browser Compatibility
-- Tested on Chrome, Firefox, Safari, Edge
-- Mobile responsive design for tablets (phones have limited support)
-- Touch interactions supported for node selection and dragging

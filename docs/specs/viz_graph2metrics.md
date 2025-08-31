@@ -8,6 +8,8 @@ Module for computing comprehensive NetworkX metrics on K2-18 knowledge graph for
 
 The `graph2metrics.py` utility enriches the LearningChunkGraph with 12 network metrics for nodes and 4 for edges computed using NetworkX. These metrics provide insights into node importance, clustering, connectivity patterns, bridge detection, and educational structure that power the interactive visualization experience.
 
+**For detailed algorithms and formulas of all metrics, see: `/docs/specs/viz_metrics_reference.md`**
+
 ## CLI Interface
 
 ```bash
@@ -110,15 +112,9 @@ Saves enriched data to output JSON files.
 
 #### safe_metric_value(value: Any) -> float
 Converts any metric value to a safe float, handling NaN and infinity.
-- **Input**: 
-  - value (Any) - Value to convert (float, None, NaN, inf, etc.)
-- **Returns**: float - Safe numeric value
-- **Algorithm**: 
-  - None → 0.0
-  - NaN → 0.0
-  - ±inf → 0.0
-  - Valid float → unchanged
-- **Purpose**: Ensures all metrics are JSON-serializable and won't break visualizations
+- **Input**: value (Any) - Value to convert
+- **Returns**: float - Safe numeric value (0.0 for None/NaN/inf)
+- **See**: `/docs/specs/viz_metrics_reference.md#62-safe_metric_value` for algorithm details
 
 #### compute_all_metrics(G: nx.DiGraph, graph_data: Dict, config: Dict, logger: Logger) -> Dict
 Main orchestrator function that calls all metric computation functions in proper order.
@@ -128,89 +124,42 @@ Main orchestrator function that calls all metric computation functions in proper
   - config (Dict) - Configuration from config.toml
   - logger (Logger) - Logger instance
 - **Returns**: Enhanced graph_data with all metrics added
-- **Side effects**: 
-  - Modifies G by adding inverse_weight to edges
-  - Calls sanitize_graph_weights() to ensure numerical stability
-  - Modifies graph_data by adding metrics to nodes and edges
-- **Algorithm**:
-  1. Compute edge weights (inverse_weight)
-  2. Compute basic centrality (degrees, PageRank)
-  3. Compute distance centrality (betweenness, out-closeness)
-  4. Compute component IDs
-  5. Compute prerequisite metrics (depth, effort)
-  6. Compute educational importance
-  7. Validate invariants
-  8. Compute advanced metrics (clustering, bridges)
-  9. Add all metrics to nodes
-  10. Transfer inter-cluster edge attributes to output
-  11. Generate course sequence from Chunk nodes
+- **Computation order**: See `/docs/specs/viz_metrics_reference.md#5-computation-sequence`
 
 #### compute_edge_weights(G: nx.DiGraph, logger: Optional[Logger]) -> nx.DiGraph
 Adds inverse_weight to all edges for distance algorithms.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - logger (Logger) - Logger instance (optional)
+- **Input**: G (nx.DiGraph), logger (optional)
 - **Returns**: Modified graph with inverse_weight on edges
-- **Algorithm**: inverse_weight = 1.0 / weight (or inf if weight <= 0)
-- **Note**: MUST be called before distance-based metrics
+- **See**: `/docs/specs/viz_metrics_reference.md#23-inverse_weight-for-edges`
 
 #### compute_basic_centrality(G: nx.DiGraph, config: Dict, logger: Optional[Logger]) -> Dict
 Computes degree metrics and PageRank.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - config (Dict) - Configuration with pagerank parameters
-  - logger (Logger) - Logger instance (optional)
+- **Input**: G (nx.DiGraph), config with pagerank parameters, logger (optional)
 - **Returns**: Dict with degree_in, degree_out, degree_centrality, pagerank
-- **Metrics computed**:
-  - degree_in - Number of incoming edges (int)
-  - degree_out - Number of outgoing edges (int)
-  - degree_centrality - Normalized degree (float, 0-1)
-  - pagerank - Importance with damping (float, sum=1.0)
+- **Metrics**: See reference sections 2.1, 2.2, 2.4
 
 #### compute_distance_centrality(G: nx.DiGraph, logger: Optional[Logger]) -> Dict
 Computes betweenness and OUT-closeness using inverse weights.
-- **Input**: 
-  - G (nx.DiGraph) - Graph with inverse_weight on edges
-  - logger (Logger) - Logger instance (optional)
+- **Input**: G with inverse_weight on edges, logger (optional)
 - **Returns**: Dict with betweenness_centrality, out-closeness
-- **Metrics computed**:
-  - betweenness_centrality - Node as bridge (float, 0-1)
-  - out-closeness - Closeness via outgoing paths (float, 0-1)
-- **Note**: Requires inverse_weight precomputed on edges
+- **See**: `/docs/specs/viz_metrics_reference.md` sections 2.5, 2.6
 
 #### compute_component_ids(G: nx.DiGraph, node_order: List[str], logger: Optional[Logger]) -> Dict
 Assigns deterministic component IDs based on weakly connected components.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - node_order (List[str]) - Original node order from JSON
-  - logger (Logger) - Logger instance (optional)
 - **Returns**: Dict mapping node_id to component_id (int)
-- **Algorithm**: Components sorted by first node's position in original order
+- **See**: `/docs/specs/viz_metrics_reference.md#27-component_id`
 
 #### compute_prerequisite_metrics(G: nx.DiGraph, graph_data: Dict, config: Dict, logger: Optional[Logger]) -> Tuple[Dict, Dict]
 Computes prerequisite_depth and learning_effort via SCC decomposition.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - graph_data (Dict) - Graph data with node difficulties
-  - config (Dict) - Configuration with default_difficulty
-  - logger (Logger) - Logger instance (optional)
 - **Returns**: Tuple of (prerequisite_depth, learning_effort) dicts
-- **Algorithm**: 
-  - Builds PREREQUISITE subgraph
-  - Finds strongly connected components
-  - Creates condensed DAG
-  - Computes depth and effort via topological DP
 - **Handles**: PREREQUISITE cycles through SCC
+- **See**: `/docs/specs/viz_metrics_reference.md` sections 2.8, 2.9
 
 #### compute_educational_importance(G: nx.DiGraph, config: Dict, logger: Optional[Logger]) -> Dict
 Computes PageRank on educational edges subgraph.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - config (Dict) - Configuration with educational_edge_types
-  - logger (Logger) - Logger instance (optional)
 - **Returns**: Dict mapping node_id to educational_importance (float)
-- **Algorithm**: PageRank on subgraph of PREREQUISITE, ELABORATES, TESTS, EXAMPLE_OF edges
 - **Invariant**: sum(educational_importance) = 1.0
+- **See**: `/docs/specs/viz_metrics_reference.md#210-educational_importance`
 
 #### validate_metric_invariants(pagerank_vals: Dict, edu_importance_vals: Dict, logger: Optional[Logger]) -> None
 Validates that PageRank metrics sum to 1.0.
@@ -224,92 +173,27 @@ Validates that PageRank metrics sum to 1.0.
 
 #### sanitize_graph_weights(G: nx.DiGraph, eps: float = 1e-9) -> None
 Ensures numerical stability of edge weights (in-place modification).
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph to sanitize
-  - eps (float, default=1e-9) - Small value to replace zero/negative weights
+- **Input**: G to sanitize, eps value (default=1e-9)
 - **Returns**: None (modifies graph in-place)
-- **Side effects**: 
-  - Removes self-loops if present
-  - Replaces missing weights with 1.0
-  - Replaces zero/negative weights with eps
-  - Ensures inverse_weight exists on all edges
-- **Algorithm**: 
-  - Remove self-loops via nx.selfloop_edges()
-  - Iterate through edges, apply weight corrections
-- **Edge cases**:
-  - Empty graph: No operation
-  - All weights invalid: All set to eps
+- **See**: `/docs/specs/viz_metrics_reference.md#61-sanitize_graph_weights`
 
 #### compute_louvain_clustering(G: nx.DiGraph, config: Dict, logger: Optional[Logger]) -> Dict[str, int]
 Performs community detection using Louvain algorithm with deterministic numbering.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - config (Dict) - Configuration with louvain_resolution and louvain_random_state
-  - logger (Logger) - Logger instance (optional)
 - **Returns**: Dict mapping node_id to cluster_id (integers starting from 0)
-- **Algorithm**: 
-  1. Create undirected projection of graph
-  2. Aggregate weights for bidirectional edges (sum)
-  3. Add isolated nodes to ensure all nodes are included
-  4. Run community_louvain.best_partition() with random_state for determinism
-  5. Renumber clusters by minimum node ID in each cluster (stable ordering)
-- **Configuration**:
-  - louvain_resolution (float, default=1.0) - Controls cluster granularity
-  - louvain_random_state (int, default=42) - Seed for deterministic results
-- **Edge cases**:
-  - Empty graph: Returns empty dict
-  - Single node: Returns {node: 0}
-  - Disconnected components: Each component gets separate clusters
-  - python-louvain not installed: Returns {node: 0 for all} with warning
-- **Note**: Requires python-louvain>=0.16 library
+- **Requires**: python-louvain>=0.16 library
+- **See**: `/docs/specs/viz_metrics_reference.md#31-cluster_id-louvain-clustering`
 
 #### compute_bridge_scores(G: nx.DiGraph, cluster_map: Dict, betweenness_centrality: Dict, config: Dict) -> Dict[str, float]
 Computes composite bridge score combining betweenness and inter-cluster ratio.
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - cluster_map (Dict[str, int]) - Node to cluster_id mapping from Louvain
-  - betweenness_centrality (Dict[str, float]) - Pre-computed betweenness values
-  - config (Dict) - Configuration with bridge weight parameters
 - **Returns**: Dict mapping node_id to bridge_score (float in [0, 1])
-- **Formula**: 
-  ```
-  bridge_score = w_b * betweenness_norm + (1 - w_b) * inter_ratio
-  where:
-    w_b = bridge_weight_betweenness (default: 0.7)
-    inter_ratio = fraction of neighbors in different clusters
-  ```
-- **Algorithm**: 
-  1. For each node, find all neighbors (predecessors ∪ successors)
-  2. Count neighbors in different clusters
-  3. Calculate inter_ratio = inter_count / len(unique_neighbors)
-  4. Combine with normalized betweenness using weights
-- **Configuration**:
-  - bridge_weight_betweenness (float, default=0.7) - Weight for betweenness component
-- **Edge cases**:
-  - Node with degree 0: inter_ratio = 0, uses only betweenness
-  - Single cluster: All inter_ratio = 0
-  - No clustering available: Uses only betweenness
-- **Note**: Uses pre-computed betweenness_centrality from basic metrics
+- **Formula**: bridge_score = w_b * betweenness + (1 - w_b) * inter_ratio
+- **See**: `/docs/specs/viz_metrics_reference.md#32-bridge_score`
 
 #### mark_inter_cluster_edges(G: nx.DiGraph, cluster_map: Dict[str, int]) -> None
 Marks edges that connect nodes from different clusters (in-place modification).
-- **Input**: 
-  - G (nx.DiGraph) - NetworkX directed graph
-  - cluster_map (Dict[str, int]) - Node to cluster_id mapping from Louvain
 - **Returns**: None (modifies edge attributes in-place)
-- **Side effects**: Adds attributes to each edge:
-  - is_inter_cluster_edge (bool) - True if source and target in different clusters
-  - source_cluster_id (int) - Cluster ID of source node (if inter-cluster)
-  - target_cluster_id (int) - Cluster ID of target node (if inter-cluster)
-- **Algorithm**: 
-  1. Check if cluster_map is empty (no clustering)
-  2. Iterate through all edges
-  3. Compare cluster IDs of source and target
-  4. Set appropriate attributes based on comparison
-- **Edge cases**:
-  - No clustering available: All edges marked as is_inter_cluster_edge = False
-  - Node not in cluster_map: Edge marked as is_inter_cluster_edge = False
-- **Invariant**: is_inter_cluster_edge = True ⟺ source_cluster_id ≠ target_cluster_id
+- **Adds**: is_inter_cluster_edge, source_cluster_id, target_cluster_id
+- **See**: `/docs/specs/viz_metrics_reference.md#33-inter-cluster-edge-metrics`
 
 ### Data Enrichment Functions
 
@@ -523,69 +407,26 @@ Generates detailed JSON validation report.
 
 ## Algorithm
 
-### 1. Initialization
-- Parse command-line arguments
-- Setup UTF-8 console encoding
-- Initialize logging to file and console
-- Load configuration from `/viz/config.toml`
+The module processes graphs through these stages:
 
-### 2. Mode Selection
-- **Validation mode**: If --validate flag, run validation workflow
-- **Test mode**: If --test-mode flag, use test data
-- **Production mode**: Default, use production data
+1. **Initialization**: Parse arguments, setup logging, load configuration
+2. **Mode Selection**: Validation, test, or production mode
+3. **Data Loading**: Load and validate JSON files against schemas
+4. **NetworkX Conversion**: Create directed graph with all attributes
+5. **Metrics Computation**: Compute all metrics in dependency order
+6. **Output Generation**: Save enriched JSON files
 
-### 3. Data Loading
-- Determine input directory based on mode
-- Load JSON files with proper encoding
-- Validate against schemas:
-  - `LearningChunkGraph` schema
-  - `ConceptDictionary` schema
-- Validate graph invariants (node/edge consistency)
+### Metrics Computation Order
 
-### 4. NetworkX Conversion
-- Create `nx.DiGraph()` (MUST be directed, not undirected)
-- Add nodes with all attributes from JSON
-- Add edges with type, weight, conditions
-- Verify graph is directed
-- Log basic statistics:
-  - Number of nodes
-  - Number of edges
-  - Weakly connected components
+Metrics MUST be computed in specific order due to dependencies.
+**For complete algorithm details and formulas, see: `/docs/specs/viz_metrics_reference.md#5-computation-sequence`**
 
-### 5. Metrics Computation (STRICT ORDER)
-
-Metrics are computed in specific order due to dependencies:
-
-1. **Edge weights** - `compute_edge_weights()` adds inverse_weight to all edges
-2. **Basic centrality** - `compute_basic_centrality()` computes:
-   - degree_in, degree_out (count of edges)
-   - degree_centrality (normalized by n-1)
-   - pagerank (with edge weights)
-3. **Distance centrality** - `compute_distance_centrality()` computes:
-   - betweenness_centrality (using inverse_weight)
-   - out-closeness (via graph reversal)
-4. **Component structure** - `compute_component_ids()` assigns:
-   - component_id (deterministic numbering)
-5. **Educational metrics** - `compute_prerequisite_metrics()` computes:
-   - prerequisite_depth (levels in PREREQUISITE DAG)
-   - learning_effort (cumulative difficulty)
-6. **Educational importance** - `compute_educational_importance()` computes:
-   - educational_importance (PageRank on educational subgraph)
-7. **Validation** - `validate_metric_invariants()` checks:
-   - sum(pagerank) = 1.0 ± 0.01
-   - sum(educational_importance) = 1.0 ± 0.01
-8. **Advanced metrics** - Three additional algorithms:
-   - `sanitize_graph_weights()` - Ensures numerical stability
-   - `compute_louvain_clustering()` - Community detection with deterministic numbering
-   - `compute_bridge_scores()` - Combines betweenness (70%) and inter-cluster ratio (30%)
-   - `mark_inter_cluster_edges()` - Labels edges connecting different clusters
-
-### 6. Output Generation
-- Add all computed metrics to nodes and edges
-- Apply `safe_metric_value()` to handle NaN/inf → 0.0
-- Transfer inter-cluster edge attributes from NetworkX to JSON
-- Save enriched JSON files with UTF-8 encoding
-- Log metric ranges and statistics
+Key points:
+- Edge weights (inverse_weight) computed first
+- Basic metrics (degrees, PageRank) before distance metrics
+- Component and educational metrics computed independently
+- Advanced metrics (clustering, bridges) computed last
+- All metrics validated and sanitized before output
 
 ## Validation Mode
 
@@ -600,25 +441,8 @@ Validation mode compares computed metrics against hand-calculated expected resul
   - `test_NAME_graph_calc.md` - Manual calculation documentation
 
 ### Validated Metrics
-**Node metrics (12):**
-- `degree_in` - Number of incoming edges
-- `degree_out` - Number of outgoing edges
-- `degree_centrality` - Normalized degree
-- `pagerank` - PageRank with weights
-- `betweenness_centrality` - Bridge importance
-- `out-closeness` - OUT-closeness centrality
-- `component_id` - Component membership
-- `prerequisite_depth` - Level in prerequisite hierarchy
-- `learning_effort` - Cumulative learning difficulty
-- `educational_importance` - PageRank on educational edges
-- `cluster_id` - Louvain community detection cluster
-- `bridge_score` - Composite metric for bridge nodes
-
-**Edge metrics (4):**
-- `inverse_weight` - Reciprocal of edge weight
-- `is_inter_cluster_edge` - Boolean flag for edges between clusters
-- `source_cluster_id` - Source node's cluster ID for inter-cluster edges
-- `target_cluster_id` - Target node's cluster ID for inter-cluster edges
+Validation covers all 12 node metrics and 4 edge metrics.
+**For complete list and descriptions, see: `/docs/specs/viz_metrics_reference.md#4-complete-metrics-list`**
 
 ### Validation Process
 1. Scan `/viz/data/test/` for test graph pairs
@@ -692,24 +516,17 @@ Saved to `/viz/logs/validation_report.json`:
 
 ## Configuration
 
-Uses `/viz/config.toml` section `[graph2metrics]`:
+Uses `/viz/config.toml` section `[graph2metrics]`.
 
-### Required Parameters
-- **pagerank_damping** (float, 0-1, default=0.85) - PageRank damping factor
-- **pagerank_max_iter** (int, >0, default=100) - Max iterations for PageRank
-- **educational_edge_types** (list, default=["PREREQUISITE", "ELABORATES", "TESTS", "EXAMPLE_OF"]) - Edge types for educational importance
+**For all configuration parameters and their defaults, see the relevant sections in:**
+- `/docs/specs/viz_metrics_reference.md` - Metric-specific parameters
+- Example: PageRank parameters in section 2.4, Louvain parameters in section 3.1
 
-### Optional Parameters
-- **betweenness_normalized** (bool, default=true) - Normalize betweenness values
-- **closeness_harmonic** (bool, default=true) - Use harmonic mean for disconnected graphs (deprecated)
-- **louvain_resolution** (float, default=1.0) - Community detection resolution
-- **louvain_random_state** (int, default=42) - Random seed for deterministic clustering
-- **bridge_weight_betweenness** (float, default=0.7) - Weight for betweenness in bridge score
-- **bridge_weight_inter_ratio** (float, default=0.3) - Weight for inter-cluster ratio in bridge score (can be set explicitly or auto-computed as 1-bridge_weight_betweenness)
-- **bridge_top_gap_min** (float, default=0.05) - Minimum gap between top bridge nodes and others for behavioral validation
-
-### Path Mode Parameters (used for learning_effort)
-- **default_difficulty** (int, 1-5, default=3) - Default node difficulty if not specified
+Key parameters include:
+- `pagerank_damping`, `pagerank_max_iter` - PageRank configuration
+- `louvain_resolution`, `louvain_random_state` - Clustering configuration  
+- `bridge_weight_betweenness` - Bridge score weights
+- `default_difficulty` - For learning_effort computation
 
 ## Error Handling & Exit Codes
 
@@ -784,51 +601,33 @@ Validation report saved to: /viz/logs/validation_report.json
 ## Output Format
 
 ### Node Metrics Added
-Each node in `LearningChunkGraph_wow.json` receives:
+Each node in `LearningChunkGraph_wow.json` receives 12 additional metrics.
+
+**For complete list with example values, see: `/docs/specs/viz_metrics_reference.md#4-complete-metrics-list`**
+
+Example structure:
 ```json
 {
   "id": "existing_id",
   // ... existing fields ...
-  
-  // Basic metrics
   "degree_in": 2,
-  "degree_out": 3,
-  "degree_centrality": 0.3125,
-  
-  // Importance metrics  
   "pagerank": 0.0234,
-  "betweenness_centrality": 0.1667,
-  "out-closeness": 0.5833,
-  
-  // Structure metrics
-  "component_id": 0,
-  "prerequisite_depth": 2,
-  
-  // Educational metrics
-  "learning_effort": 12.0,
-  "educational_importance": 0.0456,
-  
-  // Advanced metrics
   "cluster_id": 1,
-  "bridge_score": 0.2456
+  // ... other metrics
 }
 ```
 
-### Edge Metrics Added
-Each edge in `LearningChunkGraph_wow.json` receives:
+### Edge Metrics Added  
+Each edge receives 4 additional metrics (inverse_weight always, inter-cluster attributes when applicable).
+
+Example:
 ```json
 {
   "source": "node1",
   "target": "node2",
-  "weight": 0.8,
-  // ... existing fields ...
-  
   "inverse_weight": 1.25,
-  
-  // Inter-cluster attributes (only for inter-cluster edges)
-  "is_inter_cluster_edge": true,
-  "source_cluster_id": 1,
-  "target_cluster_id": 2
+  "is_inter_cluster_edge": true
+  // ... cluster IDs if inter-cluster
 }
 ```
 

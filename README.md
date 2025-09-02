@@ -1,10 +1,8 @@
 # K2-18 - Educational Knowledge Graph Converter
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![JavaScript](https://img.shields.io/badge/javascript-ES6%2B-f7df1e.svg)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Ruff](https://img.shields.io/badge/linting-ruff-gold.svg)](https://github.com/astral-sh/ruff)
 [![OpenAI](https://img.shields.io/badge/API-OpenAI-74aa9c.svg)](https://platform.openai.com/)
 [![Cytoscape.js](https://img.shields.io/badge/viz-Cytoscape.js-00a0d2.svg)](https://js.cytoscape.org/)
 

@@ -7,7 +7,6 @@
 [![Ruff](https://img.shields.io/badge/linting-ruff-gold.svg)](https://github.com/astral-sh/ruff)
 [![OpenAI](https://img.shields.io/badge/API-OpenAI-74aa9c.svg)](https://platform.openai.com/)
 [![Cytoscape.js](https://img.shields.io/badge/viz-Cytoscape.js-00a0d2.svg)](https://js.cytoscape.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
 
 ## Why K2-18?
 

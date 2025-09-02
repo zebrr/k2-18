@@ -1,5 +1,14 @@
 # K2-18 - Educational Knowledge Graph Converter
 
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![JavaScript](https://img.shields.io/badge/javascript-ES6%2B-f7df1e.svg)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/badge/linting-ruff-gold.svg)](https://github.com/astral-sh/ruff)
+[![OpenAI](https://img.shields.io/badge/API-OpenAI-74aa9c.svg)](https://platform.openai.com/)
+[![Cytoscape.js](https://img.shields.io/badge/viz-Cytoscape.js-00a0d2.svg)](https://js.cytoscape.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
+
 ## Why K2-18?
 
 Traditional educational content is linear text, but learning is a network of interconnected concepts. K2-18 bridges this gap by automatically extracting the hidden knowledge structure from textbooks and educational materials.
@@ -254,20 +263,27 @@ Test markers:
 - `slow` - Tests taking >30 seconds
 - `timeout` - Tests with explicit timeout settings
 
-## License — Non-Commercial Educational & Research Use
+## MIT License
 
-Copyright (c) 2025 @zebrr. All rights reserved.
+Copyright (c) 2025 Askold Romanov
 
-Permission is granted to use, copy, modify, and distribute this project **solely for non-commercial educational or academic research purposes**, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-1) You must retain this license notice and a link to the original repository.  
-2) You may not charge users, sell access, or integrate this project into paid products or services.  
-3) **Corporate/for-profit use is prohibited**, including CSR/PR/brand initiatives, recruiting/lead-gen, or internal employee training—even if the training itself is free.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-Any **commercial or corporate use (including CSR)** requires a separate commercial license.  
-To discuss terms, please open an Issue in this repository addressed to **@zebrr**.
-
-This software is provided **“AS IS”**, without warranty of any kind. Use may require third-party API keys; all related costs are the user’s responsibility.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## Support
 

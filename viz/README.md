@@ -23,13 +23,12 @@ A standalone HTML file that works in any browser with:
 
 ```
 1. Copy results from main pipeline to viz folder:
-   /data/out/ConceptDictionary.json    → /viz/data/in/
-   /data/out/LearningChunkGraph*.json  → /viz/data/in/
+   /data/out/ConceptDictionary.json     → /viz/data/in/ConceptDictionary.json
+   /data/out/LearningChunkGraph_*.json  → /viz/data/in/LearningChunkGraph.json
 
 2. Run visualization pipeline:
-   cd viz
-   python -m viz.graph2metrics         # Compute educational metrics
-   python -m viz.graph2html            # Generate interactive HTML
+   python -m viz.graph2metrics          # Compute educational metrics
+   python -m viz.graph2html             # Generate interactive HTML
 
 3. Open result:
    viz/data/out/knowledge_graph.html

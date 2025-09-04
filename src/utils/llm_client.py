@@ -315,7 +315,7 @@ class OpenAIClient:
 
         Args:
             config: Configuration dictionary with following keys:
-                - api_key (str): OpenAI API key
+                - api_key (str): OpenAI API key or OAuth token for internal models
                 - model (str): Model name (gpt-4o, o1-preview, etc.)
                 - tpm_limit (int): Tokens per minute limit
                 - tpm_safety_margin (float): Safety margin (default 0.15)
@@ -327,9 +327,37 @@ class OpenAIClient:
                 - reasoning_summary (str, optional): Summary type for reasoning
                 - response_chain_depth (int, optional): Response chain depth management
                 - truncation (str, optional): Truncation strategy ("auto", "disabled")
+                - base_url (str, optional): Custom base URL for internal models
+                - use_internal_auth (bool, optional): Use OAuth authorization header for internal models
         """
         self.config = config
-        self.client = OpenAI(api_key=config["api_key"], timeout=config.get("timeout", 60.0))
+        
+        # Handle internal model configuration
+        base_url = config.get("base_url")
+        use_internal_auth = config.get("use_internal_auth", False)
+        
+        # Prepare client initialization parameters
+        client_kwargs = {
+            "api_key": config["api_key"],
+            "timeout": config.get("timeout", 60.0)
+        }
+        
+        # Add base_url if specified (for internal models)
+        if base_url:
+            client_kwargs["base_url"] = base_url
+            
+        self.client = OpenAI(**client_kwargs)
+        
+        # Store internal auth flag for request customization
+        self.use_internal_auth = use_internal_auth
+        
+        # Set up custom headers for internal models
+        if use_internal_auth:
+            # For internal models, we need to use OAuth authorization header
+            # instead of the default Bearer token
+            self.client._client.headers.update({
+                "authorization": f"OAuth {config['api_key']}"
+            })
         self.tpm_bucket = TPMBucket(config["tpm_limit"])
         self.logger = logging.getLogger(__name__)
 
@@ -361,16 +389,25 @@ class OpenAIClient:
             chain_mode = "unlimited chain"
 
         # Setup probe model and fallback chain
-        self.probe_model = config.get("probe_model", "gpt-4.1-nano-2025-04-14")
         self.model = config["model"]
+        if use_internal_auth:
+            # For internal models, disable probe functionality
+            self.probe_model = None
+        else:
+            self.probe_model = config.get("probe_model", "gpt-4.1-nano-2025-04-14")
 
         # Create fallback list (from cheapest to most expensive)
-        self.probe_fallback_models = [
-            "gpt-4.1-nano-2025-04-14",
-            "gpt-5-nano-2025-08-07",
-            "gpt-4.1-mini-2025-04-14",
-            self.model,  # Ultimate fallback: use main model
-        ]
+        # For internal models, disable probe functionality
+        if use_internal_auth:
+            # No probe fallback for internal models
+            self.probe_fallback_models = []
+        else:
+            self.probe_fallback_models = [
+                "gpt-4.1-nano-2025-04-14",
+                "gpt-5-nano-2025-08-07",
+                "gpt-4.1-mini-2025-04-14",
+                self.model,  # Ultimate fallback: use main model
+            ]
 
         # Remove duplicates while preserving order
         seen = set()
@@ -387,8 +424,15 @@ class OpenAIClient:
         self.unconfirmed_response_id = None  # Awaiting confirmation
         self.last_response_id = None  # For backward compatibility
 
+        # Log initialization with internal model info
+        model_info = f"model={config['model']}"
+        if use_internal_auth:
+            model_info += f" (internal, base_url={base_url})"
+        if self.config.get("model_path"):
+            model_info += f", model_path={self.config['model_path']}"
+            
         self.logger.info(
-            f"Initialized OpenAI client: model={config['model']}, "
+            f"Initialized OpenAI client: {model_info}, "
             f"reasoning={self.is_reasoning_model}, chain_mode={chain_mode}"
         )
 
@@ -426,6 +470,56 @@ class OpenAIClient:
                 self.logger.warning(f"Failed to delete response {response_id[:12]}: {e}")
                 raise ValueError(f"Failed to delete response: {e}") from e
 
+    def _prepare_chat_completions_params(
+        self,
+        instructions: str,
+        input_data: str,
+        previous_response_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Prepare request parameters for Chat Completions API (internal models).
+        
+        Args:
+            instructions: System prompt (instructions for the model)
+            input_data: User input
+            previous_response_id: ID of previous response for context (not used in chat completions)
+            
+        Returns:
+            dict: Parameters for chat.completions.create()
+        """
+        # For internal models, use the model path instead of model name
+        model_param = self.config["model"]
+        if self.config.get("model_path"):
+            model_param = self.config["model_path"]
+            
+        # Build messages array
+        messages = []
+        
+        # Add system message if instructions provided
+        if instructions:
+            messages.append({
+                "role": "system",
+                "content": instructions
+            })
+            
+        # Add user message
+        messages.append({
+            "role": "user", 
+            "content": input_data
+        })
+        
+        params = {
+            "model": model_param,
+            "messages": messages,
+            "max_tokens": self.config["max_completion"],
+        }
+        
+        # Add temperature if specified
+        if self.config.get("temperature") is not None:
+            params["temperature"] = self.config["temperature"]
+            
+        return params
+
     def _prepare_request_params(
         self,
         instructions: str,
@@ -443,8 +537,13 @@ class OpenAIClient:
         Returns:
             dict: Parameters for responses.create()
         """
+        # For internal models, use the model path instead of model name
+        model_param = self.config["model"]
+        if self.use_internal_auth and self.config.get("model_path"):
+            model_param = self.config["model_path"]
+            
         params = {
-            "model": self.config["model"],
+            "model": model_param,
             "instructions": instructions,
             "input": input_data,
             "max_output_tokens": self.config["max_completion"],
@@ -509,6 +608,97 @@ class OpenAIClient:
             self.logger.debug("Removed ``` wrapper from response")
 
         return text
+
+    def _extract_chat_completions_content(self, response) -> str:
+        """
+        Extract response text from Chat Completions API.
+        
+        Args:
+            response: Response object from Chat Completions API
+            
+        Returns:
+            str: Response text content
+        """
+        try:
+            # For internal models, the response structure is different
+            # The actual data is in response.response.choices, not response.choices
+            if hasattr(response, "response") and response.response:
+                # Internal model response structure
+                response_data = response.response
+                if "choices" in response_data and response_data["choices"]:
+                    choice = response_data["choices"][0]
+                    if "message" in choice and choice["message"]:
+                        message = choice["message"]
+                        if "content" in message and message["content"]:
+                            # Clean from possible markdown wrappers
+                            cleaned_text = self._clean_json_response(message["content"])
+                            return cleaned_text
+            else:
+                # Standard OpenAI response structure
+                if not hasattr(response, "choices") or not response.choices:
+                    self.logger.error(f"Response has no choices. Response: {response}")
+                    raise ValueError("Response has no choices")
+                    
+                choice = response.choices[0]
+                
+                if not hasattr(choice, "message") or not choice.message:
+                    self.logger.error(f"Choice has no message. Choice: {choice}")
+                    raise ValueError("Choice has no message")
+                    
+                message = choice.message
+                
+                if not hasattr(message, "content") or not message.content:
+                    self.logger.error(f"Message has no content. Message: {message}")
+                    raise ValueError("Message has no content")
+                    
+                # Clean from possible markdown wrappers
+                cleaned_text = self._clean_json_response(message.content)
+                
+                return cleaned_text
+            
+            # If we get here, we couldn't find the content
+            self.logger.error(f"Could not find content in response. Response: {response}")
+            raise ValueError("Could not find content in response")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to extract chat completions content: {e}")
+            self.logger.debug(f"Response structure: {response}")
+            raise
+
+    def _extract_chat_completions_usage(self, response) -> ResponseUsage:
+        """
+        Extract usage information from Chat Completions API.
+        
+        Args:
+            response: Response object from Chat Completions API
+            
+        Returns:
+            ResponseUsage: Structure with token information
+        """
+        try:
+            # For internal models, usage info might be in response.response.usage
+            if hasattr(response, "response") and response.response and "usage" in response.response:
+                usage_data = response.response["usage"]
+                return ResponseUsage(
+                    input_tokens=usage_data.get("prompt_tokens", 0),
+                    output_tokens=usage_data.get("completion_tokens", 0),
+                    total_tokens=usage_data.get("total_tokens", 0),
+                    reasoning_tokens=0,  # Chat completions don't have reasoning tokens
+                )
+            elif hasattr(response, "usage") and response.usage:
+                # Standard OpenAI response structure
+                usage = response.usage
+                return ResponseUsage(
+                    input_tokens=getattr(usage, "prompt_tokens", 0),
+                    output_tokens=getattr(usage, "completion_tokens", 0),
+                    total_tokens=getattr(usage, "total_tokens", 0),
+                    reasoning_tokens=0,  # Chat completions don't have reasoning tokens
+                )
+            else:
+                return ResponseUsage(0, 0, 0, 0)
+        except Exception as e:
+            self.logger.warning(f"Could not extract chat completions usage info: {e}")
+            return ResponseUsage(0, 0, 0, 0)
 
     def _extract_response_content(self, response) -> str:
         """
@@ -636,6 +826,11 @@ class OpenAIClient:
             In background mode (async) OpenAI doesn't return rate limit headers,
             so we use periodic probe requests for updates.
         """
+        # Skip probe for internal models (probe functionality disabled)
+        if self.probe_model is None:
+            self.logger.debug("Probe disabled for internal models, using cached TPM limits")
+            return
+
         self.logger.debug("Executing TPM probe request")
 
         # Try probe model first, then fallbacks
@@ -714,6 +909,97 @@ class OpenAIClient:
         )
         self.tpm_bucket.remaining_tokens = self._cached_tpm_remaining
         self.tpm_bucket.initial_limit = self._cached_tpm_limit
+
+    def _create_chat_completions_response(
+        self,
+        instructions: str,
+        input_data: str,
+        previous_response_id: Optional[str] = None,
+        is_repair: bool = False,
+    ) -> Tuple[str, str, ResponseUsage]:
+        """
+        Create response via Chat Completions API (for internal models).
+        
+        Args:
+            instructions: System prompt (instructions for model)
+            input_data: User data (text or JSON)
+            previous_response_id: ID of previous response (not used in chat completions)
+            is_repair: If True, response won't be added to chain (for repair requests)
+            
+        Returns:
+            tuple: (response_text, response_id, usage_info)
+        """
+        # Prepare parameters for chat completions
+        params = self._prepare_chat_completions_params(instructions, input_data, previous_response_id)
+        
+        # Get context limit from config
+        max_context_tokens = self.config.get("max_context_tokens", 128000)
+        
+        # Estimate tokens for the request
+        full_prompt = instructions + "\n\n" + input_data
+        estimated_input_tokens = len(self.encoder.encode(full_prompt))
+        required_tokens = estimated_input_tokens + self.config["max_completion"]
+        
+        # Check token sufficiency with safety margin
+        safety_margin = self.config.get("tpm_safety_margin", 0.15)
+        self.tpm_bucket.wait_if_needed(required_tokens, safety_margin)
+        
+        retry_count = 0
+        last_exception = None
+        
+        while retry_count <= self.config["max_retries"]:
+            try:
+                self.logger.debug(
+                    f"Chat completions request attempt {retry_count + 1}: model={params['model']}, "
+                    f"estimated_tokens={required_tokens}"
+                )
+                
+                # Make the request
+                response = self.client.chat.completions.create(**params)
+                
+                # Extract response content and usage
+                response_text = self._extract_chat_completions_content(response)
+                usage_info = self._extract_chat_completions_usage(response)
+                
+                # Generate a fake response_id for compatibility
+                import uuid
+                response_id = str(uuid.uuid4())
+                
+                # Update TPM bucket (simplified for chat completions)
+                self.tpm_bucket.remaining_tokens -= usage_info.total_tokens
+                
+                # Save usage for next request
+                self.last_usage = usage_info
+                
+                # Handle response chain (simplified for chat completions)
+                if not is_repair:
+                    self.unconfirmed_response_id = response_id
+                    self.logger.debug(f"Response {response_id[:12]} awaiting confirmation")
+                else:
+                    self.logger.debug("Repair response - no confirmation needed")
+                
+                self.logger.debug(
+                    f"Chat completions response success: id={response_id}, "
+                    f"tokens={usage_info.total_tokens}"
+                )
+                
+                return response_text, response_id, usage_info
+                
+            except Exception as e:
+                retry_count += 1
+                if retry_count > self.config["max_retries"]:
+                    self.logger.error(f"Error after all retries: {type(e).__name__}: {e}")
+                    raise e
+                
+                wait_time = 20 * (2 ** (retry_count - 1))
+                self.logger.warning(
+                    f"{type(e).__name__}, retry {retry_count}/{self.config['max_retries']} in {wait_time}s: {e}"
+                )
+                time.sleep(wait_time)
+                last_exception = e
+        
+        # If we got here - all retries exhausted
+        raise last_exception or Exception("Max retries exceeded")
 
     def _create_response_async(
         self,
@@ -1047,7 +1333,7 @@ class OpenAIClient:
         is_repair: bool = False,
     ) -> Tuple[str, str, ResponseUsage]:
         """
-        Create response via OpenAI Responses API.
+        Create response via OpenAI API (Responses API or Chat Completions API).
 
         Automatically:
         - Manages previous_response_id for context preservation
@@ -1096,10 +1382,17 @@ class OpenAIClient:
         if previous_response_id is None:
             previous_response_id = self.last_response_id
 
-        # Call new asynchronous method with is_repair flag
-        return self._create_response_async(
-            instructions, input_data, previous_response_id, is_repair
-        )
+        # Choose API based on internal auth flag
+        if self.use_internal_auth:
+            # Use Chat Completions API for internal models
+            return self._create_chat_completions_response(
+                instructions, input_data, previous_response_id, is_repair
+            )
+        else:
+            # Use Responses API for external models
+            return self._create_response_async(
+                instructions, input_data, previous_response_id, is_repair
+            )
 
     def repair_response(
         self, instructions: str, input_data: str, previous_response_id: Optional[str] = None

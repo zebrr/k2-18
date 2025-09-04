@@ -99,6 +99,15 @@ pip install -r requirements.txt
 # Set your OpenAI API key
 export OPENAI_API_KEY="your-api-key"  # Linux/macOS
 set OPENAI_API_KEY=your-api-key       # Windows
+
+# Set your SOY_TOKEN key
+export SOY_TOKEN="your-api-key"  # Linux/macOS
+set SOY_TOKEN=your-api-key       # Windows
+
+# Optional: Set INTERNAL_EMBEDDING_API_KEY for internal embeddings
+# Use when enabling internal embeddings via embedding_use_internal_auth=true
+export INTERNAL_EMBEDDING_API_KEY="your-internal-oauth-token"  # Linux/macOS
+set INTERNAL_EMBEDDING_API_KEY=your-internal-oauth-token       # Windows
 ```
 
 ### For Developers

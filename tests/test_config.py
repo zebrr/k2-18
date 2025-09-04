@@ -1716,6 +1716,7 @@ class TestEnvironmentVariables:
         # Save original env vars
         original_api_key = os.environ.get("OPENAI_API_KEY")
         original_embedding_key = os.environ.get("OPENAI_EMBEDDING_API_KEY")
+        original_internal_embedding_key = os.environ.get("INTERNAL_EMBEDDING_API_KEY")
 
         # Test with OPENAI_EMBEDDING_API_KEY
         os.environ["OPENAI_EMBEDDING_API_KEY"] = "sk-embedding-key"
@@ -1809,6 +1810,87 @@ class TestEnvironmentVariables:
                 os.environ["OPENAI_EMBEDDING_API_KEY"] = original_embedding_key
             elif "OPENAI_EMBEDDING_API_KEY" in os.environ:
                 del os.environ["OPENAI_EMBEDDING_API_KEY"]
+            if original_internal_embedding_key is not None:
+                os.environ["INTERNAL_EMBEDDING_API_KEY"] = original_internal_embedding_key
+            elif "INTERNAL_EMBEDDING_API_KEY" in os.environ:
+                del os.environ["INTERNAL_EMBEDDING_API_KEY"]
+
+    def test_internal_embeddings_env_injection(self):
+        """When embedding_use_internal_auth=true, INTERNAL_EMBEDDING_API_KEY should be injected."""
+        import tempfile
+        from pathlib import Path
+        import textwrap
+
+        # Save originals
+        original_internal_embedding_key = os.environ.get("INTERNAL_EMBEDDING_API_KEY")
+        try:
+            os.environ["INTERNAL_EMBEDDING_API_KEY"] = "oauth-internal-token"
+
+            config_text = textwrap.dedent(
+                """
+            [slicer]
+            max_tokens = 40000
+            overlap = 0
+            soft_boundary = true
+            soft_boundary_max_shift = 500
+            tokenizer = "o200k_base"
+            allowed_extensions = ["json"]
+
+            [itext2kg]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
+
+            [dedup]
+            embedding_model = "text-embedding-3-small"
+            embedding_api_key = "sk-..."
+            embedding_use_internal_auth = true
+            embedding_base_url = "http://example.local/internal/embed"
+            sim_threshold = 0.97
+            len_ratio_min = 0.8
+            faiss_M = 32
+            faiss_efC = 200
+            faiss_metric = "INNER_PRODUCT"
+            k_neighbors = 5
+
+            [refiner]
+            is_reasoning = false
+            run = true
+            embedding_model = "text-embedding-3-small"
+            embedding_api_key = ""
+            embedding_use_internal_auth = true
+            embedding_base_url = "http://example.local/internal/embed"
+            sim_threshold = 0.80
+            max_pairs_per_node = 20
+            model = "gpt-4o-mini"
+            api_key = "sk-test"
+            tpm_limit = 60000
+            max_completion = 2048
+            timeout = 30
+            max_retries = 3
+            """
+            )
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+                f.write(config_text)
+                f.flush()
+
+                config = load_config(f.name)
+                assert config["dedup"]["embedding_api_key"] == "oauth-internal-token"
+                assert config["refiner"]["embedding_api_key"] == "oauth-internal-token"
+
+            Path(f.name).unlink()
+
+        finally:
+            if original_internal_embedding_key is not None:
+                os.environ["INTERNAL_EMBEDDING_API_KEY"] = original_internal_embedding_key
+            elif "INTERNAL_EMBEDDING_API_KEY" in os.environ:
+                del os.environ["INTERNAL_EMBEDDING_API_KEY"]
 
     def test_placeholder_detection(self):
         """Test that sk-... placeholders trigger env var lookup."""

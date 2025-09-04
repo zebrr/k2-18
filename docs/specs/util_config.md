@@ -32,7 +32,8 @@ Injects API keys from environment variables into configuration. Priority order:
 
 Environment variables:
 - `OPENAI_API_KEY` - for itext2kg.api_key and refiner.api_key
-- `OPENAI_EMBEDDING_API_KEY` - for embedding API keys (fallback to OPENAI_API_KEY if not set)
+- `OPENAI_EMBEDDING_API_KEY` - for external embedding API keys (fallback to OPENAI_API_KEY if not set)
+- `INTERNAL_EMBEDDING_API_KEY` - for internal embeddings when `embedding_use_internal_auth=true`
 
 ### _validate_config(config: Dict[str, Any]) -> None
 Validates complete configuration structure.
@@ -150,7 +151,9 @@ Generic validator for required fields presence and types.
 - **k_neighbors** (int, >0) - number of neighbors
 
 **Non-validated parameters:**
-- **embedding_api_key** (str, optional) - API key for embeddings (uses OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY env if not set)
+- **embedding_api_key** (str, optional) - API key for embeddings
+  - External mode: uses `OPENAI_EMBEDDING_API_KEY` or `OPENAI_API_KEY` if not set
+  - Internal mode (`embedding_use_internal_auth=true`): uses this value or env `INTERNAL_EMBEDDING_API_KEY`
 - **embedding_tpm_limit** (int) - TPM limit for embedding models
 
 ### [refiner] - Required section
@@ -173,7 +176,9 @@ Generic validator for required fields presence and types.
 - **weight_high** (float, 0.0-1.0) - high connection weight
 
 **Non-validated parameters (passed through to LLM client):**
-- **embedding_api_key** (str, optional) - API key for embeddings (uses OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY env if not set)
+- **embedding_api_key** (str, optional) - API key for embeddings
+  - External mode: uses `OPENAI_EMBEDDING_API_KEY` or `OPENAI_API_KEY` if not set
+  - Internal mode (`embedding_use_internal_auth=true`): uses this value or env `INTERNAL_EMBEDDING_API_KEY`
 - **poll_interval** (int, >0) - status check interval in seconds for async mode
 - **tpm_safety_margin** (float) - safety margin for TPM calculations
 - **max_context_tokens** (int) - maximum context window size
@@ -199,7 +204,8 @@ Generic validator for required fields presence and types.
   - Weights must satisfy: weight_low < weight_mid < weight_high
 - **API keys handling**:
   - Empty or placeholder keys (starting with "sk-...") trigger environment variable lookup
-  - Falls back to environment variables: OPENAI_API_KEY, OPENAI_EMBEDDING_API_KEY
+  - External embeddings: falls back to `OPENAI_EMBEDDING_API_KEY` or `OPENAI_API_KEY`
+  - Internal embeddings (`embedding_use_internal_auth=true`): falls back to `INTERNAL_EMBEDDING_API_KEY`
   - Raises ConfigValidationError if neither config nor env provides valid key
 - **Type checking**: Strict type validation for all required fields
 - **Consistency warnings** (logged but not errors):

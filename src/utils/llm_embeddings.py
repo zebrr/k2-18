@@ -6,6 +6,7 @@ and calculating cosine similarity between vectors.
 """
 
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -41,12 +42,32 @@ class EmbeddingsClient:
                 - embedding_tpm_limit: TPM limit (default 350000)
                 - max_retries: Number of retry attempts (default 3)
         """
-        # API key - try embedding_api_key first, then api_key
-        api_key = config.get("embedding_api_key") or config.get("api_key")
-        if not api_key:
-            raise ValueError("API key not found in config (embedding_api_key or api_key)")
+        # Routing: external OpenAI vs internal HTTP service
+        # Flags (by analogy with LLM internal routing)
+        self.use_internal_auth: bool = bool(config.get("embedding_use_internal_auth", False))
+        self.base_url: Optional[str] = config.get("embedding_base_url")
 
-        self.client = OpenAI(api_key=api_key)
+        # API key / OAuth token resolution
+        # - Internal: use dedicated INTERNAL_EMBEDDING_API_KEY env or embedding_api_key from config
+        # - External: OpenAI API key (embedding_api_key preferred, fallback to api_key)
+        if self.use_internal_auth and self.base_url:
+            resolved_key = config.get("embedding_api_key") or os.getenv("INTERNAL_EMBEDDING_API_KEY")
+            if not resolved_key:
+                raise ValueError(
+                    "Internal embeddings token not found (dedup/refiner.embedding_api_key or env INTERNAL_EMBEDDING_API_KEY)"
+                )
+            # Internal endpoint over HTTP; store token and skip OpenAI client
+            self.client = None
+            self.internal_oauth_token = resolved_key
+        else:
+            resolved_key = config.get("embedding_api_key") or config.get("api_key")
+            if not resolved_key:
+                raise ValueError(
+                    "API key not found for external embeddings (embedding_api_key or api_key)"
+                )
+            # Default to external OpenAI embeddings API
+            self.client = OpenAI(api_key=resolved_key)
+
         self.model = config.get("embedding_model", "text-embedding-3-small")
 
         # TPM control
@@ -68,6 +89,11 @@ class EmbeddingsClient:
         # API limits
         self.max_texts_per_request = self.max_texts_per_batch
         self.max_tokens_per_text = 8192
+
+        # Embedding dimensionality
+        # - External OpenAI returns 1536 dims
+        # - Internal service dimension is determined from first response
+        self.embedding_dim: Optional[int] = 1536 if not self.use_internal_auth else None
 
         logger.info(
             f"EmbeddingsClient initialized with model={self.model}, tpm_limit={self.tpm_limit}, "
@@ -144,6 +170,58 @@ class EmbeddingsClient:
         logger.debug(
             f"TPM state updated (fallback): remaining={self.remaining_tokens}, used={tokens_used}"
         )
+
+    def _normalize_vector(self, vector: List[float]) -> List[float]:
+        """L2-normalize a vector; return original if zero norm."""
+        import math
+
+        norm = math.sqrt(sum(v * v for v in vector))
+        if norm == 0.0:
+            return vector
+        return [float(v / norm) for v in vector]
+
+    def _get_internal_embedding(self, text: str) -> List[float]:
+        """
+        Call internal embeddings endpoint and return normalized vector.
+
+        Expects JSON response with {"Embedding": [...]}.
+        """
+        if not self.base_url:
+            raise ValueError("embedding_base_url must be provided for internal embeddings")
+
+        # Import requests lazily to avoid hard dependency unless needed
+        try:
+            import requests  # type: ignore
+        except Exception as e:
+            raise RuntimeError(
+                "The 'requests' package is required for internal embeddings mode"
+            ) from e
+
+        headers = {
+            "authorization": f"OAuth {self.internal_oauth_token}",
+            "content-type": "application/json",
+        }
+        payload = {
+            "TextSegments": {"prompt": text}
+        }
+
+        resp = requests.post(self.base_url, json=payload, headers=headers, timeout=60)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Internal embeddings API error: HTTP {resp.status_code} - {resp.text[:200]}")
+
+        data = resp.json()
+        if not isinstance(data, dict) or "Embedding" not in data:
+            raise ValueError("Invalid response from internal embeddings API: missing 'Embedding'")
+
+        vector = data["Embedding"]
+        if not isinstance(vector, list) or not vector:
+            raise ValueError("Invalid 'Embedding' format from internal embeddings API")
+
+        # Record embedding dimension on first successful call
+        if self.embedding_dim is None:
+            self.embedding_dim = int(len(vector))
+
+        return self._normalize_vector([float(v) for v in vector])
 
     def _wait_for_tokens(self, required_tokens: int, safety_margin: float = 0.15):
         """
@@ -270,86 +348,126 @@ class EmbeddingsClient:
             # Wait for token availability
             self._wait_for_tokens(batch_tokens)
 
-            # Retry logic
-            last_error = None
-            for attempt in range(self.max_retries):
-                try:
-                    logger.debug(
-                        f"Processing batch {batch_idx + 1}/{len(batches)}, {len(batch)} texts"
-                    )
-
-                    # API call with raw response to get headers
-                    raw_response = self.client.embeddings.with_raw_response.create(
-                        input=batch, model=self.model, encoding_format="float"
-                    )
-
-                    # Extract headers for TPM tracking
-                    headers = {
-                        "x-ratelimit-remaining-tokens": raw_response.headers.get(
-                            "x-ratelimit-remaining-tokens"
-                        ),
-                        "x-ratelimit-reset-tokens": raw_response.headers.get(
-                            "x-ratelimit-reset-tokens"
-                        ),
-                    }
-
-                    # Update TPM state with real headers
-                    self._update_tpm_state(batch_tokens, headers)
-
-                    # Get parsed response
-                    response = raw_response.parse()
-
-                    # Extract vectors
-                    embeddings = [item.embedding for item in response.data]
-                    all_embeddings.extend(embeddings)
-
-                    logger.debug(f"Batch {batch_idx + 1} processed successfully")
-
-                    if len(batches) > 1:
-                        utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
-                        print(
-                            f"[{utc3_time}] EMBEDDINGS | ✅ Batch {batch_idx + 1}/{len(batches)} completed"
-                        )
-
-                    break
-
-                except Exception as e:
-                    last_error = e
-                    error_type = type(e).__name__
-
-                    if "rate_limit" in str(e).lower() or "429" in str(e):
-                        # Rate limit - use exponential backoff
-                        wait_time = (2**attempt) * 10
-                        logger.warning(
-                            f"Rate limit hit, attempt {attempt + 1}/{self.max_retries}, waiting {wait_time}s"
-                        )
-                        utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
-                        print(
-                            f"[{utc3_time}] EMBEDDINGS | ⏳ Rate limit hit, retry {attempt + 1}/{self.max_retries} in {wait_time}s..."
-                        )
-                        time.sleep(wait_time)
-
-                        # Reset TPM state
-                        self.remaining_tokens = 0
-                        self.reset_time = time.time() + wait_time
+            # Retry logic for the whole batch (external) or per-text (internal)
+            if self.use_internal_auth and self.base_url:
+                # Internal: process texts sequentially with per-text retries
+                for text in batch:
+                    text_tokens = self._count_tokens(text)
+                    last_error = None
+                    for attempt in range(self.max_retries):
+                        try:
+                            vec = self._get_internal_embedding(text)
+                            all_embeddings.append(vec)
+                            # Fallback TPM tracking when headers unavailable
+                            self._update_tpm_state(text_tokens, headers=None)
+                            break
+                        except Exception as e:
+                            last_error = e
+                            error_str = str(e)
+                            if "429" in error_str or "rate" in error_str.lower():
+                                wait_time = (2**attempt) * 10
+                                logger.warning(
+                                    f"Internal rate limit, retry {attempt + 1}/{self.max_retries} in {wait_time}s"
+                                )
+                                time.sleep(wait_time)
+                                # Reset TPM state windows
+                                self.remaining_tokens = 0
+                                self.reset_time = time.time() + wait_time
+                            else:
+                                wait_time = (2**attempt) * 5
+                                logger.warning(
+                                    f"Internal API error: {type(e).__name__}, retry {attempt + 1}/{self.max_retries} in {wait_time}s"
+                                )
+                                time.sleep(wait_time)
                     else:
-                        # Other errors - also retry with backoff
-                        wait_time = (2**attempt) * 5
-                        logger.warning(
-                            f"API error: {error_type}, attempt {attempt + 1}/{self.max_retries}, waiting {wait_time}s"
+                        logger.error(
+                            f"Failed to get internal embedding after {self.max_retries} attempts"
                         )
-                        time.sleep(wait_time)
+                        raise last_error
+
+                if len(batches) > 1:
+                    utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    print(
+                        f"[{utc3_time}] EMBEDDINGS | ✅ Batch {batch_idx + 1}/{len(batches)} completed"
+                    )
             else:
-                # All attempts exhausted
-                logger.error(f"Failed to get embeddings after {self.max_retries} attempts")
-                raise last_error
+                # External OpenAI: one call per batch with raw headers
+                last_error = None
+                for attempt in range(self.max_retries):
+                    try:
+                        logger.debug(
+                            f"Processing batch {batch_idx + 1}/{len(batches)}, {len(batch)} texts"
+                        )
+
+                        raw_response = self.client.embeddings.with_raw_response.create(
+                            input=batch, model=self.model, encoding_format="float"
+                        )
+
+                        headers = {
+                            "x-ratelimit-remaining-tokens": raw_response.headers.get(
+                                "x-ratelimit-remaining-tokens"
+                            ),
+                            "x-ratelimit-reset-tokens": raw_response.headers.get(
+                                "x-ratelimit-reset-tokens"
+                            ),
+                        }
+
+                        # Update TPM state with real headers
+                        self._update_tpm_state(batch_tokens, headers)
+
+                        # Get parsed response
+                        response = raw_response.parse()
+
+                        # Extract vectors
+                        embeddings = [item.embedding for item in response.data]
+                        all_embeddings.extend(embeddings)
+
+                        logger.debug(f"Batch {batch_idx + 1} processed successfully")
+
+                        if len(batches) > 1:
+                            utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                            print(
+                                f"[{utc3_time}] EMBEDDINGS | ✅ Batch {batch_idx + 1}/{len(batches)} completed"
+                            )
+
+                        break
+
+                    except Exception as e:
+                        last_error = e
+                        error_type = type(e).__name__
+
+                        if "rate_limit" in str(e).lower() or "429" in str(e):
+                            wait_time = (2**attempt) * 10
+                            logger.warning(
+                                f"Rate limit hit, attempt {attempt + 1}/{self.max_retries}, waiting {wait_time}s"
+                            )
+                            utc3_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                            print(
+                                f"[{utc3_time}] EMBEDDINGS | ⏳ Rate limit hit, retry {attempt + 1}/{self.max_retries} in {wait_time}s..."
+                            )
+                            time.sleep(wait_time)
+                            self.remaining_tokens = 0
+                            self.reset_time = time.time() + wait_time
+                        else:
+                            wait_time = (2**attempt) * 5
+                            logger.warning(
+                                f"API error: {error_type}, attempt {attempt + 1}/{self.max_retries}, waiting {wait_time}s"
+                            )
+                            time.sleep(wait_time)
+                else:
+                    logger.error(
+                        f"Failed to get embeddings after {self.max_retries} attempts"
+                    )
+                    raise last_error
 
         # Convert to numpy array
         embeddings_array = np.array(all_embeddings, dtype=np.float32)
 
         # Restore original order with zero vectors for empty texts
         if len(non_empty_indices) < len(texts):
-            result = np.zeros((len(texts), 1536), dtype=np.float32)
+            # Use detected dimension for internal, otherwise default 1536
+            dim = self.embedding_dim or 1536
+            result = np.zeros((len(texts), dim), dtype=np.float32)
             for i, idx in enumerate(non_empty_indices):
                 result[idx] = embeddings_array[i]
             logger.info(

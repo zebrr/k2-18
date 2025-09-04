@@ -3,6 +3,7 @@ Module for loading and validating iText2KG configuration from TOML file.
 """
 
 import os
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -37,37 +38,67 @@ def _inject_env_api_keys(config: Dict[str, Any]) -> None:
     """
     # Main API key
     env_api_key = os.getenv("OPENAI_API_KEY")
+    
+    # Internal model OAuth token (for internal models)
+    env_internal_token = os.getenv("SOY_TOKEN")
 
     # itext2kg.api_key
-    if env_api_key:
-        if "itext2kg" in config:
-            current_key = config["itext2kg"].get("api_key", "")
+    if "itext2kg" in config:
+        current_key = config["itext2kg"].get("api_key", "")
+        use_internal = config["itext2kg"].get("use_internal_auth", False)
+        
+        if use_internal and env_internal_token:
+            # For internal models, use SOY_TOKEN
+            if not current_key or current_key.startswith("sk-..."):
+                config["itext2kg"]["api_key"] = env_internal_token
+        elif not use_internal and env_api_key:
+            # For external models, use OPENAI_API_KEY
             if not current_key or current_key.startswith("sk-..."):
                 config["itext2kg"]["api_key"] = env_api_key
 
     # refiner.api_key
-    if env_api_key:
-        if "refiner" in config:
-            current_key = config["refiner"].get("api_key", "")
+    if "refiner" in config:
+        current_key = config["refiner"].get("api_key", "")
+        use_internal = config["refiner"].get("use_internal_auth", False)
+        
+        if use_internal and env_internal_token:
+            # For internal models, use SOY_TOKEN
+            if not current_key or current_key.startswith("sk-..."):
+                config["refiner"]["api_key"] = env_internal_token
+        elif not use_internal and env_api_key:
+            # For external models, use OPENAI_API_KEY
             if not current_key or current_key.startswith("sk-..."):
                 config["refiner"]["api_key"] = env_api_key
 
     # Embedding API keys (can use separate key)
     env_embedding_key = os.getenv("OPENAI_EMBEDDING_API_KEY", env_api_key)
+    env_internal_embedding_key = os.getenv("INTERNAL_EMBEDDING_API_KEY")
 
     # dedup.embedding_api_key
-    if env_embedding_key:
-        if "dedup" in config:
-            current_key = config["dedup"].get("embedding_api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["dedup"]["embedding_api_key"] = env_embedding_key
+    if "dedup" in config:
+        current_key = config["dedup"].get("embedding_api_key", "")
+        use_internal = config["dedup"].get("embedding_use_internal_auth", False)
+        if not current_key or current_key.startswith("sk-..."):
+            chosen = None
+            if use_internal:
+                chosen = env_internal_embedding_key
+            else:
+                chosen = env_embedding_key
+            if chosen:
+                config["dedup"]["embedding_api_key"] = chosen
 
     # refiner.embedding_api_key
-    if env_embedding_key:
-        if "refiner" in config:
-            current_key = config["refiner"].get("embedding_api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["refiner"]["embedding_api_key"] = env_embedding_key
+    if "refiner" in config:
+        current_key = config["refiner"].get("embedding_api_key", "")
+        use_internal = config["refiner"].get("embedding_use_internal_auth", False)
+        if not current_key or current_key.startswith("sk-..."):
+            chosen = None
+            if use_internal:
+                chosen = env_internal_embedding_key
+            else:
+                chosen = env_embedding_key
+            if chosen:
+                config["refiner"]["embedding_api_key"] = chosen
 
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
@@ -233,14 +264,25 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
             "itext2kg.log_level must be one of: debug, info, warning, error"
         )
 
-    # Updated api_key check
+    # Updated api_key check - handle both external and internal models
+    use_internal = section.get("use_internal_auth", False)
     if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ConfigValidationError(
-                "itext2kg.api_key not configured. Either:\n"
-                "1. Set OPENAI_API_KEY environment variable\n"
-                "2. Provide valid key in config.toml"
-            )
+        if use_internal:
+            # For internal models, check SOY_TOKEN
+            if not os.getenv("SOY_TOKEN"):
+                raise ConfigValidationError(
+                    "itext2kg.api_key not configured for internal model. Either:\n"
+                    "1. Set SOY_TOKEN environment variable\n"
+                    "2. Provide valid OAuth token in config.toml"
+                )
+        else:
+            # For external models, check OPENAI_API_KEY
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ConfigValidationError(
+                    "itext2kg.api_key not configured. Either:\n"
+                    "1. Set OPENAI_API_KEY environment variable\n"
+                    "2. Provide valid key in config.toml"
+                )
 
     if section["timeout"] <= 0:
         raise ConfigValidationError("itext2kg.timeout must be positive")
@@ -267,6 +309,23 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
         truncation = section["truncation"]
         if truncation not in ["auto", "disabled"]:
             raise ConfigValidationError("itext2kg.truncation must be 'auto' or 'disabled'")
+
+    # Validate internal model parameters
+    if use_internal:
+        # For internal models, base_url is required
+        if "base_url" not in section:
+            raise ConfigValidationError("itext2kg.base_url is required when use_internal_auth=true")
+        
+        # Validate base_url format
+        base_url = section["base_url"]
+        if not isinstance(base_url, str) or not base_url.startswith("https://"):
+            raise ConfigValidationError("itext2kg.base_url must be a valid HTTPS URL")
+            
+        # model_path is optional but recommended for internal models
+        if "model_path" in section:
+            model_path = section["model_path"]
+            if not isinstance(model_path, str) or not model_path.strip():
+                raise ConfigValidationError("itext2kg.model_path must be a non-empty string")
 
 
 def _validate_dedup_section(section: Dict[str, Any]) -> None:
@@ -302,17 +361,26 @@ def _validate_dedup_section(section: Dict[str, Any]) -> None:
     if section["k_neighbors"] <= 0:
         raise ConfigValidationError("dedup.k_neighbors must be positive")
 
-    # Обновленная проверка embedding_api_key (опциональный параметр)
-    # Если ключ не задан или placeholder - проверяем env переменные
+    # Проверка ключей/токенов для эмбеддингов (внешние/внутренние)
+    use_internal_embeddings = section.get("embedding_use_internal_auth", False)
     embedding_key = section.get("embedding_api_key", "")
-    if not embedding_key or embedding_key.startswith("sk-..."):
-        # Проверяем сначала OPENAI_EMBEDDING_API_KEY, потом OPENAI_API_KEY
-        if not (os.getenv("OPENAI_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")):
-            raise ConfigValidationError(
-                "dedup.embedding_api_key not configured. Either:\n"
-                "1. Set OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY environment variable\n"
-                "2. Provide valid key in config.toml"
+    if use_internal_embeddings:
+        # Для внутренних эмбеддингов: предупреждаем, но не блокируем сборку других утилит (например, slicer)
+        if not embedding_key.strip() and not os.getenv("INTERNAL_EMBEDDING_API_KEY"):
+            logging.warning(
+                "[dedup] Internal embeddings enabled but no token configured. Set dedup.embedding_api_key or INTERNAL_EMBEDDING_API_KEY."
             )
+        if "embedding_base_url" not in section or not str(section["embedding_base_url"]).strip():
+            logging.warning(
+                "[dedup] Internal embeddings enabled but embedding_base_url is missing."
+            )
+    else:
+        # Внешние эмбеддинги OpenAI: предупреждаем, но не валим валидацию
+        if not embedding_key or embedding_key.startswith("sk-..."):
+            if not (os.getenv("OPENAI_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")):
+                logging.warning(
+                    "[dedup] External embeddings key not configured. Set dedup.embedding_api_key or OPENAI_EMBEDDING_API_KEY/OPENAI_API_KEY."
+                )
 
 
 def _validate_refiner_section(section: Dict[str, Any]) -> None:
@@ -343,14 +411,25 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
     if section["max_pairs_per_node"] <= 0:
         raise ConfigValidationError("refiner.max_pairs_per_node must be positive")
 
-    # Updated api_key check
+    # Updated api_key check - handle both external and internal models
+    use_internal = section.get("use_internal_auth", False)
     if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ConfigValidationError(
-                "refiner.api_key not configured. Either:\n"
-                "1. Set OPENAI_API_KEY environment variable\n"
-                "2. Provide valid key in config.toml"
-            )
+        if use_internal:
+            # For internal models, check SOY_TOKEN
+            if not os.getenv("SOY_TOKEN"):
+                raise ConfigValidationError(
+                    "refiner.api_key not configured for internal model. Either:\n"
+                    "1. Set SOY_TOKEN environment variable\n"
+                    "2. Provide valid OAuth token in config.toml"
+                )
+        else:
+            # For external models, check OPENAI_API_KEY
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ConfigValidationError(
+                    "refiner.api_key not configured. Either:\n"
+                    "1. Set OPENAI_API_KEY environment variable\n"
+                    "2. Provide valid key in config.toml"
+                )
 
     if section["tpm_limit"] <= 0:
         raise ConfigValidationError("refiner.tpm_limit must be positive")
@@ -381,6 +460,42 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
         truncation = section["truncation"]
         if truncation not in ["auto", "disabled"]:
             raise ConfigValidationError("refiner.truncation must be 'auto' or 'disabled'")
+
+    # Validate internal model parameters
+    if use_internal:
+        # For internal models, base_url is required
+        if "base_url" not in section:
+            raise ConfigValidationError("refiner.base_url is required when use_internal_auth=true")
+        
+        # Validate base_url format
+        base_url = section["base_url"]
+        if not isinstance(base_url, str) or not base_url.startswith("https://"):
+            raise ConfigValidationError("refiner.base_url must be a valid HTTPS URL")
+            
+        # model_path is optional but recommended for internal models
+        if "model_path" in section:
+            model_path = section["model_path"]
+            if not isinstance(model_path, str) or not model_path.strip():
+                raise ConfigValidationError("refiner.model_path must be a non-empty string")
+
+    # Embeddings config for refiner: support internal/external switching similar to dedup
+    use_internal_embeddings = section.get("embedding_use_internal_auth", False)
+    embedding_key = section.get("embedding_api_key", "")
+    if use_internal_embeddings:
+        if not embedding_key.strip() and not os.getenv("INTERNAL_EMBEDDING_API_KEY"):
+            logging.warning(
+                "[refiner] Internal embeddings enabled but no token configured. Set refiner.embedding_api_key or INTERNAL_EMBEDDING_API_KEY."
+            )
+        if "embedding_base_url" not in section or not str(section["embedding_base_url"]).strip():
+            logging.warning(
+                "[refiner] Internal embeddings enabled but embedding_base_url is missing."
+            )
+    else:
+        if not embedding_key or embedding_key.startswith("sk-..."):
+            if not (os.getenv("OPENAI_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")):
+                logging.warning(
+                    "[refiner] External embeddings key not configured. Set refiner.embedding_api_key or OPENAI_EMBEDDING_API_KEY/OPENAI_API_KEY."
+                )
 
 
 def _validate_required_fields(

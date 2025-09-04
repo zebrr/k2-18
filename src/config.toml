@@ -17,8 +17,9 @@ truncation = "auto"           # "auto" | "disabled" | закомментиров
 response_chain_depth = 1      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
 
 # Основная модель
-model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
+# model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+model               = "gpt-oss-120b" # Внутренняя модель (требует use_internal_auth=true)
 max_context_tokens  = 400000
 tpm_limit           = 450000
 max_completion      = 100000
@@ -27,9 +28,14 @@ max_completion      = 100000
 # Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
 model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 400,000 / 128,000
 # model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+# model_test              = "gpt-oss-120b" # Внутренняя модель (требует use_internal_auth=true)
 max_context_tokens_test = 400000
 tpm_limit_test          = 450000
 max_completion_test     = 100000
+# Параметры для внутренних моделей (раскомментировать при использовании)
+use_internal_auth   = true
+base_url            = "https://api.eliza.yandex.net/internal/v2/models/gpt_oss_120b/v1"
+model_path          = "/slot/sandbox/model"
 
 # Общие параметры настройки для ОБЕИХ моделей
 # temperature         = 0.6
@@ -52,8 +58,9 @@ max_retries         = 3
 poll_interval       = 10
 
 [dedup]
-embedding_model     = "text-embedding-3-small"
-embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
+# embedding_model     = "text-embedding-3-small"
+embedding_model     = "eduml_8b_embed"  # Internal model name
+embedding_api_key   = ""  # External: uses OPENAI(_EMBEDDING)_API_KEY if not set; Internal: can use INTERNAL_EMBEDDING_API_KEY
 embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
@@ -64,6 +71,9 @@ faiss_M             = 32
 faiss_efC           = 200
 faiss_metric        = "INNER_PRODUCT"
 k_neighbors         = 5
+# Внутренняя модель эмбеддингов (раскомментировать при использовании)
+embedding_use_internal_auth = true
+embedding_base_url = "http://zeliboba.yandex-team.ru/balance/eduml_8b_embed/embedding"  # Use with INTERNAL_EMBEDDING_API_KEY
 
 [refiner]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
@@ -73,16 +83,23 @@ is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе пад�
 response_chain_depth = 0      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
 
 # Основная модель
-model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
+# model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+model               = "gpt-oss-120b" # Внутренняя модель (требует use_internal_auth=true)
 max_context_tokens  = 400000
 tpm_limit           = 450000
 max_completion      = 100000
+
+# Параметры для внутренних моделей (раскомментировать при использовании)
+use_internal_auth   = true
+base_url            = "https://api.eliza.yandex.net/internal/v2/models/gpt_oss_120b/v1"
+model_path          = "/slot/sandbox/model"
 
 # Тестовая модель (только эти 4 параметра уникальные)
 # Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
 model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 400,000 / 128,000
 # model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+# model_test              = "gpt-oss-120b" # Внутренняя модель (требует use_internal_auth=true)
 max_context_tokens_test = 400000
 tpm_limit_test          = 450000
 max_completion_test     = 100000
@@ -95,8 +112,8 @@ reasoning_summary   = "auto"
 
 # Параметры для embeddings и поиска пар
 run                 = true
-embedding_model     = "text-embedding-3-small"
-embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
+embedding_model     = "eduml_8b_embed"  # Internal model name
+embedding_api_key   = ""  # External: uses OPENAI(_EMBEDDING)_API_KEY if not set; Internal: can use INTERNAL_EMBEDDING_API_KEY
 embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
@@ -105,6 +122,9 @@ sim_threshold       = 0.65
 max_pairs_per_node  = 20
 faiss_M             = 32
 faiss_metric        = "INNER_PRODUCT"
+## Внутренняя модель эмбеддингов для рефайнера
+embedding_use_internal_auth = true
+embedding_base_url = "http://zeliboba.yandex-team.ru/balance/eduml_8b_embed/embedding"  # Use with INTERNAL_EMBEDDING_API_KEY
 
 # НОВЫЕ параметры для двух проходов
 enable_backward_pass = true          # Включить второй проход (по умолчанию true)

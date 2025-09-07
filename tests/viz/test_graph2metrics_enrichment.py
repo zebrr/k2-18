@@ -306,6 +306,12 @@ class TestCreateMentionIndex:
 
     def test_create_mention_index_basic(self, sample_graph_data, sample_concepts_data):
         """Test basic mention index creation."""
+        # Add Concept nodes to graph for testing
+        sample_graph_data["nodes"].extend([
+            {"id": "concept_1", "type": "Concept"},
+            {"id": "concept_2", "type": "Concept"},
+        ])
+        
         result = create_mention_index(sample_graph_data, sample_concepts_data)
 
         assert "_meta" in result
@@ -313,7 +319,7 @@ class TestCreateMentionIndex:
 
         index = result["_meta"]["mention_index"]
 
-        # Check concept_1 mentions
+        # Check concept_1 mentions (now includes ALL edges)
         assert "concept_1" in index
         assert index["concept_1"]["count"] == 2
         assert set(index["concept_1"]["nodes"]) == {"n1", "n2"}
@@ -321,12 +327,12 @@ class TestCreateMentionIndex:
         # Check concept_2 mentions
         assert "concept_2" in index
         assert index["concept_2"]["count"] == 1
-        assert index["concept_2"]["nodes"] == ["n3"]
+        assert set(index["concept_2"]["nodes"]) == {"n3"}
 
     def test_create_mention_index_no_mentions(self):
-        """Test mention index with no MENTIONS edges."""
+        """Test mention index with no Concept nodes."""
         graph_data = {
-            "nodes": [{"id": "n1"}, {"id": "n2"}],
+            "nodes": [{"id": "n1", "type": "Chunk"}, {"id": "n2", "type": "Chunk"}],
             "edges": [{"source": "n1", "target": "n2", "type": "PREREQUISITE"}],
         }
         concepts_data = {"concepts": [{"id": "c1"}]}
@@ -350,27 +356,33 @@ class TestLinkNodesToConcepts:
 
     def test_link_nodes_to_concepts_basic(self, sample_graph_data):
         """Test basic node-concept linking."""
+        # Add Concept nodes to graph
+        sample_graph_data["nodes"].extend([
+            {"id": "concept_1", "type": "Concept"},
+            {"id": "concept_2", "type": "Concept"},
+        ])
+        
         result = link_nodes_to_concepts(sample_graph_data.copy())
 
         # Check that nodes have concepts field
         nodes_by_id = {n["id"]: n for n in result["nodes"]}
 
         assert "concepts" in nodes_by_id["n1"]
-        assert nodes_by_id["n1"]["concepts"] == ["concept_1"]
+        assert set(nodes_by_id["n1"]["concepts"]) == {"concept_1"}
 
         assert "concepts" in nodes_by_id["n2"]
-        assert nodes_by_id["n2"]["concepts"] == ["concept_1"]
+        assert set(nodes_by_id["n2"]["concepts"]) == {"concept_1"}
 
         assert "concepts" in nodes_by_id["n3"]
-        assert nodes_by_id["n3"]["concepts"] == ["concept_2"]
+        assert set(nodes_by_id["n3"]["concepts"]) == {"concept_2"}
 
         assert "concepts" in nodes_by_id["n4"]
-        assert nodes_by_id["n4"]["concepts"] == []  # No mentions
+        assert nodes_by_id["n4"]["concepts"] == []  # No connections to concepts
 
-    def test_link_nodes_to_concepts_no_mentions(self):
-        """Test linking with no MENTIONS edges."""
+    def test_link_nodes_to_concepts_no_concepts(self):
+        """Test linking with no Concept nodes."""
         graph_data = {
-            "nodes": [{"id": "n1"}, {"id": "n2"}],
+            "nodes": [{"id": "n1", "type": "Chunk"}, {"id": "n2", "type": "Chunk"}],
             "edges": [{"source": "n1", "target": "n2", "type": "PREREQUISITE"}],
         }
 
@@ -380,9 +392,14 @@ class TestLinkNodesToConcepts:
             assert node["concepts"] == []
 
     def test_link_nodes_to_concepts_multiple_concepts(self):
-        """Test linking when node mentions multiple concepts."""
+        """Test linking when node connects to multiple concepts."""
         graph_data = {
-            "nodes": [{"id": "n1"}],
+            "nodes": [
+                {"id": "n1", "type": "Chunk"},
+                {"id": "c1", "type": "Concept"},
+                {"id": "c2", "type": "Concept"},
+                {"id": "c3", "type": "Concept"},
+            ],
             "edges": [
                 {"source": "n1", "target": "c1", "type": "MENTIONS"},
                 {"source": "n1", "target": "c2", "type": "MENTIONS"},
@@ -391,8 +408,9 @@ class TestLinkNodesToConcepts:
         }
 
         result = link_nodes_to_concepts(graph_data)
-
-        assert set(result["nodes"][0]["concepts"]) == {"c1", "c2", "c3"}
+        
+        nodes_by_id = {n["id"]: n for n in result["nodes"]}
+        assert set(nodes_by_id["n1"]["concepts"]) == {"c1", "c2", "c3"}
 
 
 class TestHandleLargeGraph:

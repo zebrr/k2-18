@@ -938,19 +938,35 @@ def create_mention_index(
     Returns:
         Enhanced concepts_data with mention index in _meta
     """
-    mention_index = {}
+    # Build node type map to identify Concept nodes
+    node_types = {node["id"]: node.get("type") for node in graph_data.get("nodes", [])}
 
-    # Analyze MENTIONS edges (source=node, target=concept)
+    # Use sets for automatic deduplication
+    mention_index_sets = {}
+
+    # Process ALL edges, not just MENTIONS
     for edge in graph_data.get("edges", []):
-        if edge.get("type") == "MENTIONS":
-            concept_id = edge["target"]
-            node_id = edge["source"]
+        source_id = edge["source"]
+        target_id = edge["target"]
 
-            if concept_id not in mention_index:
-                mention_index[concept_id] = {"nodes": [], "count": 0}
+        # Check if source is a Concept node
+        if node_types.get(source_id) == "Concept":
+            if source_id not in mention_index_sets:
+                mention_index_sets[source_id] = set()
+            # Add target to source's index
+            mention_index_sets[source_id].add(target_id)
 
-            mention_index[concept_id]["nodes"].append(node_id)
-            mention_index[concept_id]["count"] += 1
+        # Check if target is a Concept node
+        if node_types.get(target_id) == "Concept":
+            if target_id not in mention_index_sets:
+                mention_index_sets[target_id] = set()
+            # Add source to target's index
+            mention_index_sets[target_id].add(source_id)
+
+    # Convert sets to lists for JSON serialization
+    mention_index = {}
+    for concept_id, node_set in mention_index_sets.items():
+        mention_index[concept_id] = {"nodes": list(node_set), "count": len(node_set)}
 
     # Add to concepts_data _meta
     if "_meta" not in concepts_data:
@@ -962,7 +978,7 @@ def create_mention_index(
 
 
 def link_nodes_to_concepts(graph_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Fill concepts field in each node based on MENTIONS edges.
+    """Fill concepts field in each node based on ALL edges with Concept nodes.
 
     Args:
         graph_data: Graph data with nodes and edges
@@ -970,23 +986,34 @@ def link_nodes_to_concepts(graph_data: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Modified graph_data with concepts field in nodes
     """
-    # Build node_id -> [concept_ids] mapping from MENTIONS edges
-    node_concepts = {}
+    # Build node type map to identify Concept nodes
+    node_types = {node["id"]: node.get("type") for node in graph_data.get("nodes", [])}
 
+    # Use sets for automatic deduplication
+    node_concepts_sets = {}
+
+    # Process ALL edges, not just MENTIONS
     for edge in graph_data.get("edges", []):
-        if edge.get("type") == "MENTIONS":
-            node_id = edge["source"]
-            concept_id = edge["target"]
+        source_id = edge["source"]
+        target_id = edge["target"]
 
-            if node_id not in node_concepts:
-                node_concepts[node_id] = []
+        # If target is a Concept, add it to source's concepts
+        if node_types.get(target_id) == "Concept":
+            if source_id not in node_concepts_sets:
+                node_concepts_sets[source_id] = set()
+            node_concepts_sets[source_id].add(target_id)
 
-            node_concepts[node_id].append(concept_id)
+        # If source is a Concept, add it to target's concepts (bidirectional)
+        if node_types.get(source_id) == "Concept":
+            if target_id not in node_concepts_sets:
+                node_concepts_sets[target_id] = set()
+            node_concepts_sets[target_id].add(source_id)
 
     # Add "concepts" field to each node
     for node in graph_data.get("nodes", []):
         node_id = node["id"]
-        node["concepts"] = node_concepts.get(node_id, [])
+        # Convert set to list for JSON serialization
+        node["concepts"] = list(node_concepts_sets.get(node_id, set()))
 
     return graph_data
 

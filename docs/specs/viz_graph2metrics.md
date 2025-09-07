@@ -299,17 +299,28 @@ Creates index of concept mentions in nodes.
   - graph_data (Dict) - Graph with nodes and edges
   - concepts_data (Dict) - Concepts dictionary
 - **Returns**: Enhanced concepts_data with mention index in _meta
-- **Algorithm**: Analyzes MENTIONS edges to build index
+- **Algorithm**: 
+  - Builds node type map to identify Concept nodes
+  - Analyzes ALL edges to find connections with Concept nodes
+  - Bidirectional: both incoming and outgoing edges to concepts are indexed
+  - Includes Concept-to-Concept relationships
+  - Uses set-based deduplication
 - **Output structure**: 
   ```json
   {"concept_id": {"nodes": ["n1", "n2"], "count": 2}}
   ```
 
 #### link_nodes_to_concepts(graph_data: Dict) -> Dict
-Fills concepts field in each node based on MENTIONS edges.
+Fills concepts field in each node based on ALL edges with Concept nodes.
 - **Input**: graph_data (Dict) - Graph with nodes and edges
 - **Returns**: Modified graph_data with concepts field in nodes
-- **Algorithm**: Maps node_id → [concept_ids] from MENTIONS edges
+- **Algorithm**: 
+  - Builds node type map to identify Concept nodes
+  - Processes ALL edges, not just MENTIONS
+  - If target is a Concept, adds it to source's concepts
+  - If source is a Concept, adds it to target's concepts (bidirectional)
+  - Applies to ALL node types (Chunk, Assessment, Concept)
+  - Uses set-based deduplication
 - **Side effects**: Adds "concepts" field to every node
 
 #### handle_large_graph(graph_data: Dict, max_nodes: int = 1000, save_full_path: Path = None, logger: Logger = None) -> Dict

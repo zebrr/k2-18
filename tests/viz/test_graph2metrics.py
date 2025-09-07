@@ -517,7 +517,12 @@ class TestFullEnrichmentFlow(unittest.TestCase):
     def test_node_concept_linking(self):
         """Test that nodes are correctly linked to concepts."""
         graph_data = {
-            "nodes": [{"id": "n1"}, {"id": "n2"}],
+            "nodes": [
+                {"id": "n1", "type": "Chunk"},
+                {"id": "n2", "type": "Chunk"},
+                {"id": "c1", "type": "Concept"},
+                {"id": "c2", "type": "Concept"},
+            ],
             "edges": [
                 {"source": "n1", "target": "c1", "type": "MENTIONS"},
                 {"source": "n1", "target": "c2", "type": "MENTIONS"},
@@ -530,7 +535,7 @@ class TestFullEnrichmentFlow(unittest.TestCase):
         # Check concepts field
         nodes_by_id = {n["id"]: n for n in result["nodes"]}
         self.assertEqual(set(nodes_by_id["n1"]["concepts"]), {"c1", "c2"})
-        self.assertEqual(nodes_by_id["n2"]["concepts"], ["c1"])
+        self.assertEqual(set(nodes_by_id["n2"]["concepts"]), {"c1"})
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ A standalone HTML file that works in any browser with:
 
 2. Run visualization pipeline:
    python -m viz.graph2metrics          # Compute educational metrics
+   python -m viz.graph_fix              # (Optional) Mark LLM content for QA
    python -m viz.graph2html             # Generate interactive HTML
 
 3. Open result:

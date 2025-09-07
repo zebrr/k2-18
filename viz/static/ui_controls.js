@@ -738,6 +738,14 @@ const UIControls = {
             badge.style.transform = 'translateY(0)';
         }, { once: true });
         
+        // Create popup overlay (for click outside to close)
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay';
+        overlay.style.display = 'none';
+        overlay.addEventListener('click', () => this.hideInfoPopup());
+        document.body.appendChild(overlay);
+        this.infoPopupOverlay = overlay;
+        
         // Create popup
         const popup = document.createElement('div');
         popup.className = 'info-popup';
@@ -925,11 +933,18 @@ const UIControls = {
         
         this.infoPopup.querySelector('.stats-content').innerHTML = html;
         this.infoPopup.style.display = 'block';
+        this.infoPopupOverlay.style.display = 'block';
+        this.state.infoPanelOpen = true;
     },
     
     hideInfoPopup() {
+        if (this.infoPopup) {
+            this.infoPopup.style.display = 'none';
+        }
+        if (this.infoPopupOverlay) {
+            this.infoPopupOverlay.style.display = 'none';
+        }
         this.state.infoPanelOpen = false;
-        this.infoPopup.style.display = 'none';
     },
     
     // Keyboard Handlers
@@ -1114,9 +1129,17 @@ const UIControls = {
                 </div>
                 ${nodeData.definition ? `
                 <div class="node-definition-section">
-                    <h4>Источник:</h4>
+                    <h4>Определение:</h4>
                     <div class="node-definition-scroll formatted-content">
                         ${this.formatTextContent(nodeData.definition)}
+                    </div>
+                </div>
+                ` : ''}
+                ${nodeData.concepts && nodeData.concepts.length > 0 ? `
+                <div class="related-concepts-section">
+                    <h4>Связанные концепции:</h4>
+                    <div class="related-concepts-scroll">
+                        ${this.renderRelatedConcepts(nodeData.concepts)}
                     </div>
                 </div>
                 ` : ''}
@@ -1151,7 +1174,8 @@ const UIControls = {
                     <h4>Связи (${edges.length}):</h4>
                     <div class="edges-header">
                         <span class="edges-header-direction"></span>
-                        <span class="edges-header-type">Тип</span>
+                        <span class="edges-header-type">Связь</span>
+                        <span class="edges-header-nodetype">Тип</span>
                         <span class="edges-header-target">Узел</span>
                         <span class="edges-header-difficulty">Сложность</span>
                         <span class="edges-header-weight">Вес</span>
@@ -1218,7 +1242,12 @@ const UIControls = {
         const direction = edge.direction === 'incoming' ? '←' : '→';
         const targetId = edge.targetId;
         const targetLabel = this.truncateText(edge.targetLabel, 30);
-        const weight = edge.weight ? `(${edge.weight.toFixed(1)})` : '';
+        const weight = edge.weight ? edge.weight.toFixed(1) : '';
+        
+        // Get node type badge
+        const nodeTypeLabel = edge.targetType === 'Chunk' ? 'CHUNK' : 
+                              edge.targetType === 'Concept' ? 'CONCEPT' : 
+                              edge.targetType === 'Assessment' ? 'ASMNT' : 'UNKNOWN';
         
         // Render small difficulty circles
         const difficulty = Math.min(5, Math.max(1, parseInt(edge.targetDifficulty) || 1));
@@ -1233,6 +1262,7 @@ const UIControls = {
             <div class="edge-item">
                 <span class="edge-direction">${direction}</span>
                 <span class="edge-type edge-type-${edge.type}">${edge.type}</span>
+                <span class="edge-nodetype node-type-${edge.targetType}">${nodeTypeLabel}</span>
                 <span class="edge-target clickable" onclick="UIControls.updateNodePopup('${targetId}')">
                     ${targetLabel}
                 </span>
@@ -1253,6 +1283,7 @@ const UIControls = {
                 type: edge.data('type') || 'UNKNOWN',
                 targetId: source.id(),
                 targetLabel: source.data('text') || source.id(),
+                targetType: source.data('type') || 'Unknown',
                 targetDifficulty: source.data('difficulty') || 1,
                 weight: edge.data('weight')
             });
@@ -1266,6 +1297,7 @@ const UIControls = {
                 type: edge.data('type') || 'UNKNOWN',
                 targetId: target.id(),
                 targetLabel: target.data('text') || target.id(),
+                targetType: target.data('type') || 'Unknown',
                 targetDifficulty: target.data('difficulty') || 1,
                 weight: edge.data('weight')
             });
@@ -1402,6 +1434,21 @@ const UIControls = {
             circles += `<span class="difficulty-circle ${filled ? 'filled' : ''}" style="${filled ? `background: ${color};` : ''}"></span>`;
         }
         return `<span class="difficulty-label">Сложность:</span> <span class="difficulty-circles">${circles}</span>`;
+    },
+    
+    renderRelatedConcepts(conceptIds) {
+        // Build numbered list of concept texts
+        const conceptItems = conceptIds.map((conceptId, index) => {
+            // Try to find concept node in graph
+            const conceptNode = this.cy.getElementById(conceptId);
+            const conceptText = conceptNode && conceptNode.length > 0 
+                ? conceptNode.data('text') 
+                : conceptId; // Fallback to ID if node not found
+            
+            return `<li>${conceptText}</li>`;
+        });
+        
+        return `<ol class="concept-list">${conceptItems.join('')}</ol>`;
     },
     
     toggleMetricTooltip(element, metricType) {

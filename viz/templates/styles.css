@@ -1349,7 +1349,7 @@ node.node-pulse:after {
     background: white;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
-    max-width: 690px; /* Increased by 15% from 600px */
+    max-width: 750px; /* Increased for 6 columns */
     max-height: 80vh;
     width: 90%;
     padding: var(--space-lg);
@@ -1484,6 +1484,42 @@ node.node-pulse:after {
     color: var(--color-text-secondary);
 }
 
+/* Related Concepts Section */
+.related-concepts-section {
+    margin-bottom: var(--space-lg);
+}
+
+.related-concepts-section h4 {
+    margin-bottom: var(--space-sm);
+    color: var(--color-text-primary);
+    font-size: var(--text-base);
+}
+
+.related-concepts-scroll {
+    padding: var(--space-md);
+    background: rgba(243, 156, 18, 0.05); /* Light orange/yellow background like assessment nodes */
+    border-left: 3px solid #f39c12; /* Orange border like assessment nodes */
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+}
+
+.related-concepts-scroll .no-concepts {
+    color: #95a5a6;
+    font-style: italic;
+}
+
+.related-concepts-scroll .concept-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.related-concepts-scroll .concept-list li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
 .metrics-section {
     margin-bottom: var(--space-lg);
 }
@@ -1587,6 +1623,10 @@ node.node-pulse:after {
     min-width: 100px;
 }
 
+.edges-header-nodetype {
+    min-width: 70px;
+}
+
 .edges-header-target {
     flex: 1;
 }
@@ -1597,7 +1637,7 @@ node.node-pulse:after {
 }
 
 .edges-header-weight {
-    min-width: 50px;
+    min-width: 40px;
     text-align: right;
 }
 
@@ -1614,16 +1654,48 @@ node.node-pulse:after {
 }
 
 .edge-direction {
+    width: 20px;
     font-weight: var(--font-bold);
     color: var(--color-text-secondary);
+    text-align: center;
 }
 
 .edge-type {
+    min-width: 100px;
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     font-size: 11px;
     font-weight: var(--font-medium);
     text-transform: uppercase;
+    display: inline-block;
+    text-align: center;
+}
+
+.edge-nodetype {
+    min-width: 70px;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: var(--font-bold);
+    text-transform: uppercase;
+    text-align: center;
+    display: inline-block;
+}
+
+/* Node type colors in edges table */
+.edge-nodetype.node-type-Chunk {
+    background: rgba(52, 152, 219, 0.1);
+    color: #3498db;
+}
+
+.edge-nodetype.node-type-Concept {
+    background: rgba(46, 204, 113, 0.1);
+    color: #2ecc71;
+}
+
+.edge-nodetype.node-type-Assessment {
+    background: rgba(243, 156, 18, 0.1);
+    color: #f39c12;
 }
 
 .edge-type-PREREQUISITE {
@@ -1708,9 +1780,9 @@ node.node-pulse:after {
 }
 
 .edge-weight {
+    min-width: 40px;
     color: var(--color-text-muted);
     font-size: var(--text-xs);
-    min-width: 50px;
     text-align: right;
 }
 

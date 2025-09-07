@@ -126,7 +126,8 @@ Features:
 Detailed node information with:
 - **Header**: Type, ID, difficulty circles
 - **Content**: Full text with formatting support
-- **Source**: Original definition if available
+- **Definition**: Original definition if available
+- **Related Concepts**: Numbered list of concepts mentioned in the node (or "—" if none)
 - **Metrics**:
   - PageRank with info tooltip
   - Betweenness with info tooltip
@@ -286,6 +287,15 @@ Displays graph statistics and legend.
 Updates visible/total counts in header.
 - Uses `.not('.hidden')` for accurate counts
 - Updates all counter displays
+
+#### renderRelatedConcepts(conceptIds)
+Renders a numbered list of concept texts for the node popup.
+- **Input**: conceptIds (array) - Array of concept IDs
+- **Returns**: HTML string - Either numbered list or "—" placeholder
+- **Behavior**: 
+  - Looks up each concept ID in the Cytoscape graph
+  - Uses concept's text field if found, falls back to ID
+  - Returns dash if array is empty or null
 
 #### highlightConceptNodes(conceptId)
 Highlights nodes containing a concept.

@@ -153,11 +153,22 @@ window.CoursePanel = (function() {
             return;
         }
         
-        // Get cluster colors from config or use defaults
+        // Get cluster colors from config or use defaults (36 colors for better distinction)
         const clusterColors = [
-            "#3498db", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6",
-            "#1abc9c", "#34495e", "#e67e22", "#16a085", "#8e44ad",
-            "#2c3e50", "#27ae60"
+            // Основные яркие цвета (12)
+            "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
+            "#1abc9c", "#e67e22", "#16a085", "#8e44ad", "#27ae60",
+            "#2980b9", "#c0392b",
+
+            // Пастельные оттенки (12)
+            "#f1948a", "#85c1e9", "#82e0aa", "#f8c471", "#bb8fce",
+            "#76d7c4", "#f0b27a", "#73c6b6", "#af7ac5", "#7dcea0",
+            "#7fb3d5", "#ec7063",
+
+            // Темные насыщенные (12)
+            "#922b21", "#1a5490", "#196f3d", "#9a7d0a", "#6c3483",
+            "#0e6251", "#935116", "#0b5345", "#5b2c6f", "#186a3b",
+            "#1f618d", "#7b241c"
         ];
         
         // Create items for each course element

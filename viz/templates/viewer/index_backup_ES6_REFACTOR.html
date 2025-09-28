@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K2-18 Viewer - {{ title }}</title>
+    
+    <!-- Favicon as inline base64 SVG -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0icm9vdCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCI+CiAgPGcgZmlsbD0iY3VycmVudENvbG9yIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNSIgZmlsbD0iY3VycmVudENvbG9yIiBzdHJva2U9Im5vbmUiLz4KICAgIDxwYXRoIGQ9Ik00LjIwNiA3LjUgQTkgOSAwIDEgMSAxOS43OTQgMTYuNSIgZmlsbD0ibm9uZSIvPgogICAgPGNpcmNsZSBjeD0iNC4yMDYiIGN5PSI3LjUiIHI9IjIiLz4KICAgIDxjaXJjbGUgY3g9IjE5Ljc5NCIgY3k9IjE2LjUiIHI9IjIiLz4KICA8L2c+Cjwvc3ZnPg==">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Embedded styles -->
+    <style>
+        {{ styles_content }}
+    </style>
+    
+    {% if embed_libraries and vendor_css_content %}
+    <!-- Embedded vendor CSS -->
+    <style>
+        {{ vendor_css_content }}
+    </style>
+    {% else %}
+    <!-- External CSS libraries -->
+    {{ link_tags|safe }}
+    {% endif %}
+</head>
+<body>
+    <div id="viewer-container">
+        <!-- Header Section -->
+        <header id="viewer-header">
+            <div class="brand">
+                <div class="logo">K2-18</div>
+                <div>
+                    <h1>{{ title }}</h1>
+                    <div class="subtitle">Semantic Learning Network</div>
+                </div>
+            </div>
+            <div id="stats-container">
+                <div class="counters">
+                    <span>Узлы: <strong>{{ node_count }}</strong></span>
+                    <span class="separator">|</span>
+                    <span>Рёбра: <strong>{{ edge_count }}</strong></span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Navigation History Section -->
+        <div id="navigation-history">
+            <!-- Will be populated by navigation_history.js -->
+        </div>
+        
+        <!-- Three Column Layout -->
+        <div id="viewer-columns">
+            <!-- Column A: Search and Selection -->
+            <div id="column-a" class="viewer-column">
+                <div id="search-container">
+                    <!-- Will be populated by search_filter.js -->
+                </div>
+                <div id="node-list">
+                    <!-- Will be populated by node_explorer.js -->
+                </div>
+            </div>
+
+            <!-- Columns B and C wrapper -->
+            <div id="columns-bc-wrapper">
+                <!-- Edge Panel (between B and C, always visible) -->
+                <div id="edge-panel" class="edge-panel">
+                    <div class="edge-panel-empty">
+                        Выберите связь в таблице для анализа
+                    </div>
+                </div>
+
+                <!-- Columns B and C content -->
+                <div id="columns-bc-content">
+                    <!-- Column B: Active Node -->
+                    <div id="column-b" class="viewer-column">
+                        <div class="column-content">
+                            <div id="active-node-content">
+                                <div class="placeholder-message">
+                                    Выберите узел для исследования
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column C: Related Node -->
+                    <div id="column-c" class="viewer-column">
+                        <div class="column-content">
+                            <div id="related-node-content">
+                                <div class="placeholder-message">
+                                    Выберите ребро для исследования
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Graph data -->
+    <script>
+        // Embedded graph data
+        window.graphData = {{ graph_data_json|safe }};
+        window.conceptData = {{ concepts_data_json|safe }};
+        
+        // Configuration from Python
+        window.textFormattingConfig = {{ text_formatting|tojson|safe }};
+        
+        // Graph metadata
+        window.graphMetadata = {
+            nodes: {{ node_count }},
+            edges: {{ edge_count }}
+        };
+    </script>
+    
+    {% if embed_libraries %}
+    <!-- Embedded vendor JavaScript -->
+    <script>
+        {{ vendor_js_content|safe }}
+    </script>
+    {% else %}
+    <!-- External JavaScript libraries -->
+    {{ script_tags|safe }}
+    {% endif %}
+    
+    {% if embed_libraries %}
+    <!-- Embedded viewer modules -->
+    <script type="module">
+        // Embed all modules in one script
+        {% if search_filter_content %}
+        // search_filter.js
+        {{ search_filter_content|safe }}
+        {% endif %}
+
+        {% if node_explorer_content %}
+        // node_explorer.js
+        {{ node_explorer_content|safe }}
+        {% endif %}
+
+        {% if edge_inspector_content %}
+        // edge_inspector.js
+        {{ edge_inspector_content|safe }}
+        {% endif %}
+
+        {% if navigation_history_content %}
+        // navigation_history.js
+        {{ navigation_history_content|safe }}
+        {% endif %}
+
+        {% if formatters_content %}
+        // formatters.js
+        {{ formatters_content|safe }}
+        {% endif %}
+
+        // viewer_core.js - modified to use modules directly
+        {% if viewer_core_content %}
+        // Remove imports from viewer_core since modules are already defined above
+        {{ viewer_core_content|replace("import { SearchFilter } from './search_filter.js';", "")|replace("import { NodeExplorer } from './node_explorer.js';", "")|replace("import { EdgeInspector } from './edge_inspector.js';", "")|replace("import { Formatters } from './formatters.js';", "")|safe }}
+        {% endif %}
+
+        // Initialize viewer when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                init(window.graphData, window.conceptData);
+            });
+        } else {
+            // DOM is already ready
+            init(window.graphData, window.conceptData);
+        }
+    </script>
+    {% else %}
+    <!-- External viewer modules -->
+    <script src="./static/viewer/search_filter.js"></script>
+    <script src="./static/viewer/node_explorer.js"></script>
+    <script src="./static/viewer/edge_inspector.js"></script>
+    <script src="./static/viewer/navigation_history.js"></script>
+    <script src="./static/viewer/formatters.js"></script>
+    <script src="./static/viewer/viewer_core.js"></script>
+    <script>
+        // Initialize viewer when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                if (typeof window.initViewer === 'function') {
+                    window.initViewer(window.graphData, window.conceptData);
+                }
+            });
+        } else {
+            // DOM is already ready
+            if (typeof window.initViewer === 'function') {
+                window.initViewer(window.graphData, window.conceptData);
+            }
+        }
+    </script>
+    {% endif %}
+</body>
+</html>

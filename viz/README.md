@@ -4,7 +4,7 @@
 
 After running the main K2-18 pipeline, you get a knowledge graph with thousands of nodes and edges. But how do you know if it's good? How do you explore it? How do you show it to others?
 
-The visualization module solves four key problems:
+The visualization tools solves four key problems:
 
 1. **Quality Check** - Verify the graph structure makes educational sense
 2. **Educational Metrics** - Measure learning complexity and prerequisite chains  
@@ -13,33 +13,45 @@ The visualization module solves four key problems:
 
 ## What You Get
 
-A standalone HTML file that works in any browser with:
-- Interactive knowledge graph you can explore
+Two complementary HTML tools that work in any browser:
+
+**Interactive Graph** (`knowledge_graph.html`):
+- Visual knowledge graph you can explore
 - Computed metrics showing which concepts are fundamental
 - Automatic clustering of related topics
 - Tools to analyze learning paths
+
+**Detailed Viewer** (`knowledge_graph_viewer.html`):
+- Three-column tabular interface for methodical exploration
+- Full text content with markdown/code/math rendering
+- Educational metrics with explanations
+- Edge inspection with related nodes
 
 ## Pipeline
 
 ```
 1. Copy results from main pipeline to viz folder:
-   /data/out/ConceptDictionary.json     → /viz/data/in/ConceptDictionary.json
-   /data/out/LearningChunkGraph_*.json  → /viz/data/in/LearningChunkGraph.json
+   /data/out/ConceptDictionary.json         → /viz/data/in/ConceptDictionary.json
+   /data/out/LearningChunkGraph_*.json      → /viz/data/in/LearningChunkGraph.json
 
 2. Run visualization pipeline:
-   python -m viz.graph2metrics          # Compute educational metrics
-   python -m viz.graph_fix              # (Optional) Mark LLM content for QA
-   python -m viz.graph2html             # Generate interactive HTML
+   python -m viz.graph2metrics              # Compute educational metrics
+   python -m viz.graph_fix                  # (Optional) Mark LLM content for QA
+   python -m viz.graph2html                 # Generate interactive graph
+   python -m viz.graph2viewer               # Generate detailed viewer
 
-3. Open result:
-   viz/data/out/knowledge_graph.html
+3. Open results:
+   viz/data/out/knowledge_graph.html        # Interactive graph visualization
+   viz/data/out/knowledge_graph_viewer.html # Detailed tabular viewer
 ```
 
-That's it. No servers. No installation. Works in browser.
+Works in browser. No servers. No installation.
 
-## Using the Visualization
+## Using the Tools
 
-### Main Interface
+### Graph Visualization (graph2html)
+
+#### Main Interface
 
 **Top Panel**
 - Live counters of visible nodes and edges
@@ -59,14 +71,35 @@ That's it. No servers. No installation. Works in browser.
 - Drag to pan, scroll to zoom
 - Hover - shows preview text and highlights all connections
 
-### Planned Features
+#### Planned Features
 
 Three advanced modes accessible via buttons under header:
-- 🛤️ **Path Mode** - Find learning paths between concepts (in Beta)
-- 🎨 **Clusters** - Visualize topic groupings (in Beta)
-- ▶️ **Tour** - Automated presentation (NOT READY)
+- 🛤️ **Path Mode** - Find learning paths between concepts (_in Beta_)
+- 🎨 **Clusters** - Visualize topic groupings (_in Beta_)
+- ▶️ **Tour** - Automated presentation (_NOT READY_)
 
 Currently these buttons may be visible but don't work yet.
+
+### Detailed Viewer (graph2viewer)
+
+For methodologists who need to examine every node and edge in detail:
+
+**Column A - Search & Filter**
+- Real-time search across all nodes
+- Filter by type (Chunk, Concept, Assessment)
+- Nodes sorted: Concepts first (alphabetically), then Chunks/Assessments by position
+- Color-coded by cluster with cluster ID badge
+
+**Column B - Active Node**
+- Toggle between formatted view and raw JSON
+- Full text content with markdown/code/math rendering
+- All 12 educational metrics with click-to-show explanations
+- Complete edges table - click any edge to inspect
+
+**Column C - Edge Analysis**
+- Shows relationship visualization when edge selected
+- Displays related node with full content
+- Button to make related node active for navigation
 
 ## Metrics Computed
 
@@ -135,5 +168,9 @@ For developers:
 - Reference graphs with validated metrics: `/viz/data/test/`
 
 Dependencies:
-- Python: NetworkX, python-louvain, Jinja2
-- JavaScript: Cytoscape.js (embedded)
+- Python: NetworkX, python-louvain, Jinja2, minify-html
+- JavaScript (embedded in HTML):
+  - Cytoscape.js - graph visualization
+  - Marked.js - markdown parsing
+  - Highlight.js - code syntax highlighting
+  - MathJax - mathematical formula rendering

@@ -65,14 +65,16 @@ After running the pipeline, you can:
 
 ## Visualization & Analytics Module
 
-K2-18 includes a powerful visualization module that enriches your knowledge graphs with educational metrics and creates interactive visualizations.
+K2-18 includes a powerful visualization module that enriches your knowledge graphs with educational metrics and creates interactive tools for exploration.
 
 **What it does:**
 - Computes 12 network metrics revealing graph structure and learning paths
 - Identifies fundamental concepts, knowledge bridges, and topic clusters
-- Generates a standalone interactive HTML that works in any browser
+- Generates two complementary HTML tools:
+  - **Interactive graph** - visual exploration with Cytoscape.js
+  - **Detailed viewer** - three-column interface for methodical analysis
 
-Perfect for quality control, curriculum analysis, and presenting results to stakeholders.
+Perfect for quality control, curriculum analysis, and presenting results to stakeholders. Both tools work standalone in any browser.
 
 For detailed documentation, see [Visualization Module Guide](./viz/README.md).
 

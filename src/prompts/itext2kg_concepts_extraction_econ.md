@@ -1,4 +1,4 @@
-# Concepts Extraction v4.0-gpt-5
+# Concepts Extraction v4.0-gpt-5 @ Economy
 
 ## Role and Objective
 

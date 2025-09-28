@@ -1,8 +1,8 @@
-# Graph Extraction v4.1-gpt-5 @ Economy
+# Graph Extraction v4.1-gpt-5 @ Management
 
 ## Role and Objective
 
-You are an LLM agent tasked with constructing an educational knowledge graph from economics textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
+You are an LLM agent tasked with constructing an educational knowledge graph from management and organizational studies textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
 
 ## Instructions
 
@@ -19,9 +19,9 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
 {
   "concepts": [
     {
-      "concept_id": "econ101:p:inflyaciya",
-      "term": { "primary": "Инфляция", "aliases": ["inflation", "рост цен"] },
-      "definition": "Устойчивый рост общего уровня цен на товары и услуги..."
+      "concept_id": "mgmt101:p:kpi",
+      "term": { "primary": "Ключевые показатели эффективности", "aliases": ["KPI", "key performance indicators", "КПЭ"] },
+      "definition": "Система измеримых индикаторов для оценки успешности..."
     }
     // ...complete list of all concepts...
   ]
@@ -34,7 +34,7 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
   "id": "slice_042",
   "order": 42,
   "source_file": "chapter03.md",
-  "slug": "econ101",
+  "slug": "mgmt101",
   "text": "<plain text of the slice>",    // Relevant field `text`
   "slice_token_start": <int>,
   "slice_token_end": <int>
@@ -84,15 +84,15 @@ Extract nodes first using **exactly** these types and criteria:
 
 1. **Chunk Nodes**: Create `Chunk` nodes by splitting the Slice text into coherent contextual units of explanation or instructional content:
   * Aim for approximately 150-400 words per Chunk, preserving paragraph and semantic integrity.
-  * If a fragment contains formulas or equations, retain them unchanged within the `text` field and do not split them across multiple Chunks.
+  * If a fragment contains frameworks, methodologies, or organizational models, retain them unchanged within the `text` field and do not split them across multiple Chunks.
   * Preserve hyperlinks exactly as they appear. Inline URLs, `<a>...</a>` tags, or Markdown links **must not** be truncated, altered, or split across Chunk nodes.
   * Always output **at least one** `Chunk` node representing the current slice.
   * Every `Chunk` **must contain** the `difficulty` field ∈ [1-5]:
-    1: Basic definitions, ≤2 concepts, no formulas/models
-    2: Simple examples, ≤1 formula, basic graphs
-    3: Standard theories, 3-5 concepts, typical models
-    4: Complex models, econometric analysis, mathematical proofs
-    5: Research-level content, Nobel prize theories, advanced econometrics
+    1: Basic definitions, ≤2 concepts, no frameworks/models
+    2: Simple tools/methods, ≤1 model, basic KPIs
+    3: System approaches, 3-5 concepts, methodologies (Agile, Lean)
+    4: Strategic level, complex transformations, advanced frameworks
+    5: Research-level, complexity theory, organizational cybernetics
 
 2. **Concept Nodes**: Create `Concept` nodes for concepts from `ConceptDictionary` that are relevant to this slice:
   * Only for concepts explicitly mentioned or discussed in the slice text.
@@ -121,16 +121,16 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 1. First, check for `PREREQUISITE` ("{source} is a prerequisite for {target}"):
   * **Key Question (Answer YES/NO):** Is understanding {target} **completely blocked** without first understanding {source}? If YES, the edge type is **`PREREQUISITE`**
-  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines "спрос и предложение," and {target} describes "рыночное равновесие")
+  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines "организационная структура," and {target} describes "матричная структура управления")
 
 2. If not a `PREREQUISITE`, check for `ELABORATES` ("{source} elaborates {target}"):
-  * **Key Question:** Is {source} a **deep dive** (e.g., mathematical model, detailed analysis, complex example) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
-  * Use this when {source} expands on {target} (e.g., {target} describes inflation briefly, and {source} provides the Fisher equation and detailed analysis)
+  * **Key Question:** Is {source} a **deep dive** (e.g., detailed framework, case study, implementation guide) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
+  * Use this when {source} expands on {target} (e.g., {target} mentions Agile briefly, and {source} provides detailed Scrum implementation)
   * Rule of thumb for `ELABORATES`: the arrow goes from the deeper/more detailed node to the base/introduced topic (deep → base)
 
 3. Next, check for other semantic relationships:
   * **`EXAMPLE_OF`**: {source} is a specific, concrete example of a general principle from {target}
-  * **`PARALLEL`**: {source} and {target} present alternative approaches or theories for the same economic problem (use **canonical direction:** earlier `node_offset` → later `node_offset`)
+  * **`PARALLEL`**: {source} and {target} present alternative approaches or methodologies for the same management challenge (use **canonical direction:** earlier `node_offset` → later `node_offset`)
   * **`TESTS`**: An Assessment {source} evaluates knowledge from a {target}
   * **`REVISION_OF`**: {source} is an updated/corrected version of {target} (rare within one slice)
 
@@ -155,7 +155,7 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 - Do not create cycles of `PREREQUISITE`.
 - Do not generate nodes for concepts unless they are explicitly present in the slice text. Reference Concept nodes with their exact `concept_id`.
 - Fields must strictly match the LearningChunkGraph.schema.json with no additions or omissions; self-correct and regenerate if any validation fails.
-- Maintain exact formulas and hyperlinks from input in nodes.
+- Maintain exact frameworks, methodologies and hyperlinks from input in nodes.
 - Reject malformed, incomplete, or improperly formatted output.
 
 ## Stop Conditions
@@ -168,15 +168,15 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 Concrete examples to guide edge type selection:
 
-- **PREREQUISITE**: Спрос и предложение (`source`) → Рыночное равновесие (`target`) - must understand supply/demand before equilibrium
-- **ELABORATES**: Математическая модель IS-LM (`source`) → Макроэкономическое равновесие (`target`) - model details the concept
-- **ELABORATES**: Детальный вывод мультипликатора (`source`) → Кейнсианская теория (`target`) - deep → base
-- **EXAMPLE_OF**: Великая депрессия (`source`) → Экономические кризисы (`target`) - concrete historical instance
-- **PARALLEL**: Кейнсианская теория (`source`) → Монетаризм (`target`) - alternative macroeconomic approaches
-- **TESTS**: Задача на расчет ВВП (`source`) → Методы расчета ВВП (`target`) - assessment evaluates knowledge
-- **REVISION_OF**: Новая институциональная экономика (`source`) → Традиционная институциональная экономика (`target`) - newer version
-- **HINT_FORWARD**: "Позже рассмотрим фискальную политику" (`source`) → Детальное объяснение фискальной политики (`target`)
-- **REFER_BACK**: "Как мы видели при анализе спроса" (`source`) → Определение спроса (`target`) - target occurs earlier
+- **PREREQUISITE**: Организационная структура (`source`) → Матричная структура (`target`) - must understand organizational structures before matrix management
+- **ELABORATES**: Детальная реализация Scrum (`source`) → Общее описание Agile (`target`) - Scrum details the Agile approach
+- **ELABORATES**: Кейс внедрения KPI в компании (`source`) → Теория KPI (`target`) - case study elaborates theory
+- **EXAMPLE_OF**: Toyota Production System (`source`) → Lean-методология (`target`) - concrete implementation example
+- **PARALLEL**: Теория X Макгрегора (`source`) → Теория Y Макгрегора (`target`) - alternative management theories
+- **TESTS**: Задание разработать SWOT-анализ (`source`) → Методология SWOT (`target`) - assessment evaluates knowledge
+- **REVISION_OF**: Agile 2.0 (`source`) → Классический Agile (`target`) - newer version of methodology
+- **HINT_FORWARD**: "Позже рассмотрим мотивацию" (`source`) → Теории мотивации Маслоу (`target`)
+- **REFER_BACK**: "Как мы видели в теме лидерства" (`source`) → Стили лидерства (`target`) - target occurs earlier
 
 ## Example: Output
 ```json
@@ -186,70 +186,70 @@ Concrete examples to guide edge type selection:
       {
         "id": "chunk_1",
         "type": "Chunk",
-        "text": "Инфляция - это устойчивый рост общего уровня цен на товары и услуги в экономике...",
+        "text": "Организационная структура - это система формального распределения задач, полномочий и ответственности в организации...",
         "node_offset": 45,
-        "definition": "Введение в концепцию инфляции",
+        "definition": "Введение в концепцию организационных структур",
         "difficulty": 1
       },
       {
         "id": "chunk_2",
         "type": "Chunk",
-        "text": "Инфляция спроса возникает когда совокупный спрос превышает совокупное предложение при полной занятости. Формула: π = (AD - AS)/AS × 100%...",
+        "text": "Матричная структура управления представляет собой комбинацию функциональной и проектной структур, где сотрудники имеют двойное подчинение: функциональному руководителю и руководителю проекта. Это создает гибкость в распределении ресурсов, но может приводить к конфликтам приоритетов...",
         "node_offset": 287,
-        "definition": "Описание инфляции спроса с формулой",
+        "definition": "Описание матричной структуры управления",
         "difficulty": 2
       },
       {
         "id": "chunk_3",
         "type": "Chunk",
-        "text": "Уравнение Фишера связывает денежную массу и уровень цен: MV = PQ, где M - денежная масса, V - скорость обращения денег, P - уровень цен, Q - реальный ВВП...",
+        "text": "Пример успешного применения матричной структуры - модель Spotify с её tribes, squads, chapters and guilds. В этой модели squads (команды) работают автономно над конкретными продуктами, tribes объединяют несколько squads, работающих над связанными областями...",
         "node_offset": 512,
-        "definition": "Количественная теория денег и уравнение Фишера",
+        "definition": "Кейс применения матричной структуры в Spotify",
         "difficulty": 3
       },
       {
         "id": "chunk_4",
         "type": "Chunk",
-        "text": "Эмпирический анализ: используя метод наименьших квадратов для данных 1990-2020 гг., получаем регрессию: π = 0.82M + 0.15Y - 2.1, R² = 0.76...",
+        "text": "Анализ эффективности: исследования показывают, что матричные структуры повышают инновационность на 35% при правильном управлении конфликтами. Ключевые факторы успеха включают четкое разграничение ответственности, развитую корпоративную культуру и системы dual-reporting KPI...",
         "node_offset": 823,
-        "definition": "Эконометрический анализ факторов инфляции",
+        "definition": "Исследование эффективности матричных структур",
         "difficulty": 4
       },
       {
         "id": "chunk_5",
         "type": "Chunk",
-        "text": "Дефляция представляет противоположный процесс - устойчивое снижение общего уровня цен...",
+        "text": "Функциональная структура организации основана на группировке сотрудников по специализации: маркетинг, финансы, производство. Преимущества включают глубокую экспертизу и эффект масштаба...",
         "node_offset": 1156,
-        "definition": "Описание дефляции",
+        "definition": "Описание функциональной структуры",
         "difficulty": 2
       },
       {
         "id": "assessment_1",
         "type": "Assessment",
-        "text": "Рассчитайте уровень инфляции, если индекс потребительских цен вырос с 120 до 132 за год. Объясните различия между инфляцией спроса и инфляцией издержек.",
+        "text": "Разработайте матричную структуру для IT-компании с 200 сотрудниками, работающей над тремя продуктами. Определите роли, линии подчинения и механизмы разрешения конфликтов.",
         "node_offset": 1489,
         "difficulty": 3
       },
       {
-        "id": "econ101:p:inflyaciya",
+        "id": "mgmt101:p:organizacionnaya-struktura",
         "type": "Concept",
-        "text": "Инфляция",
+        "text": "Организационная структура",
         "node_offset": 45,
-        "definition": "Устойчивый рост общего уровня цен на товары и услуги в экономике"
+        "definition": "Система формального распределения задач, полномочий и ответственности в организации"
       },
       {
-        "id": "econ101:p:sovokupnyy-spros",
+        "id": "mgmt101:p:kpi",
         "type": "Concept",
-        "text": "Совокупный спрос",
-        "node_offset": 307,
-        "definition": "Общий объем товаров и услуг, который готовы приобрести домохозяйства, фирмы, государство и иностранный сектор при различных уровнях цен"
+        "text": "Ключевые показатели эффективности",
+        "node_offset": 1076,
+        "definition": "Система измеримых индикаторов для оценки успешности организации или сотрудника в достижении целей"
       },
       {
-        "id": "econ101:p:deflyaciya",
+        "id": "mgmt101:p:korporativnaya-kultura",
         "type": "Concept",
-        "text": "Дефляция",
-        "node_offset": 1156,
-        "definition": "Устойчивое снижение общего уровня цен на товары и услуги в экономике"
+        "text": "Корпоративная культура",
+        "node_offset": 1003,
+        "definition": "Совокупность ценностей, норм и моделей поведения, разделяемых членами организации"
       }
     ],
     "edges": [
@@ -258,63 +258,63 @@ Concrete examples to guide edge type selection:
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.9,
-        "conditions": "Must understand general inflation concept before specific types"
+        "conditions": "Must understand general organizational structures before specific matrix type"
       },
       {
         "source": "chunk_3",
         "target": "chunk_2",
-        "type": "ELABORATES",
-        "weight": 0.75,
-        "conditions": "Fisher equation provides theoretical foundation for demand inflation"
+        "type": "EXAMPLE_OF",
+        "weight": 0.85,
+        "conditions": "Spotify model is concrete implementation of matrix structure"
       },
       {
         "source": "chunk_4",
         "target": "chunk_2",
         "type": "ELABORATES",
-        "weight": 0.8,
-        "conditions": "Econometric analysis elaborates on inflation factors"
+        "weight": 0.75,
+        "conditions": "Research data elaborates on matrix structure effectiveness"
       },
       {
         "source": "chunk_1",
         "target": "chunk_5",
         "type": "PREREQUISITE",
         "weight": 0.85,
-        "conditions": "Understanding inflation needed before opposite concept"
+        "conditions": "General organizational concept needed before functional structure"
       },
       {
         "source": "chunk_2",
         "target": "chunk_5",
         "type": "PARALLEL",
-        "weight": 0.65,
-        "conditions": "Both are price level phenomena in opposite directions"
+        "weight": 0.7,
+        "conditions": "Both are organizational structure types with different approaches"
       },
       {
         "source": "assessment_1",
         "target": "chunk_2",
         "type": "TESTS",
         "weight": 0.9,
-        "conditions": "Exercise tests understanding of inflation types"
+        "conditions": "Exercise tests understanding of matrix structure design"
       },
       {
-        "source": "econ101:p:inflyaciya",
+        "source": "mgmt101:p:organizacionnaya-struktura",
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.95,
-        "conditions": "Inflation concept is prerequisite for demand inflation"
+        "conditions": "Organizational structure concept is prerequisite for matrix type"
       },
       {
-        "source": "chunk_2",
-        "target": "econ101:p:sovokupnyy-spros",
+        "source": "chunk_4",
+        "target": "mgmt101:p:kpi",
         "type": "EXAMPLE_OF",
-        "weight": 0.7,
-        "conditions": "Demand inflation demonstrates aggregate demand concept"
+        "weight": 0.6,
+        "conditions": "Dual-reporting KPI demonstrates performance measurement"
       },
       {
-        "source": "chunk_5",
-        "target": "econ101:p:deflyaciya",
+        "source": "chunk_4",
+        "target": "mgmt101:p:korporativnaya-kultura",
         "type": "EXAMPLE_OF",
-        "weight": 0.9,
-        "conditions": "Chunk provides detailed explanation of deflation concept"
+        "weight": 0.65,
+        "conditions": "Success factors include corporate culture development"
       },
       {
         "source": "chunk_1",

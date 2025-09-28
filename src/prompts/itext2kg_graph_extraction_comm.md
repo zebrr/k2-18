@@ -1,8 +1,8 @@
-# Graph Extraction v4.1-gpt-5 @ Economy
+# Graph Extraction v4.1-gpt-5 @ Communications and Media
 
 ## Role and Objective
 
-You are an LLM agent tasked with constructing an educational knowledge graph from economics textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
+You are an LLM agent tasked with constructing an educational knowledge graph from communications and media textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
 
 ## Instructions
 
@@ -19,9 +19,9 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
 {
   "concepts": [
     {
-      "concept_id": "econ101:p:inflyaciya",
-      "term": { "primary": "Инфляция", "aliases": ["inflation", "рост цен"] },
-      "definition": "Устойчивый рост общего уровня цен на товары и услуги..."
+      "concept_id": "comm101:p:celevaya-auditoriya",
+      "term": { "primary": "Целевая аудитория", "aliases": ["target audience", "ЦА"] },
+      "definition": "Группа людей, объединенных общими характеристиками и потребностями, на которую направлены коммуникационные усилия..."
     }
     // ...complete list of all concepts...
   ]
@@ -34,7 +34,7 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
   "id": "slice_042",
   "order": 42,
   "source_file": "chapter03.md",
-  "slug": "econ101",
+  "slug": "comm101",
   "text": "<plain text of the slice>",    // Relevant field `text`
   "slice_token_start": <int>,
   "slice_token_end": <int>
@@ -84,15 +84,15 @@ Extract nodes first using **exactly** these types and criteria:
 
 1. **Chunk Nodes**: Create `Chunk` nodes by splitting the Slice text into coherent contextual units of explanation or instructional content:
   * Aim for approximately 150-400 words per Chunk, preserving paragraph and semantic integrity.
-  * If a fragment contains formulas or equations, retain them unchanged within the `text` field and do not split them across multiple Chunks.
+  * If a fragment contains metrics formulas or campaign examples, retain them unchanged within the `text` field and do not split them across multiple Chunks.
   * Preserve hyperlinks exactly as they appear. Inline URLs, `<a>...</a>` tags, or Markdown links **must not** be truncated, altered, or split across Chunk nodes.
   * Always output **at least one** `Chunk` node representing the current slice.
   * Every `Chunk` **must contain** the `difficulty` field ∈ [1-5]:
-    1: Basic definitions, ≤2 concepts, no formulas/models
-    2: Simple examples, ≤1 formula, basic graphs
-    3: Standard theories, 3-5 concepts, typical models
-    4: Complex models, econometric analysis, mathematical proofs
-    5: Research-level content, Nobel prize theories, advanced econometrics
+    1: Basic definitions, ≤2 concepts, no metrics/campaigns
+    2: Simple tools/examples, ≤1 metric, basic channel description
+    3: Integrated approaches, 3-5 concepts, multichannel campaigns
+    4: Strategic planning, complex campaigns, crisis management
+    5: Research-level, neuromarketing, big data analytics
 
 2. **Concept Nodes**: Create `Concept` nodes for concepts from `ConceptDictionary` that are relevant to this slice:
   * Only for concepts explicitly mentioned or discussed in the slice text.
@@ -101,7 +101,7 @@ Extract nodes first using **exactly** these types and criteria:
   * Copy `definition` from `ConceptDictionary` as is (do not modify).
   * Create each Concept node only once per slice, even if mentioned multiple times.
 
-3. **Assessment Nodes**: Create `Assessment` nodes for questions, exercises, case studies, or self-check materials found in the text; if there are none, omit assessment nodes.
+3. **Assessment Nodes**: Create `Assessment` nodes for exercises, case studies, campaign briefs, or self-check materials found in the text; if there are none, omit assessment nodes.
 
 4. **`node_offset`**: EVERY node (Chunk, Concept, Assessment) MUST have a `node_offset` field:
   * Token offset where the node content begins or is first mentioned in the slice.
@@ -121,16 +121,16 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 1. First, check for `PREREQUISITE` ("{source} is a prerequisite for {target}"):
   * **Key Question (Answer YES/NO):** Is understanding {target} **completely blocked** without first understanding {source}? If YES, the edge type is **`PREREQUISITE`**
-  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines "спрос и предложение," and {target} describes "рыночное равновесие")
+  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines "целевая аудитория," and {target} describes "сегментация аудитории")
 
 2. If not a `PREREQUISITE`, check for `ELABORATES` ("{source} elaborates {target}"):
-  * **Key Question:** Is {source} a **deep dive** (e.g., mathematical model, detailed analysis, complex example) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
-  * Use this when {source} expands on {target} (e.g., {target} describes inflation briefly, and {source} provides the Fisher equation and detailed analysis)
+  * **Key Question:** Is {source} a **deep dive** (e.g., detailed campaign plan, metrics analysis, strategic framework) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
+  * Use this when {source} expands on {target} (e.g., {target} mentions PR-стратегия briefly, and {source} provides detailed implementation plan)
   * Rule of thumb for `ELABORATES`: the arrow goes from the deeper/more detailed node to the base/introduced topic (deep → base)
 
 3. Next, check for other semantic relationships:
   * **`EXAMPLE_OF`**: {source} is a specific, concrete example of a general principle from {target}
-  * **`PARALLEL`**: {source} and {target} present alternative approaches or theories for the same economic problem (use **canonical direction:** earlier `node_offset` → later `node_offset`)
+  * **`PARALLEL`**: {source} and {target} present alternative approaches or channels for the same communication goal (use **canonical direction:** earlier `node_offset` → later `node_offset`)
   * **`TESTS`**: An Assessment {source} evaluates knowledge from a {target}
   * **`REVISION_OF`**: {source} is an updated/corrected version of {target} (rare within one slice)
 
@@ -155,7 +155,7 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 - Do not create cycles of `PREREQUISITE`.
 - Do not generate nodes for concepts unless they are explicitly present in the slice text. Reference Concept nodes with their exact `concept_id`.
 - Fields must strictly match the LearningChunkGraph.schema.json with no additions or omissions; self-correct and regenerate if any validation fails.
-- Maintain exact formulas and hyperlinks from input in nodes.
+- Maintain exact metrics formulas and hyperlinks from input in nodes.
 - Reject malformed, incomplete, or improperly formatted output.
 
 ## Stop Conditions
@@ -168,15 +168,15 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 Concrete examples to guide edge type selection:
 
-- **PREREQUISITE**: Спрос и предложение (`source`) → Рыночное равновесие (`target`) - must understand supply/demand before equilibrium
-- **ELABORATES**: Математическая модель IS-LM (`source`) → Макроэкономическое равновесие (`target`) - model details the concept
-- **ELABORATES**: Детальный вывод мультипликатора (`source`) → Кейнсианская теория (`target`) - deep → base
-- **EXAMPLE_OF**: Великая депрессия (`source`) → Экономические кризисы (`target`) - concrete historical instance
-- **PARALLEL**: Кейнсианская теория (`source`) → Монетаризм (`target`) - alternative macroeconomic approaches
-- **TESTS**: Задача на расчет ВВП (`source`) → Методы расчета ВВП (`target`) - assessment evaluates knowledge
-- **REVISION_OF**: Новая институциональная экономика (`source`) → Традиционная институциональная экономика (`target`) - newer version
-- **HINT_FORWARD**: "Позже рассмотрим фискальную политику" (`source`) → Детальное объяснение фискальной политики (`target`)
-- **REFER_BACK**: "Как мы видели при анализе спроса" (`source`) → Определение спроса (`target`) - target occurs earlier
+- **PREREQUISITE**: Модель коммуникации (`source`) → Коммуникационные барьеры (`target`) - must understand basic model before barriers
+- **ELABORATES**: Детальный медиаплан (`source`) → Основы медиапланирования (`target`) - detailed plan elaborates basic concept
+- **ELABORATES**: Пошаговый анализ кампании (`source`) → Общее описание IMC (`target`) - deep → base
+- **EXAMPLE_OF**: Кампания Dove Real Beauty (`source`) → Социально-ответственный маркетинг (`target`) - concrete instance
+- **PARALLEL**: PR-стратегия (`source`) → Маркетинговая стратегия (`target`) - alternative communication approaches
+- **TESTS**: Задание разработать антикризисный план (`source`) → Кризисные коммуникации (`target`) - assessment evaluates knowledge
+- **REVISION_OF**: Digital-first подход (`source`) → Традиционные медиа стратегии (`target`) - newer approach
+- **HINT_FORWARD**: "Позже обсудим метрики" (`source`) → Детальный разбор KPI (`target`)
+- **REFER_BACK**: "Как мы видели при анализе ЦА" (`source`) → Определение целевой аудитории (`target`) - target occurs earlier
 
 ## Example: Output
 ```json
@@ -186,70 +186,70 @@ Concrete examples to guide edge type selection:
       {
         "id": "chunk_1",
         "type": "Chunk",
-        "text": "Инфляция - это устойчивый рост общего уровня цен на товары и услуги в экономике...",
+        "text": "Коммуникационная стратегия - это долгосрочный план достижения коммуникационных целей организации через координацию всех доступных каналов и инструментов...",
         "node_offset": 45,
-        "definition": "Введение в концепцию инфляции",
+        "definition": "Введение в концепцию коммуникационной стратегии",
         "difficulty": 1
       },
       {
         "id": "chunk_2",
         "type": "Chunk",
-        "text": "Инфляция спроса возникает когда совокупный спрос превышает совокупное предложение при полной занятости. Формула: π = (AD - AS)/AS × 100%...",
+        "text": "Интегрированные маркетинговые коммуникации (IMC) предполагают координацию рекламы, PR, прямого маркетинга, стимулирования сбыта и digital-маркетинга для доставки единого сообщения. Эффективность измеряется через охват (reach) и вовлеченность (engagement)...",
         "node_offset": 287,
-        "definition": "Описание инфляции спроса с формулой",
+        "definition": "Описание подхода IMC с метриками эффективности",
         "difficulty": 2
       },
       {
         "id": "chunk_3",
         "type": "Chunk",
-        "text": "Уравнение Фишера связывает денежную массу и уровень цен: MV = PQ, где M - денежная масса, V - скорость обращения денег, P - уровень цен, Q - реальный ВВП...",
+        "text": "Планирование PR-кампании включает: 1) Анализ ситуации и SWOT 2) Определение целевых аудиторий 3) Формулировка ключевых сообщений 4) Выбор каналов коммуникации 5) Разработка контент-плана 6) Определение KPI: охват, тональность, share of voice...",
         "node_offset": 512,
-        "definition": "Количественная теория денег и уравнение Фишера",
+        "definition": "Пошаговый процесс планирования PR-кампании",
         "difficulty": 3
       },
       {
         "id": "chunk_4",
         "type": "Chunk",
-        "text": "Эмпирический анализ: используя метод наименьших квадратов для данных 1990-2020 гг., получаем регрессию: π = 0.82M + 0.15Y - 2.1, R² = 0.76...",
+        "text": "Антикризисные коммуникации требуют оперативного реагирования и четкой координации. Алгоритм действий: мониторинг → оценка угрозы → формирование кризисного штаба → разработка позиции → коммуникация со стейкхолдерами → постоянный мониторинг ситуации...",
         "node_offset": 823,
-        "definition": "Эконометрический анализ факторов инфляции",
+        "definition": "Стратегический подход к управлению кризисными коммуникациями",
         "difficulty": 4
       },
       {
         "id": "chunk_5",
         "type": "Chunk",
-        "text": "Дефляция представляет противоположный процесс - устойчивое снижение общего уровня цен...",
+        "text": "Digital-коммуникации используют data-driven подход: сбор данных о поведении аудитории, A/B тестирование, персонализация контента на основе алгоритмов машинного обучения...",
         "node_offset": 1156,
-        "definition": "Описание дефляции",
-        "difficulty": 2
+        "definition": "Описание современных digital-подходов",
+        "difficulty": 3
       },
       {
         "id": "assessment_1",
         "type": "Assessment",
-        "text": "Рассчитайте уровень инфляции, если индекс потребительских цен вырос с 120 до 132 за год. Объясните различия между инфляцией спроса и инфляцией издержек.",
+        "text": "Разработайте интегрированную коммуникационную кампанию для запуска нового продукта, включая медиаплан, бюджет и KPI эффективности.",
         "node_offset": 1489,
         "difficulty": 3
       },
       {
-        "id": "econ101:p:inflyaciya",
+        "id": "comm101:p:kommunikacionnaya-strategiya",
         "type": "Concept",
-        "text": "Инфляция",
+        "text": "Коммуникационная стратегия",
         "node_offset": 45,
-        "definition": "Устойчивый рост общего уровня цен на товары и услуги в экономике"
+        "definition": "Долгосрочный план достижения коммуникационных целей организации через координацию всех доступных каналов и инструментов"
       },
       {
-        "id": "econ101:p:sovokupnyy-spros",
+        "id": "comm101:p:integrirovannye-marketingovye-kommunikacii",
         "type": "Concept",
-        "text": "Совокупный спрос",
-        "node_offset": 307,
-        "definition": "Общий объем товаров и услуг, который готовы приобрести домохозяйства, фирмы, государство и иностранный сектор при различных уровнях цен"
+        "text": "Интегрированные маркетинговые коммуникации",
+        "node_offset": 287,
+        "definition": "Координация всех коммуникационных инструментов компании для доставки единого, согласованного сообщения целевым аудиториям"
       },
       {
-        "id": "econ101:p:deflyaciya",
+        "id": "comm101:p:antikrizisnye-kommunikacii",
         "type": "Concept",
-        "text": "Дефляция",
-        "node_offset": 1156,
-        "definition": "Устойчивое снижение общего уровня цен на товары и услуги в экономике"
+        "text": "Антикризисные коммуникации",
+        "node_offset": 823,
+        "definition": "Система мер по управлению информационным полем организации в условиях кризисной ситуации"
       }
     ],
     "edges": [
@@ -258,70 +258,70 @@ Concrete examples to guide edge type selection:
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.9,
-        "conditions": "Must understand general inflation concept before specific types"
+        "conditions": "Must understand general communication strategy before specific IMC approach"
       },
       {
         "source": "chunk_3",
         "target": "chunk_2",
-        "type": "ELABORATES",
+        "type": "EXAMPLE_OF",
         "weight": 0.75,
-        "conditions": "Fisher equation provides theoretical foundation for demand inflation"
+        "conditions": "PR campaign planning is specific implementation of IMC principles"
       },
       {
         "source": "chunk_4",
         "target": "chunk_2",
         "type": "ELABORATES",
         "weight": 0.8,
-        "conditions": "Econometric analysis elaborates on inflation factors"
+        "conditions": "Crisis communications elaborates on strategic communication planning"
       },
       {
         "source": "chunk_1",
         "target": "chunk_5",
         "type": "PREREQUISITE",
         "weight": 0.85,
-        "conditions": "Understanding inflation needed before opposite concept"
+        "conditions": "General strategy understanding needed before digital approaches"
       },
       {
-        "source": "chunk_2",
+        "source": "chunk_3",
         "target": "chunk_5",
         "type": "PARALLEL",
         "weight": 0.65,
-        "conditions": "Both are price level phenomena in opposite directions"
+        "conditions": "Both are communication planning approaches with different focus"
       },
       {
         "source": "assessment_1",
         "target": "chunk_2",
         "type": "TESTS",
         "weight": 0.9,
-        "conditions": "Exercise tests understanding of inflation types"
+        "conditions": "Exercise tests understanding of integrated communications"
       },
       {
-        "source": "econ101:p:inflyaciya",
+        "source": "comm101:p:kommunikacionnaya-strategiya",
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.95,
-        "conditions": "Inflation concept is prerequisite for demand inflation"
+        "conditions": "Communication strategy concept is prerequisite for IMC"
       },
       {
         "source": "chunk_2",
-        "target": "econ101:p:sovokupnyy-spros",
+        "target": "comm101:p:integrirovannye-marketingovye-kommunikacii",
         "type": "EXAMPLE_OF",
-        "weight": 0.7,
-        "conditions": "Demand inflation demonstrates aggregate demand concept"
+        "weight": 0.85,
+        "conditions": "Chunk provides detailed explanation of IMC concept"
       },
       {
-        "source": "chunk_5",
-        "target": "econ101:p:deflyaciya",
+        "source": "chunk_4",
+        "target": "comm101:p:antikrizisnye-kommunikacii",
         "type": "EXAMPLE_OF",
         "weight": 0.9,
-        "conditions": "Chunk provides detailed explanation of deflation concept"
+        "conditions": "Chunk demonstrates crisis communication implementation"
       },
       {
         "source": "chunk_1",
         "target": "assessment_1",
         "type": "HINT_FORWARD",
         "weight": 0.4,
-        "conditions": "Introduction hints at upcoming exercise"
+        "conditions": "Introduction hints at upcoming practical exercise"
       }
     ]
   }

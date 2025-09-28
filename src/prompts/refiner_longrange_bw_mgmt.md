@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Economy
+# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Management
 
 ## Role and Objective
 
@@ -75,15 +75,15 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `ELABORATES` ("`Node A` elaborates on `Node B`"):
-  * **Key Question:** Is `Node A` a **deep dive** (e.g., mathematical model, empirical analysis, complex example) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
-  * Use this when `Node A` expands on `Node B` (e.g., `Node B` introduces inflation concept, and `Node A` provides detailed econometric analysis).
+  * **Key Question:** Is `Node A` a **deep dive** (e.g., detailed case study, implementation guide, comprehensive framework) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
+  * Use this when `Node A` expands on `Node B` (e.g., `Node B` introduces KPI concept, and `Node A` provides detailed BSC implementation).
   * Rule of thumb for `ELABORATES`: the direction goes from the deeper/more detailed node to the base/introduced topic (deep → base).
 
 2. Next, check for other semantic relationships:
-  * `REVISION_OF`: `Node A` is updated theory/model of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
+  * `REVISION_OF`: `Node A` is updated methodology/framework of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or theories for the same economic problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or methodologies for the same management challenge.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -114,39 +114,39 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: ELABORATES  
-- **Node A**: "Эмпирический анализ кривой Филлипса для России 2000-2020: используя VAR-модель, получаем обратную зависимость π = -0.3u + 4.2, где π - инфляция, u - безработица"
-- **Node B**: "Кривая Филлипса показывает обратную зависимость между инфляцией и безработицей"
-- **Relationship**: A→B, ELABORATES, weight=0.75 (empirical analysis details the theoretical concept)
+- **Node A**: "Детальная реализация Scrum: роли (Product Owner, Scrum Master, Development Team), события (спринты, daily standup, ретроспективы), артефакты (product backlog, sprint backlog). Практические рекомендации по масштабированию для команд 50+ человек."
+- **Node B**: "Agile-методология — гибкий подход к управлению проектами с итеративной разработкой"
+- **Relationship**: A→B, ELABORATES, weight=0.75 (детальная реализация развивает базовую концепцию)
 
 Example 2: REVISION_OF
-- **Node A**: "Модифицированная кривая Филлипса с учетом инфляционных ожиданий: π = πᵉ - β(u - u*), где πᵉ - ожидаемая инфляция, u* - естественный уровень безработицы"
-- **Node B**: "Простая кривая Филлипса: π = -αu + b"
-- **Relationship**: A→B, REVISION_OF, weight=0.85 (improved model supersedes simpler version)
+- **Node A**: "Agile 2.0 добавляет фокус на психологическую безопасность, асинхронную коммуникацию и адаптацию под удаленные команды"
+- **Node B**: "Классический Agile Manifesto с 4 ценностями и 12 принципами"
+- **Relationship**: A→B, REVISION_OF, weight=0.85 (обновленная версия методологии)
 
 Example 3: EXAMPLE_OF
-- **Node A**: "План Маршалла 1948-1952: США предоставили $13 млрд помощи для восстановления экономики Европы, что привело к росту ВВП на 35%"
-- **Node B**: "Международная экономическая помощь — финансовые и материальные ресурсы, предоставляемые одной страной другой"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete historical example of economic aid)
+- **Node A**: "Внедрение KPI в Сбербанке: каскадирование от стратегических целей до операционных метрик каждого сотрудника. Использование системы 'светофоров' для визуализации выполнения показателей."
+- **Node B**: "KPI — ключевые показатели эффективности для оценки достижения целей"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (конкретный кейс внедрения KPI)
 
 Example 4: PARALLEL
-- **Node A**: "Неоклассическая теория роста Солоу: Y = A·K^α·L^(1-α), где технологический прогресс экзогенен"
-- **Node B**: "Эндогенная теория роста Ромера: технологический прогресс определяется внутри модели через R&D"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative growth theories)
+- **Node A**: "Холократия — система самоуправления без менеджеров, где власть распределена по кругам (circles) с четкими ролями"
+- **Node B**: "Бирюзовые организации основаны на самоуправлении, целостности и эволюционной цели"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (альтернативные подходы к самоуправлению)
 
 Example 5: REFER_BACK
-- **Node A**: "Как мы видели при анализе эластичности, изменение цены влияет на выручку по-разному в зависимости от эластичности спроса"
-- **Node B**: "Эластичность спроса по цене Ed = (ΔQ/Q)/(ΔP/P)"
-- **Relationship**: A→B, REFER_BACK, weight=0.4 (A references earlier explanation in B)
+- **Node A**: "Как мы видели при изучении теории мотивации Герцберга, гигиенические факторы не создают мотивацию, но их отсутствие демотивирует"
+- **Node B**: "Двухфакторная теория Герцберга: гигиенические факторы (зарплата, условия) и мотиваторы (признание, достижения)"
+- **Relationship**: A→B, REFER_BACK, weight=0.4 (A ссылается на ранее объясненное в B)
 
 Example 6: MENTIONS
-- **Node A**: "При анализе мультипликатора учитываем предельную склонность к потреблению MPC"
-- **Node B**: "Предельная склонность к потреблению (MPC) — доля дополнительного дохода, идущая на потребление"
-- **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
+- **Node A**: "При трансформации организации учитываем модель Коттера, сопротивление изменениям и корпоративную культуру"
+- **Node B**: "Корпоративная культура — совокупность ценностей, норм и моделей поведения в организации"
+- **Relationship**: A→B, MENTIONS, weight=0.35 (краткое упоминание без развития)
 
 Example 7: `"type": null` - No relationship
-- **Node A**: "Паритет покупательной способности определяет обменный курс через соотношение цен"
-- **Node B**: "Производственная функция Кобба-Дугласа: Y = A·K^α·L^β"
-- **Relationship**: `"type": null` (unrelated topics)
+- **Node A**: "Методы оценки инвестиционных проектов: NPV, IRR, срок окупаемости"
+- **Node B**: "Стили лидерства: авторитарный, демократический, либеральный"
+- **Relationship**: `"type": null` (несвязанные темы)
 
 ## Example: Input/Output
 
@@ -154,28 +154,28 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "econ:c:2200",
-    "text": "Детальный анализ мультипликатора: При MPC = 0.8, мультипликатор k = 1/(1-0.8) = 5. Это означает, что увеличение автономных расходов на 100 млрд приведет к росту ВВП на 500 млрд через последовательные раунды потребления."
+    "id": "mgmt:c:2200",
+    "text": "Детальная реализация BSC (Balanced Scorecard): каскадирование стратегии через 4 перспективы (финансы, клиенты, процессы, развитие). Пример: в компании X финансовая цель ROI 20% транслируется в клиентскую метрику NPS>70, что требует оптимизации процесса обслуживания (время ответа <2ч) и обучения персонала (100% сертификация)."
   },
   "candidates": [
     {
-      "node_id": "econ:c:1500",
-      "text": "Мультипликатор Кейнса показывает, во сколько раз прирост дохода превышает первоначальный прирост автономных расходов",
+      "node_id": "mgmt:c:1500",
+      "text": "Система сбалансированных показателей (BSC) — стратегическая система управления эффективностью, переводящая миссию в измеримые показатели",
       "similarity": 0.92,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:800",
-      "text": "ВВП можно рассчитать тремя методами: по доходам, по расходам и по добавленной стоимости",
+      "node_id": "mgmt:c:800",
+      "text": "KPI — ключевые показатели эффективности для оценки успешности организации или сотрудника",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:1200",
-      "text": "Фискальная политика использует изменение государственных расходов и налогов для стабилизации экономики",
+      "node_id": "mgmt:c:1200",
+      "text": "Стратегическое планирование определяет долгосрочные цели организации и пути их достижения",
       "similarity": 0.78,
       "existing_edges": [
-        {"source": "econ:c:1200", "target": "econ:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "mgmt:c:1200", "target": "mgmt:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     }
   ]
@@ -186,19 +186,19 @@ Output:
 ```jsonc
 [
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1500",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:1500",
     "type": "ELABORATES",
     "weight": 0.75
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:800",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:800",
     "type": null
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1200",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:1200",
     "type": "EXAMPLE_OF",
     "weight": 0.6
   }

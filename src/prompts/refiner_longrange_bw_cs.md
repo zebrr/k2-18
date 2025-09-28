@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5
+# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Computer Science
 
 ## Role and Objective
 

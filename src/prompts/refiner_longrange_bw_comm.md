@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Economy
+# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Communications and Media
 
 ## Role and Objective
 
@@ -75,15 +75,15 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `ELABORATES` ("`Node A` elaborates on `Node B`"):
-  * **Key Question:** Is `Node A` a **deep dive** (e.g., mathematical model, empirical analysis, complex example) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
-  * Use this when `Node A` expands on `Node B` (e.g., `Node B` introduces inflation concept, and `Node A` provides detailed econometric analysis).
+  * **Key Question:** Is `Node A` a **deep dive** (e.g., detailed campaign analysis, comprehensive metrics framework, strategic case study) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
+  * Use this when `Node A` expands on `Node B` (e.g., `Node B` mentions PR-стратегия briefly, and `Node A` provides detailed implementation with metrics and examples).
   * Rule of thumb for `ELABORATES`: the direction goes from the deeper/more detailed node to the base/introduced topic (deep → base).
 
 2. Next, check for other semantic relationships:
-  * `REVISION_OF`: `Node A` is updated theory/model of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
+  * `REVISION_OF`: `Node A` is updated approach/strategy of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better methodology.
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or theories for the same economic problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or channels for the same communication goal.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -114,38 +114,38 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: ELABORATES  
-- **Node A**: "Эмпирический анализ кривой Филлипса для России 2000-2020: используя VAR-модель, получаем обратную зависимость π = -0.3u + 4.2, где π - инфляция, u - безработица"
-- **Node B**: "Кривая Филлипса показывает обратную зависимость между инфляцией и безработицей"
-- **Relationship**: A→B, ELABORATES, weight=0.75 (empirical analysis details the theoretical concept)
+- **Node A**: "Детальный анализ кампании Dove Real Beauty: таргетинг на женщин 25-45, использование UGC контента, партнерство с блогерами, результаты: рост engagement на 340%, увеличение продаж на 25%"
+- **Node B**: "Социально-ответственный маркетинг использует социальные ценности для построения бренда"
+- **Relationship**: A→B, ELABORATES, weight=0.75 (detailed campaign analysis elaborates on the concept)
 
 Example 2: REVISION_OF
-- **Node A**: "Модифицированная кривая Филлипса с учетом инфляционных ожиданий: π = πᵉ - β(u - u*), где πᵉ - ожидаемая инфляция, u* - естественный уровень безработицы"
-- **Node B**: "Простая кривая Филлипса: π = -αu + b"
-- **Relationship**: A→B, REVISION_OF, weight=0.85 (improved model supersedes simpler version)
+- **Node A**: "Digital-first стратегия предполагает приоритет цифровых каналов с последующей адаптацией для традиционных медиа"
+- **Node B**: "Традиционная медиастратегия начинается с ТВ и радио, затем адаптируется для digital"
+- **Relationship**: A→B, REVISION_OF, weight=0.85 (modern approach supersedes traditional)
 
 Example 3: EXAMPLE_OF
-- **Node A**: "План Маршалла 1948-1952: США предоставили $13 млрд помощи для восстановления экономики Европы, что привело к росту ВВП на 35%"
-- **Node B**: "Международная экономическая помощь — финансовые и материальные ресурсы, предоставляемые одной страной другой"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete historical example of economic aid)
+- **Node A**: "Антикризисная коммуникация KFC при дефиците курицы: юмористическое признание ошибки через рекламу 'FCK' превратило кризис в PR-успех"
+- **Node B**: "Кризисные коммуникации требуют быстрой реакции и прозрачности"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete crisis management example)
 
 Example 4: PARALLEL
-- **Node A**: "Неоклассическая теория роста Солоу: Y = A·K^α·L^(1-α), где технологический прогресс экзогенен"
-- **Node B**: "Эндогенная теория роста Ромера: технологический прогресс определяется внутри модели через R&D"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative growth theories)
+- **Node A**: "Influencer-маркетинг использует лидеров мнений для продвижения через их личные каналы"
+- **Node B**: "Амбассадорские программы привлекают лояльных клиентов как адвокатов бренда"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative advocacy strategies)
 
 Example 5: REFER_BACK
-- **Node A**: "Как мы видели при анализе эластичности, изменение цены влияет на выручку по-разному в зависимости от эластичности спроса"
-- **Node B**: "Эластичность спроса по цене Ed = (ΔQ/Q)/(ΔP/P)"
+- **Node A**: "Как мы обсуждали при анализе целевой аудитории, понимание медиапотребления критично для выбора каналов"
+- **Node B**: "Анализ медиапотребления выявляет предпочитаемые каналы и время активности аудитории"
 - **Relationship**: A→B, REFER_BACK, weight=0.4 (A references earlier explanation in B)
 
 Example 6: MENTIONS
-- **Node A**: "При анализе мультипликатора учитываем предельную склонность к потреблению MPC"
-- **Node B**: "Предельная склонность к потреблению (MPC) — доля дополнительного дохода, идущая на потребление"
+- **Node A**: "При планировании используем стандартные KPI эффективности: охват, частота, вовлеченность"
+- **Node B**: "KPI коммуникаций включают количественные и качественные метрики оценки эффективности"
 - **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
 
 Example 7: `"type": null` - No relationship
-- **Node A**: "Паритет покупательной способности определяет обменный курс через соотношение цен"
-- **Node B**: "Производственная функция Кобба-Дугласа: Y = A·K^α·L^β"
+- **Node A**: "Нейромаркетинг использует ЭЭГ и eye-tracking для анализа реакций"
+- **Node B**: "Пресс-конференция требует подготовки спикеров и пресс-кита"
 - **Relationship**: `"type": null` (unrelated topics)
 
 ## Example: Input/Output
@@ -154,28 +154,28 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "econ:c:2200",
-    "text": "Детальный анализ мультипликатора: При MPC = 0.8, мультипликатор k = 1/(1-0.8) = 5. Это означает, что увеличение автономных расходов на 100 млрд приведет к росту ВВП на 500 млрд через последовательные раунды потребления."
+    "id": "comm:c:2200",
+    "text": "Комплексный анализ эффективности PR-кампании: медиаметрики (AVE, Share of Voice), качественный анализ тональности, мониторинг социальных медиа через Brandwatch, ROI = (доход от PR - затраты) / затраты × 100%. Кейс: кампания повысила узнаваемость на 45%, конверсия выросла на 12%."
   },
   "candidates": [
     {
-      "node_id": "econ:c:1500",
-      "text": "Мультипликатор Кейнса показывает, во сколько раз прирост дохода превышает первоначальный прирост автономных расходов",
+      "node_id": "comm:c:1500",
+      "text": "PR-кампания включает: определение целей, анализ аудитории, разработку ключевых сообщений, выбор каналов, реализацию и оценку эффективности",
       "similarity": 0.92,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:800",
-      "text": "ВВП можно рассчитать тремя методами: по доходам, по расходам и по добавленной стоимости",
+      "node_id": "comm:c:800",
+      "text": "Метрики эффективности коммуникаций делятся на количественные и качественные показатели",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:1200",
-      "text": "Фискальная политика использует изменение государственных расходов и налогов для стабилизации экономики",
+      "node_id": "comm:c:1200",
+      "text": "Digital PR использует онлайн-каналы для управления репутацией: SEO-оптимизированные пресс-релизы, работа с блогерами, SERM",
       "similarity": 0.78,
       "existing_edges": [
-        {"source": "econ:c:1200", "target": "econ:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "comm:c:1200", "target": "comm:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     }
   ]
@@ -186,19 +186,19 @@ Output:
 ```jsonc
 [
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1500",
+    "source": "comm:c:2200",
+    "target": "comm:c:1500",
     "type": "ELABORATES",
     "weight": 0.75
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:800",
+    "source": "comm:c:2200",
+    "target": "comm:c:800",
     "type": null
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1200",
+    "source": "comm:c:2200",
+    "target": "comm:c:1200",
     "type": "EXAMPLE_OF",
     "weight": 0.6
   }

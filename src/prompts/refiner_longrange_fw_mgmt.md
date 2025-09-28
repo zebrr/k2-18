@@ -1,4 +1,4 @@
-# Graph Refiner Longrange FORWARD PASS v4.2-gpt-5 @ Economy
+# Graph Refiner Longrange FORWARD PASS v4.2-gpt-5 @ Management
 
 ## Role and Objective
 
@@ -76,12 +76,12 @@ You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `PREREQUISITE` ("`Node A` is a prerequisite for `Node B`"):
   * **Key Question (Answer YES/NO):** Is understanding `Node B` **completely blocked** without first understanding `Node A`? If YES, the edge type is `PREREQUISITE`.
-  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "эластичность," and `Node B` describes "эластичность спроса по доходу").
+  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "организационная структура," and `Node B` describes "делегирование полномочий").
 
 2. Next, check for other semantic relationships:
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or theories for the same economic problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or methodologies for the same management challenge.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -113,29 +113,29 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: PREREQUISITE
-- **Node A**: "Предельная полезность — это дополнительная полезность от потребления еще одной единицы блага. Формула: MU = ΔTU/ΔQ"
-- **Node B**: "Закон убывающей предельной полезности гласит, что с ростом потребления блага предельная полезность каждой дополнительной единицы снижается"  
-- **Relationship**: A→B, PREREQUISITE, weight=0.85 (must understand marginal utility before its law)
+- **Node A**: "Планирование — это процесс определения целей организации и путей их достижения. Включает постановку целей, анализ ресурсов, разработку стратегии."
+- **Node B**: "Стратегическое планирование фокусируется на долгосрочных целях организации (3-5 лет) и требует анализа внешней среды через SWOT-анализ"  
+- **Relationship**: A→B, PREREQUISITE, weight=0.85 (базовое планирование необходимо для понимания стратегического)
 
 Example 2: EXAMPLE_OF
-- **Node A**: "Гиперинфляция в Германии 1923 года: цены удваивались каждые 3.7 дня, денежная масса выросла в триллионы раз"
-- **Node B**: "Гиперинфляция — инфляция с темпами роста цен более 50% в месяц"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete historical example of hyperinflation)
+- **Node A**: "Toyota Production System внедрила принципы кайдзен, канбан и just-in-time для минимизации потерь и повышения эффективности"
+- **Node B**: "Lean-методология направлена на устранение всех видов потерь (muda) и непрерывное совершенствование процессов"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (конкретная реализация Lean принципов)
 
 Example 3: PARALLEL
-- **Node A**: "Фискальная политика использует государственные расходы и налоги для регулирования экономики"
-- **Node B**: "Монетарная политика регулирует экономику через денежную массу и процентные ставки"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative macroeconomic policy tools)
+- **Node A**: "Теория X предполагает, что сотрудники избегают работы и нуждаются в постоянном контроле"
+- **Node B**: "Теория Y утверждает, что люди внутренне мотивированы и способны к самоуправлению при правильных условиях"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (альтернативные подходы к мотивации)
 
 Example 4: MENTIONS
-- **Node A**: "Мы позже рассмотрим как центральный банк использует операции на открытом рынке"
-- **Node B**: "Операции на открытом рынке — покупка и продажа государственных ценных бумаг центральным банком"
-- **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
+- **Node A**: "При внедрении изменений используем подходы change management и учитываем сопротивление персонала"
+- **Node B**: "Модель Коттера включает 8 шагов управления изменениями: создание срочности, формирование коалиции..."
+- **Relationship**: A→B, MENTIONS, weight=0.35 (краткое упоминание без детализации)
 
 Example 5: `"type": null` - No relationship
-- **Node A**: "Эластичность спроса измеряет чувствительность спроса к изменению цены"
-- **Node B**: "Бухгалтерский баланс состоит из активов и пассивов"
-- **Relationship**: `"type": null` (unrelated topics from different areas)
+- **Node A**: "SWOT-анализ помогает оценить сильные и слабые стороны организации"
+- **Node B**: "Финансовая отчетность включает баланс, отчет о прибылях и убытках, движение денежных средств"
+- **Relationship**: `"type": null` (несвязанные темы из разных областей)
 
 ## Example: Input/Output
 
@@ -143,27 +143,27 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "econ:c:800",
-    "text": "Спрос и предложение определяют рыночную цену. Когда количество товара, которое покупатели хотят приобрести, равно количеству, которое продавцы готовы продать, достигается равновесие."
+    "id": "mgmt:c:800",
+    "text": "Организационная структура определяет систему формального распределения задач, полномочий и ответственности. Основные типы включают функциональную, дивизиональную и матричную структуры."
   },
   "candidates": [
     {
-      "node_id": "econ:c:1500",
-      "text": "Равновесная цена — это цена, при которой объем спроса равен объему предложения. Графически это точка пересечения кривых спроса и предложения.",
+      "node_id": "mgmt:c:1500",
+      "text": "Делегирование полномочий — процесс передачи части функций и ответственности от руководителя подчиненным. Эффективное делегирование требует четкой организационной структуры с определенными уровнями ответственности.",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:2200", 
-      "text": "Эластичность спроса по цене показывает, насколько процентов изменится величина спроса при изменении цены на 1%. Формула: Ed = (ΔQ/Q)/(ΔP/P)",
+      "node_id": "mgmt:c:2200", 
+      "text": "Проектная структура организации создается для выполнения конкретного проекта, где команда формируется из специалистов разных подразделений на временной основе.",
       "similarity": 0.82,
       "existing_edges": [
-        {"source": "econ:c:800", "target": "econ:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "mgmt:c:800", "target": "mgmt:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     },
     {
-      "node_id": "econ:q:2800:1",
-      "text": "Задание: Функция спроса Qd = 100 - 2P, функция предложения Qs = -20 + 3P. Найдите равновесную цену и объем.",
+      "node_id": "mgmt:q:2800:1",
+      "text": "Кейс: Разработайте рекомендации по переходу компании от функциональной к матричной структуре. Какие риски и преимущества следует учесть?",
       "similarity": 0.75,
       "existing_edges": []
     }
@@ -175,20 +175,20 @@ Output:
 ```jsonc
 [
   {
-    "source": "econ:c:800",
-    "target": "econ:c:1500",
-    "type": "PREREQUISITE", // Supply and demand concept is prerequisite for equilibrium price
+    "source": "mgmt:c:800",
+    "target": "mgmt:c:1500",
+    "type": "PREREQUISITE", // Organizational structure is prerequisite for delegation
     "weight": 0.9
   },
   {
-    "source": "econ:c:800",
-    "target": "econ:c:2200",
-    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are fundamental market concepts)
-    "weight": 0.65
+    "source": "mgmt:c:800",
+    "target": "mgmt:c:2200",
+    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are org structure types)
+    "weight": 0.7
   },
   {
-    "source": "econ:c:800",
-    "target": "econ:q:2800:1",
+    "source": "mgmt:c:800",
+    "target": "mgmt:q:2800:1",
     "type": null // Could not TEST forward!
   }
 ]

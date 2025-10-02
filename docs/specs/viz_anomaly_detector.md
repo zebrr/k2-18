@@ -55,18 +55,28 @@ python -m viz.anomaly_detector [graph_file]
 [12:34:56] CHECK    | ✅ No NaN/Inf values found
 [12:34:56] CHECK    | ✅ All required node metrics present
 [12:34:56] CHECK    | ✅ Inverse weight: 1823/1823 edges
+[12:34:56] CHECK    | ❌ Found 2 bidirectional PREREQUISITE pairs:
+[12:34:56]          |   node_A ⇄ node_B, node_C ⇄ node_D
 
 === Warning Checks ===
 [12:34:57] CHECK    | ⚠️  Weak cluster modularity estimate: 0.08
 [12:34:57] CHECK    | ✅ Bridge scores: valid range [0, 1]
 [12:34:57] CHECK    | ⚠️  Found 5 outliers in pagerank (iqr method)
+[12:34:57] CHECK    | ✅ No orphan nodes found
+[12:34:57] CHECK    | ✅ All Assessment nodes have TESTS edges
 
 === Statistics ===
 [12:34:57] INFO     | pagerank: min=0.0001, max=0.0234, mean=0.0018
 [12:34:57] INFO     | betweenness_centrality: min=0.0000, max=0.1234, mean=0.0089
 [12:34:57] INFO     | educational_importance: min=0.0001, max=0.0234, mean=0.0018
 [12:34:57] INFO     | Components: 3 total, largest: 523 nodes
-[12:34:57] INFO     | Clusters: 8 total, sizes: [124, 89, 76, 65, ...]
+[12:34:57] INFO     |   component_id = 0 [523]
+[12:34:57] INFO     |   component_id = 1 [18]
+[12:34:57] INFO     |   component_id = 2 [6]
+[12:34:57] INFO     | Concept Coverage:
+[12:34:57] INFO     |   Chunks: 85.3% (234/274 nodes), avg 2.3 concepts/node
+[12:34:57] INFO     |   Assessments: 92.1% (35/38 nodes), avg 1.8 concepts/node
+[12:34:57] INFO     | Clusters: 8 total, sizes: [124, 89, 76, 65, 54, 43, 38, 29, 18, 11]
 
 === Summary ===
 [12:34:58] SUCCESS  | ✅ All critical checks passed
@@ -85,6 +95,7 @@ python -m viz.anomaly_detector [graph_file]
 - **Component IDs**: Must be sequential from 0
 - **Prerequisite depth**: All values ≥ 0
 - **Required metrics**: All 10 node metrics + inverse_weight on edges
+- **Bidirectional PREREQUISITE pairs**: No mutual prerequisites (A → B AND B → A simultaneously)
 
 #### 2. Warning Checks
 - **Cluster modularity**: Above minimum threshold (if clustering applied)
@@ -93,11 +104,14 @@ python -m viz.anomaly_detector [graph_file]
 - **Inter-cluster consistency**: Edges between clusters
 - **Singleton clusters**: No clusters with size = 1
 - **Outlier detection**: Statistical outliers in metrics
+- **Orphan nodes**: Nodes with degree_in = 0 AND degree_out = 0 (isolated nodes)
+- **Dangling Assessments**: Assessment nodes without outgoing TESTS edges
 
 #### 3. Information Checks
 - **Basic statistics**: min, max, mean, std for all metrics
-- **Component sizes**: Number and sizes of connected components
-- **Cluster sizes**: Number and sizes of clusters (if applicable)
+- **Component breakdown**: Detailed breakdown by component_id with sizes
+- **Concept Coverage**: Coverage percentage and average concepts per node (Chunks and Assessments)
+- **Cluster sizes**: Number and sizes of clusters (top 10 displayed, if applicable)
 - **Missing optional metrics**: cluster_id, bridge_score
 
 ### Outlier Detection Methods
@@ -110,6 +124,42 @@ python -m viz.anomaly_detector [graph_file]
 #### 3-Sigma Method
 - Calculate mean and standard deviation
 - Outliers: values outside [mean - 3×σ, mean + 3×σ]
+
+### Educational Structure Checks
+
+#### Concept Coverage
+- **Purpose**: Verify Chunk and Assessment nodes are connected to Concept nodes
+- **Source**: Uses `concepts` field populated by `graph2metrics.py` (`link_nodes_to_concepts`)
+- **Metrics**:
+  - Coverage percentage: nodes with `len(concepts) > 0`
+  - Average concepts per node: `total concepts / total nodes`
+- **Display**: Shows separately for Chunks and Assessments, "N/A" if type not present
+
+#### Orphan Nodes
+- **Purpose**: Detect isolated nodes with no connections
+- **Criteria**: `degree_in = 0 AND degree_out = 0`
+- **Impact**: Orphan nodes represent lost content in the graph
+- **Level**: Warning
+
+#### Dangling Assessments
+- **Purpose**: Verify Assessment nodes test knowledge
+- **Criteria**: Assessment node with no outgoing TESTS edges
+- **Impact**: Assessments should validate understanding of content
+- **Level**: Warning
+
+#### Bidirectional PREREQUISITE Pairs
+- **Purpose**: Detect mutual prerequisites between two nodes
+- **Criteria**: Both edges exist: `A → B` AND `B → A` (type=PREREQUISITE)
+- **Algorithm**:
+  - Build set of all PREREQUISITE edges
+  - For each edge (A, B), check if reverse edge (B, A) exists
+  - Avoid duplicates by keeping only pairs where `source < target` lexicographically
+- **Display**:
+  - Count of bidirectional pairs
+  - First 10 examples: `"node_A ⇄ node_B, node_C ⇄ node_D, ..."`
+- **Impact**: Mutual prerequisites create circular dependency (A requires B, B requires A)
+- **Note**: Long cycles (A → B → C → A) are allowed, only direct bidirectional pairs are critical
+- **Level**: Critical
 
 ## Public Functions/Classes
 
@@ -256,12 +306,12 @@ save_json_report = true            # Save JSON report to logs
 
 ## Test Coverage
 
-- **test_viz_anomaly_detector**: Unit tests
+- **test_viz_anomaly_detector**: Unit tests (44 tests total)
   - test_load_config
-  - test_critical_checks
-  - test_warning_checks
+  - test_critical_checks (incl. prerequisite_cycles)
+  - test_warning_checks (incl. orphan_nodes, dangling_assessments)
   - test_outlier_detection
-  - test_statistics_calculation
+  - test_statistics_calculation (incl. concept_coverage)
   - test_json_report_generation
   - test_exit_codes
 
@@ -270,6 +320,13 @@ save_json_report = true            # Save JSON report to logs
   - test_full_pipeline_with_warnings
   - test_full_pipeline_with_critical_issues
   - test_strict_mode_behavior
+
+- **New tests (ANOM-001)**:
+  - test_orphan_nodes_detection
+  - test_dangling_assessments
+  - test_prerequisite_cycles
+  - test_prerequisite_no_cycles
+  - test_concept_coverage_statistics
 
 ## Dependencies
 

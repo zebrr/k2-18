@@ -445,7 +445,7 @@ def test_outlier_detection_3sigma(valid_graph):
     # Adjust other pageranks to maintain sum = 1.0
     for i in range(1, 10):
         graph["nodes"][i]["pagerank"] = 0.09 / 9
-    
+
     with patch("pathlib.Path.exists", return_value=True):
         detector = AnomalyDetector()
         detector.config["outlier_method"] = "3sigma"
@@ -456,8 +456,6 @@ def test_outlier_detection_3sigma(valid_graph):
         # Should detect outliers with extreme values OR just verify method runs
         # 3-sigma is very insensitive, so we accept either result
         assert detector.warnings is not None  # At minimum, method completed
-        # Optionally check if outliers were detected
-        has_outliers = any("outlier" in str(w).lower() for w in detector.warnings)
         # Test passes either way - we're testing the method runs, not its sensitivity
 
 
@@ -564,7 +562,7 @@ def test_strict_mode(valid_graph):
     # Create graph with warning but no critical issues
     graph = copy.deepcopy(valid_graph)
     graph["nodes"][0]["betweenness_centrality"] = 10.0  # Create outlier warning
-    
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(graph, f)
         temp_path = Path(f.name)
@@ -631,7 +629,7 @@ def test_full_pipeline_with_warnings(valid_graph):
     # Create graph with warning but no critical issues
     graph = copy.deepcopy(valid_graph)
     graph["nodes"][0]["betweenness_centrality"] = 10.0  # Create outlier warning
-    
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(graph, f)
         temp_path = Path(f.name)
@@ -849,7 +847,7 @@ def test_low_bridge_correlation(graph_with_clustering):
     """Test detection of low correlation between bridge score and betweenness."""
     graph = copy.deepcopy(graph_with_clustering)
     # Set bridge scores inversely to betweenness (low correlation)
-    for i, node in enumerate(graph["nodes"]):
+    for node in graph["nodes"]:
         # Low bridge scores for high betweenness
         if node["betweenness_centrality"] > 0.2:
             node["bridge_score"] = 0.05
@@ -898,3 +896,122 @@ def test_main_function_default_file():
 
                         main()
                         mock_exit.assert_called_once_with(1)
+
+
+@pytest.mark.viz
+def test_orphan_nodes_detection():
+    """Test detection of orphan nodes."""
+    graph = {
+        "nodes": [
+            {"id": "node1", "type": "Chunk", "degree_in": 2, "degree_out": 1},
+            {"id": "node2", "type": "Chunk", "degree_in": 0, "degree_out": 0},  # Orphan
+            {"id": "node3", "type": "Chunk", "degree_in": 0, "degree_out": 0},  # Orphan
+        ],
+        "edges": [],
+    }
+
+    with patch("pathlib.Path.exists", return_value=True):
+        detector = AnomalyDetector()
+        detector.graph_data = graph
+        detector.run_warning_checks()
+
+        # Should have warning about 2 orphan nodes
+        orphan_warnings = [w for w in detector.warnings if w["check"] == "orphan_nodes"]
+        assert len(orphan_warnings) == 1
+        assert orphan_warnings[0]["count"] == 2
+
+
+@pytest.mark.viz
+def test_dangling_assessments():
+    """Test detection of Assessment nodes without TESTS edges."""
+    graph = {
+        "nodes": [
+            {"id": "assessment1", "type": "Assessment"},
+            {"id": "assessment2", "type": "Assessment"},
+            {"id": "chunk1", "type": "Chunk"},
+        ],
+        "edges": [
+            {"source": "assessment1", "target": "chunk1", "type": "TESTS"},
+            # assessment2 has no TESTS edge - dangling
+        ],
+    }
+
+    with patch("pathlib.Path.exists", return_value=True):
+        detector = AnomalyDetector()
+        detector.graph_data = graph
+        detector.run_warning_checks()
+
+        dangling_warnings = [w for w in detector.warnings if w["check"] == "dangling_assessments"]
+        assert len(dangling_warnings) == 1
+        assert dangling_warnings[0]["count"] == 1
+
+
+@pytest.mark.viz
+def test_prerequisite_cycles(valid_graph):
+    """Test detection of bidirectional PREREQUISITE pairs."""
+    # Use valid_graph as base to have all required metrics
+    graph = copy.deepcopy(valid_graph)
+    # Create bidirectional PREREQUISITE pairs: node_0 ⇄ node_1, node_2 ⇄ node_3
+    graph["edges"] = [
+        {"source": "node_0", "target": "node_1", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        {"source": "node_1", "target": "node_0", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        {"source": "node_2", "target": "node_3", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        {"source": "node_3", "target": "node_2", "type": "PREREQUISITE", "inverse_weight": 1.0},
+    ]
+
+    with patch("pathlib.Path.exists", return_value=True):
+        detector = AnomalyDetector()
+        detector.graph_data = graph
+        result = detector.run_critical_checks()
+
+        assert result is False  # Should fail
+        cycle_issues = [i for i in detector.critical_issues if i["check"] == "prerequisite_cycles"]
+        assert len(cycle_issues) == 1
+        assert cycle_issues[0]["count"] == 2  # Two bidirectional pairs
+        assert "examples" in cycle_issues[0]
+
+
+@pytest.mark.viz
+def test_prerequisite_no_cycles(valid_graph):
+    """Test graph without bidirectional prerequisites passes check."""
+    # Use valid_graph as base to have all required metrics
+    graph = copy.deepcopy(valid_graph)
+    # Long cycle is OK: node_0 → node_1 → node_2 → node_0
+    # What's NOT OK: bidirectional pairs like node_0 ⇄ node_1
+    graph["edges"] = [
+        {"source": "node_0", "target": "node_1", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        {"source": "node_1", "target": "node_2", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        {"source": "node_2", "target": "node_0", "type": "PREREQUISITE", "inverse_weight": 1.0},
+        # No bidirectional pairs - should pass
+    ]
+
+    with patch("pathlib.Path.exists", return_value=True):
+        detector = AnomalyDetector()
+        detector.graph_data = graph
+        result = detector.run_critical_checks()
+
+        assert result is True  # Should pass (long cycles are OK)
+
+
+@pytest.mark.viz
+def test_concept_coverage_statistics():
+    """Test concept coverage calculation."""
+    graph = {
+        "nodes": [
+            {"id": "chunk1", "type": "Chunk", "concepts": ["c1", "c2"]},
+            {"id": "chunk2", "type": "Chunk", "concepts": []},
+            {"id": "chunk3", "type": "Chunk", "concepts": ["c3"]},
+            {"id": "assessment1", "type": "Assessment", "concepts": ["c1"]},
+            {"id": "assessment2", "type": "Assessment", "concepts": []},
+        ],
+        "edges": [],
+    }
+
+    with patch("pathlib.Path.exists", return_value=True):
+        detector = AnomalyDetector()
+        detector.graph_data = graph
+        detector.calculate_statistics()
+
+        # Chunks: 2/3 have concepts (66.7%), avg = 3/3 = 1.0
+        # Assessments: 1/2 have concepts (50%), avg = 1/2 = 0.5
+        # Just verify no errors - output is logged, not returned

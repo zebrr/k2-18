@@ -9,7 +9,7 @@ import math
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import tomli
 
@@ -291,6 +291,49 @@ class AnomalyDetector:
         elif edges:
             self._log("CHECK", f"✅ Inverse weight: {edges_with_inverse}/{len(edges)} edges")
 
+        # 8. Check for bidirectional PREREQUISITE pairs
+        prereq_edges = [
+            (e["source"], e["target"]) for e in edges if e.get("type") == "PREREQUISITE"
+        ]
+
+        if prereq_edges:
+            # Find bidirectional pairs (A → B and B → A)
+            bidirectional_pairs = []
+            prereq_set = set(prereq_edges)
+
+            for source, target in prereq_edges:
+                # Check if reverse edge exists
+                if (target, source) in prereq_set:
+                    # To avoid duplicates, only add if source < target (lexicographically)
+                    if source < target:
+                        bidirectional_pairs.append((source, target))
+
+            if bidirectional_pairs:
+                # Show first 10 examples
+                examples = bidirectional_pairs[:10]
+                examples_str = ", ".join([f"{s} ⇄ {t}" for s, t in examples])
+
+                self._log(
+                    "CHECK",
+                    f"❌ Found {len(bidirectional_pairs)} bidirectional " f"PREREQUISITE pairs:",
+                )
+                self._log("", f"  {examples_str}")
+                self.critical_issues.append(
+                    {
+                        "check": "prerequisite_cycles",
+                        "message": (
+                            "Found cycles in PREREQUISITE graph (bidirectional prerequisites)"
+                        ),
+                        "count": len(bidirectional_pairs),
+                        "examples": examples_str,
+                    }
+                )
+                all_passed = False
+            else:
+                self._log("CHECK", "✅ No bidirectional PREREQUISITE pairs found")
+        else:
+            self._log("CHECK", "✅ No PREREQUISITE edges to check")
+
         return all_passed
 
     def run_warning_checks(self):
@@ -385,7 +428,10 @@ class AnomalyDetector:
                         self.warnings.append(
                             {
                                 "check": "bridge_correlation",
-                                "message": "Low correlation between bridge_score and betweenness_centrality",
+                                "message": (
+                                    "Low correlation between bridge_score "
+                                    "and betweenness_centrality"
+                                ),
                             }
                         )
 
@@ -483,6 +529,108 @@ class AnomalyDetector:
         else:
             self._log("CHECK", f"✅ No significant outliers detected ({method} method)")
 
+        # Check for orphan nodes (no edges at all)
+        orphan_nodes = [
+            n for n in nodes if n.get("degree_in", 0) == 0 and n.get("degree_out", 0) == 0
+        ]
+
+        if orphan_nodes:
+            self._log(
+                "CHECK",
+                f"⚠️  Found {len(orphan_nodes)} orphan nodes " f"(no incoming or outgoing edges)",
+            )
+            self.warnings.append(
+                {
+                    "check": "orphan_nodes",
+                    "message": f"Found {len(orphan_nodes)} orphan nodes with no edges",
+                    "count": len(orphan_nodes),
+                }
+            )
+        else:
+            self._log("CHECK", "✅ No orphan nodes found")
+
+        # Check for dangling Assessment nodes (no TESTS edges)
+        edges = self.graph_data.get("edges", [])
+        assessments = [n for n in nodes if n.get("type") == "Assessment"]
+
+        if assessments:
+            # Find Assessment nodes that are source of TESTS edges
+            assessments_with_tests = set()
+            for edge in edges:
+                if edge.get("type") == "TESTS":
+                    assessments_with_tests.add(edge["source"])
+
+            # Find dangling assessments (Assessment nodes NOT in the set)
+            assessment_ids = {n["id"] for n in assessments}
+            dangling_assessments = assessment_ids - assessments_with_tests
+
+            if dangling_assessments:
+                self._log(
+                    "CHECK",
+                    f"⚠️  Found {len(dangling_assessments)} dangling Assessment nodes "
+                    f"(no TESTS edges)",
+                )
+                self.warnings.append(
+                    {
+                        "check": "dangling_assessments",
+                        "message": (
+                            f"Found {len(dangling_assessments)} Assessment nodes "
+                            f"without TESTS edges"
+                        ),
+                        "count": len(dangling_assessments),
+                    }
+                )
+            else:
+                self._log("CHECK", "✅ All Assessment nodes have TESTS edges")
+
+    def _detect_cycles_dfs(self, edges: List[Tuple[str, str]], nodes: List[Dict]) -> bool:
+        """Detect cycles in directed graph using DFS.
+
+        Args:
+            edges: List of (source, target) tuples
+            nodes: List of node dictionaries
+
+        Returns:
+            True if cycle found, False otherwise
+        """
+        # Build adjacency list
+        graph = {}
+        node_ids = {n["id"] for n in nodes}
+
+        for node_id in node_ids:
+            graph[node_id] = []
+
+        for source, target in edges:
+            if source in graph:
+                graph[source].append(target)
+
+        # DFS with three states: unvisited (0), visiting (1), visited (2)
+        state = {node_id: 0 for node_id in node_ids}
+
+        def dfs(node_id):
+            """DFS helper - returns True if cycle detected."""
+            if state[node_id] == 1:  # Currently visiting - cycle found!
+                return True
+            if state[node_id] == 2:  # Already visited - no cycle here
+                return False
+
+            state[node_id] = 1  # Mark as visiting
+
+            for neighbor in graph.get(node_id, []):
+                if neighbor in state and dfs(neighbor):
+                    return True
+
+            state[node_id] = 2  # Mark as visited
+            return False
+
+        # Check all nodes
+        for node_id in node_ids:
+            if state[node_id] == 0:  # Unvisited
+                if dfs(node_id):
+                    return True
+
+        return False
+
     def calculate_statistics(self):
         """Calculate and display statistics for all metrics."""
         self._log("", "")
@@ -521,7 +669,8 @@ class AnomalyDetector:
                 if metric in ["pagerank", "educational_importance", "betweenness_centrality"]:
                     self._log(
                         "INFO",
-                        f"{metric}: min={stats['min']:.4f}, max={stats['max']:.4f}, mean={stats['mean']:.4f}",
+                        f"{metric}: min={stats['min']:.4f}, max={stats['max']:.4f}, "
+                        f"mean={stats['mean']:.4f}",
                     )
 
         # Component statistics
@@ -532,6 +681,53 @@ class AnomalyDetector:
             comp_sizes = Counter(component_ids)
             largest_comp = max(comp_sizes.values())
             self._log("INFO", f"Components: {len(comp_sizes)} total, largest: {largest_comp} nodes")
+            # Multiline breakdown by component_id
+            for comp_id in sorted(comp_sizes.keys()):
+                size = comp_sizes[comp_id]
+                self._log("INFO", f"  component_id = {comp_id} [{size}]")
+
+        # Concept Coverage Statistics
+        chunks = [n for n in nodes if n.get("type") == "Chunk"]
+        assessments = [n for n in nodes if n.get("type") == "Assessment"]
+
+        if chunks or assessments:
+            self._log("INFO", "Concept Coverage:")
+
+            # Process Chunks
+            if chunks:
+                chunks_with_concepts = [
+                    n for n in chunks if n.get("concepts") and len(n["concepts"]) > 0
+                ]
+                coverage_pct = (len(chunks_with_concepts) / len(chunks)) * 100
+                total_concepts = sum(len(n.get("concepts", [])) for n in chunks)
+                avg_concepts = total_concepts / len(chunks) if chunks else 0
+
+                self._log(
+                    "INFO",
+                    f"  Chunks: {coverage_pct:.1f}% "
+                    f"({len(chunks_with_concepts)}/{len(chunks)} nodes), "
+                    f"avg {avg_concepts:.1f} concepts/node",
+                )
+            else:
+                self._log("INFO", "  Chunks: N/A")
+
+            # Process Assessments
+            if assessments:
+                assessments_with_concepts = [
+                    n for n in assessments if n.get("concepts") and len(n["concepts"]) > 0
+                ]
+                coverage_pct = (len(assessments_with_concepts) / len(assessments)) * 100
+                total_concepts = sum(len(n.get("concepts", [])) for n in assessments)
+                avg_concepts = total_concepts / len(assessments) if assessments else 0
+
+                self._log(
+                    "INFO",
+                    f"  Assessments: {coverage_pct:.1f}% "
+                    f"({len(assessments_with_concepts)}/{len(assessments)} nodes), "
+                    f"avg {avg_concepts:.1f} concepts/node",
+                )
+            else:
+                self._log("INFO", "  Assessments: N/A")
 
         # Cluster statistics
         cluster_ids = [n.get("cluster_id") for n in nodes if "cluster_id" in n]
@@ -540,8 +736,8 @@ class AnomalyDetector:
 
             cluster_sizes = Counter(cluster_ids)
             sizes_list = sorted(cluster_sizes.values(), reverse=True)
-            sizes_str = ", ".join(str(s) for s in sizes_list[:4])
-            if len(sizes_list) > 4:
+            sizes_str = ", ".join(str(s) for s in sizes_list[:10])
+            if len(sizes_list) > 10:
                 sizes_str += ", ..."
             self._log("INFO", f"Clusters: {len(cluster_sizes)} total, sizes: [{sizes_str}]")
 

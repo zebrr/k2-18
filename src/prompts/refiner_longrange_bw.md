@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5
+# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Computer Science
 
 ## Role and Objective
 
@@ -75,15 +75,15 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `ELABORATES` ("`Node A` elaborates on `Node B`"):
-  * **Key Question:** Is `Node A` a **deep dive** (e.g., mathematical model, empirical analysis, complex example) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
-  * Use this when `Node A` expands on `Node B` (e.g., `Node B` introduces inflation concept, and `Node A` provides detailed econometric analysis).
+  * **Key Question:** Is `Node A` a **deep dive** (e.g., a formal proof, detailed breakdown, complex example) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
+  * Use this when `Node A` expands on `Node B` (e.g., `Node B` describes an algorithm, and `Node A` provides a proof of its correctness).
   * Rule of thumb for `ELABORATES`: the direction goes from the deeper/more detailed node to the base/introduced topic (deep → base).
 
 2. Next, check for other semantic relationships:
-  * `REVISION_OF`: `Node A` is updated theory/model of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
+  * `REVISION_OF`: `Node A` is updated version of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or theories for the same economic problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or explanations for the same problem.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -114,38 +114,38 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: ELABORATES  
-- **Node A**: "Эмпирический анализ кривой Филлипса для России 2000-2020: используя VAR-модель, получаем обратную зависимость π = -0.3u + 4.2, где π - инфляция, u - безработица"
-- **Node B**: "Кривая Филлипса показывает обратную зависимость между инфляцией и безработицей"
-- **Relationship**: A→B, ELABORATES, weight=0.75 (empirical analysis details the theoretical concept)
+- **Node A**: "Proof: On each bubble sort iteration, the largest unsorted element moves to its final position at the end"
+- **Node B**: "Bubble sort repeatedly compares adjacent elements and swaps them if they're in wrong order"
+- **Relationship**: A→B, ELABORATES, weight=0.75 (proof details the algorithm)
 
 Example 2: REVISION_OF
-- **Node A**: "Модифицированная кривая Филлипса с учетом инфляционных ожиданий: π = πᵉ - β(u - u*), где πᵉ - ожидаемая инфляция, u* - естественный уровень безработицы"
-- **Node B**: "Простая кривая Филлипса: π = -αu + b"
-- **Relationship**: A→B, REVISION_OF, weight=0.85 (improved model supersedes simpler version)
+- **Node A**: "Quick sort with median-of-three pivot selection avoids worst-case on sorted arrays"
+- **Node B**: "Quick sort picks the first element as pivot"
+- **Relationship**: A→B, REVISION_OF, weight=0.85 (improved version of the algorithm)
 
 Example 3: EXAMPLE_OF
-- **Node A**: "План Маршалла 1948-1952: США предоставили $13 млрд помощи для восстановления экономики Европы, что привело к росту ВВП на 35%"
-- **Node B**: "Международная экономическая помощь — финансовые и материальные ресурсы, предоставляемые одной страной другой"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete historical example of economic aid)
+- **Node A**: "def bubble_sort(arr): for i in range(n): for j in range(0, n-i-1): ..."
+- **Node B**: "Sorting algorithms arrange elements in a specific order"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete implementation of sorting concept)
 
 Example 4: PARALLEL
-- **Node A**: "Неоклассическая теория роста Солоу: Y = A·K^α·L^(1-α), где технологический прогресс экзогенен"
-- **Node B**: "Эндогенная теория роста Ромера: технологический прогресс определяется внутри модели через R&D"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative growth theories)
+- **Node A**: "Bubble sort has O(n²) complexity and is stable"
+- **Node B**: "Selection sort also has O(n²) complexity but is not stable"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative sorting approaches)
 
 Example 5: REFER_BACK
-- **Node A**: "Как мы видели при анализе эластичности, изменение цены влияет на выручку по-разному в зависимости от эластичности спроса"
-- **Node B**: "Эластичность спроса по цене Ed = (ΔQ/Q)/(ΔP/P)"
+- **Node A**: "As we saw with graphs earlier, BFS explores neighbors level by level"
+- **Node B**: "A graph is a collection of vertices connected by edges"
 - **Relationship**: A→B, REFER_BACK, weight=0.4 (A references earlier explanation in B)
 
 Example 6: MENTIONS
-- **Node A**: "При анализе мультипликатора учитываем предельную склонность к потреблению MPC"
-- **Node B**: "Предельная склонность к потреблению (MPC) — доля дополнительного дохода, идущая на потребление"
+- **Node A**: "We'll use techniques similar to binary search optimization later"
+- **Node B**: "Binary search divides the sorted array in half at each step"
 - **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
 
 Example 7: `"type": null` - No relationship
-- **Node A**: "Паритет покупательной способности определяет обменный курс через соотношение цен"
-- **Node B**: "Производственная функция Кобба-Дугласа: Y = A·K^α·L^β"
+- **Node A**: "Python uses indentation for code blocks"
+- **Node B**: "HTTP status codes: 200=OK, 404=Not Found, 500=Server Error"
 - **Relationship**: `"type": null` (unrelated topics)
 
 ## Example: Input/Output
@@ -154,28 +154,28 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "econ:c:2200",
-    "text": "Детальный анализ мультипликатора: При MPC = 0.8, мультипликатор k = 1/(1-0.8) = 5. Это означает, что увеличение автономных расходов на 100 млрд приведет к росту ВВП на 500 млрд через последовательные раунды потребления."
+    "id": "algo:c:2200",
+    "text": "Proof of bubble sort correctness: After k iterations, the last k elements are in their final sorted positions. This guarantees O(n²) worst-case complexity."
   },
   "candidates": [
     {
-      "node_id": "econ:c:1500",
-      "text": "Мультипликатор Кейнса показывает, во сколько раз прирост дохода превышает первоначальный прирост автономных расходов",
+      "node_id": "algo:c:1500",
+      "text": "Bubble sort implementation: def bubble_sort(arr): for i in range(len(arr)): for j in range(0, len(arr)-i-1): if arr[j] > arr[j+1]: arr[j], arr[j+1] = arr[j+1], arr[j]",
       "similarity": 0.92,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:800",
-      "text": "ВВП можно рассчитать тремя методами: по доходам, по расходам и по добавленной стоимости",
+      "node_id": "algo:c:800",
+      "text": "Sorting is the process of arranging elements in a specific order, either ascending or descending",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:1200",
-      "text": "Фискальная политика использует изменение государственных расходов и налогов для стабилизации экономики",
+      "node_id": "algo:c:1200",
+      "text": "Simple sorting algorithms like bubble sort and selection sort have quadratic complexity but are easy to understand",
       "similarity": 0.78,
       "existing_edges": [
-        {"source": "econ:c:1200", "target": "econ:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "algo:c:1200", "target": "algo:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     }
   ]
@@ -186,19 +186,19 @@ Output:
 ```jsonc
 [
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1500",
+    "source": "algo:c:2200",
+    "target": "algo:c:1500",
     "type": "ELABORATES",
     "weight": 0.75
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:800",
+    "source": "algo:c:2200",
+    "target": "algo:c:800",
     "type": null
   },
   {
-    "source": "econ:c:2200",
-    "target": "econ:c:1200",
+    "source": "algo:c:2200",
+    "target": "algo:c:1200",
     "type": "EXAMPLE_OF",
     "weight": 0.6
   }

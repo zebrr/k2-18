@@ -1,4 +1,4 @@
-# Graph Refiner Longrange FORWARD PASS v4.2-gpt-5
+# Graph Refiner Longrange FORWARD PASS v4.2-gpt-5 @ Computer Science
 
 ## Role and Objective
 
@@ -76,12 +76,12 @@ You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `PREREQUISITE` ("`Node A` is a prerequisite for `Node B`"):
   * **Key Question (Answer YES/NO):** Is understanding `Node B` **completely blocked** without first understanding `Node A`? If YES, the edge type is `PREREQUISITE`.
-  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "эластичность," and `Node B` describes "эластичность спроса по доходу").
+  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines a "Graph," and `Node B` describes an algorithm that operates on a graph).
 
 2. Next, check for other semantic relationships:
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or theories for the same economic problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or explanations for the same problem.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -113,29 +113,29 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: PREREQUISITE
-- **Node A**: "Предельная полезность — это дополнительная полезность от потребления еще одной единицы блага. Формула: MU = ΔTU/ΔQ"
-- **Node B**: "Закон убывающей предельной полезности гласит, что с ростом потребления блага предельная полезность каждой дополнительной единицы снижается"  
-- **Relationship**: A→B, PREREQUISITE, weight=0.85 (must understand marginal utility before its law)
+- **Node A**: "A variable is a named storage location for data. In Python: x = 5"
+- **Node B**: "Functions can accept parameters. def greet(name): return f'Hello {name}'"  
+- **Relationship**: A→B, PREREQUISITE, weight=0.85 (variables needed to understand parameters)
 
 Example 2: EXAMPLE_OF
-- **Node A**: "Гиперинфляция в Германии 1923 года: цены удваивались каждые 3.7 дня, денежная масса выросла в триллионы раз"
-- **Node B**: "Гиперинфляция — инфляция с темпами роста цен более 50% в месяц"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete historical example of hyperinflation)
+- **Node A**: "def bubble_sort(arr): for i in range(n): for j in range(0, n-i-1): ..."
+- **Node B**: "Sorting algorithms arrange elements in a specific order"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete implementation of sorting concept)
 
 Example 3: PARALLEL
-- **Node A**: "Фискальная политика использует государственные расходы и налоги для регулирования экономики"
-- **Node B**: "Монетарная политика регулирует экономику через денежную массу и процентные ставки"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative macroeconomic policy tools)
+- **Node A**: "Bubble sort has O(n²) complexity and is stable"
+- **Node B**: "Selection sort also has O(n²) complexity but is not stable"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative sorting approaches)
 
 Example 4: MENTIONS
-- **Node A**: "Мы позже рассмотрим как центральный банк использует операции на открытом рынке"
-- **Node B**: "Операции на открытом рынке — покупка и продажа государственных ценных бумаг центральным банком"
+- **Node A**: "We'll use techniques similar to binary search optimization later"
+- **Node B**: "Binary search divides the sorted array in half at each step"
 - **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
 
 Example 5: `"type": null` - No relationship
-- **Node A**: "Эластичность спроса измеряет чувствительность спроса к изменению цены"
-- **Node B**: "Бухгалтерский баланс состоит из активов и пассивов"
-- **Relationship**: `"type": null` (unrelated topics from different areas)
+- **Node A**: "Python uses indentation for code blocks"
+- **Node B**: "HTTP status codes: 200=OK, 404=Not Found, 500=Server Error"
+- **Relationship**: `"type": null` (unrelated topics)
 
 ## Example: Input/Output
 
@@ -143,27 +143,27 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "econ:c:800",
-    "text": "Спрос и предложение определяют рыночную цену. Когда количество товара, которое покупатели хотят приобрести, равно количеству, которое продавцы готовы продать, достигается равновесие."
+    "id": "algo:c:800",
+    "text": "Bubble sort repeatedly steps through the list, compares adjacent elements and swaps them if they're in wrong order. The pass through the list is repeated until the list is sorted."
   },
   "candidates": [
     {
-      "node_id": "econ:c:1500",
-      "text": "Равновесная цена — это цена, при которой объем спроса равен объему предложения. Графически это точка пересечения кривых спроса и предложения.",
+      "node_id": "algo:c:1500",
+      "text": "def bubble_sort(arr): for i in range(len(arr)): for j in range(0, len(arr)-i-1): if arr[j] > arr[j+1]: arr[j], arr[j+1] = arr[j+1], arr[j]",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "econ:c:2200", 
-      "text": "Эластичность спроса по цене показывает, насколько процентов изменится величина спроса при изменении цены на 1%. Формула: Ed = (ΔQ/Q)/(ΔP/P)",
+      "node_id": "algo:c:2200", 
+      "text": "Selection sort divides the list into sorted and unsorted regions, repeatedly selecting the smallest element from unsorted and moving it to sorted region.",
       "similarity": 0.82,
       "existing_edges": [
-        {"source": "econ:c:800", "target": "econ:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "algo:c:800", "target": "algo:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     },
     {
-      "node_id": "econ:q:2800:1",
-      "text": "Задание: Функция спроса Qd = 100 - 2P, функция предложения Qs = -20 + 3P. Найдите равновесную цену и объем.",
+      "node_id": "algo:q:2800:1",
+      "text": "Quiz: What is the time complexity of bubble sort? Why does it perform poorly on large datasets? Implement an optimized version that stops early if no swaps occur.",
       "similarity": 0.75,
       "existing_edges": []
     }
@@ -175,20 +175,20 @@ Output:
 ```jsonc
 [
   {
-    "source": "econ:c:800",
-    "target": "econ:c:1500",
-    "type": "PREREQUISITE", // Supply and demand concept is prerequisite for equilibrium price
-    "weight": 0.9
+    "source": "algo:c:800",
+    "target": "algo:c:1500",
+    "type": "EXAMPLE_OF", // Bubble sort implementation is example of sorting concept
+    "weight": 0.75
   },
   {
-    "source": "econ:c:800",
-    "target": "econ:c:2200",
-    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are fundamental market concepts)
-    "weight": 0.65
+    "source": "algo:c:800",
+    "target": "algo:c:2200",
+    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are sorting algorithms)
+    "weight": 0.7
   },
   {
-    "source": "econ:c:800",
-    "target": "econ:q:2800:1",
+    "source": "algo:c:800",
+    "target": "algo:q:2800:1",
     "type": null // Could not TEST forward!
   }
 ]

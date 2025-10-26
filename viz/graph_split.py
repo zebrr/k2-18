@@ -11,7 +11,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -254,23 +254,36 @@ def sort_nodes(nodes: List[Dict]) -> List[Dict]:
 
 
 def create_cluster_metadata(
-    cluster_id: int, node_count: int, edge_count: int, original_title: str
+    cluster_id: int,
+    node_count: int,
+    edge_count: int,
+    original_title: str,
+    inter_cluster_links: Optional[Dict[str, List[Dict]]] = None,
 ) -> Dict:
-    """Create new _meta section with subtitle.
+    """Create new _meta section with subtitle and optional inter-cluster links.
 
     Args:
         cluster_id: Cluster ID
         node_count: Number of nodes in cluster
         edge_count: Number of edges in cluster
         original_title: Title from source graph
+        inter_cluster_links: Optional dict with "incoming" and "outgoing" lists
 
     Returns:
-        New _meta dictionary
+        New _meta dictionary with optional inter_cluster_links section
     """
-    return {
+    meta = {
         "title": original_title,
         "subtitle": f"Cluster {cluster_id} | Nodes {node_count} | Edges {edge_count}",
     }
+
+    # Add inter_cluster_links only if present and non-empty
+    if inter_cluster_links and (
+        inter_cluster_links.get("incoming") or inter_cluster_links.get("outgoing")
+    ):
+        meta["inter_cluster_links"] = inter_cluster_links
+
+    return meta
 
 
 def save_cluster_graph(
@@ -318,6 +331,151 @@ def save_cluster_graph(
         sys.exit(EXIT_IO_ERROR)
 
 
+def find_inter_cluster_links(
+    graph_data: Dict, cluster_map: Dict[str, int], logger: logging.Logger
+) -> Dict[int, Dict[str, List[Dict]]]:
+    """Find PREREQUISITE and ELABORATES links between concepts from different clusters.
+
+    Args:
+        graph_data: Full graph with nodes and edges
+        cluster_map: Mapping {node_id: cluster_id}
+        logger: Logger instance
+
+    Returns:
+        Dictionary mapping cluster_id to {"incoming": [...], "outgoing": [...]}
+        Each link contains: source, source_text, source_importance, target,
+        target_text, target_importance, type, weight, conditions (optional),
+        and from_cluster/to_cluster depending on direction
+    """
+    all_nodes = graph_data.get("nodes", [])
+    all_edges = graph_data.get("edges", [])
+
+    # Create node_map for fast lookup
+    node_map = {node["id"]: node for node in all_nodes}
+
+    # Initialize result structure
+    result: Dict[int, Dict[str, List[Dict]]] = {}
+
+    # Process each edge
+    for edge in all_edges:
+        # Filter edges by type (expand to 4 types)
+        edge_type = edge.get("type")
+        allowed_types = {"PREREQUISITE", "ELABORATES", "EXAMPLE_OF", "TESTS"}
+        if edge_type not in allowed_types:
+            continue
+
+        # Get source and target nodes
+        source_id = edge.get("source")
+        target_id = edge.get("target")
+
+        source_node = node_map.get(source_id)
+        target_node = node_map.get(target_id)
+
+        # Skip if nodes not found
+        if not source_node:
+            logger.warning(f"Source node {source_id} not found in graph")
+            continue
+        if not target_node:
+            logger.warning(f"Target node {target_id} not found in graph")
+            continue
+
+        source_type = source_node.get("type")
+        target_type = target_node.get("type")
+
+        # Type-specific node requirements
+        if edge_type == "TESTS":
+            # TESTS requires source to be Assessment
+            if source_type != "Assessment":
+                continue
+        else:
+            # PREREQUISITE, ELABORATES, EXAMPLE_OF require at least one Concept
+            if source_type != "Concept" and target_type != "Concept":
+                continue
+
+        # Get cluster IDs
+        source_cluster = cluster_map.get(source_id)
+        target_cluster = cluster_map.get(target_id)
+
+        # Skip if cluster_id missing
+        if source_cluster is None:
+            logger.warning(f"Node {source_id} missing cluster_id")
+            continue
+        if target_cluster is None:
+            logger.warning(f"Node {target_id} missing cluster_id")
+            continue
+
+        # Skip if same cluster (intra-cluster link)
+        if source_cluster == target_cluster:
+            continue
+
+        # Get node attributes with fallbacks and warnings
+        source_text = source_node.get("text")
+        if not source_text:
+            logger.warning(f"Node {source_id} missing text field, using node_id")
+            source_text = source_id
+
+        target_text = target_node.get("text")
+        if not target_text:
+            logger.warning(f"Node {target_id} missing text field, using node_id")
+            target_text = target_id
+
+        source_importance = source_node.get("educational_importance")
+        if source_importance is None:
+            logger.warning(f"Node {source_id} missing educational_importance, using 0.0")
+            source_importance = 0.0
+
+        target_importance = target_node.get("educational_importance")
+        if target_importance is None:
+            logger.warning(f"Node {target_id} missing educational_importance, using 0.0")
+            target_importance = 0.0
+
+        # Create base link record
+        link = {
+            "source": source_id,
+            "source_text": source_text,
+            "source_type": source_type,
+            "source_importance": source_importance,
+            "target": target_id,
+            "target_text": target_text,
+            "target_type": target_type,
+            "target_importance": target_importance,
+            "type": edge_type,
+            "weight": edge.get("weight", 1.0),
+        }
+
+        # Add conditions only if present
+        if "conditions" in edge:
+            link["conditions"] = edge["conditions"]
+
+        # Add to target_cluster incoming links
+        if target_cluster not in result:
+            result[target_cluster] = {"incoming": [], "outgoing": []}
+
+        incoming_link = link.copy()
+        incoming_link["from_cluster"] = source_cluster
+        result[target_cluster]["incoming"].append(incoming_link)
+
+        # Add to source_cluster outgoing links
+        if source_cluster not in result:
+            result[source_cluster] = {"incoming": [], "outgoing": []}
+
+        outgoing_link = link.copy()
+        outgoing_link["to_cluster"] = target_cluster
+        result[source_cluster]["outgoing"].append(outgoing_link)
+
+    # Select top-3 for each direction, sorted by source_importance
+    for cluster_id in result:
+        # Sort incoming by source_importance (descending) and take top 3
+        result[cluster_id]["incoming"].sort(key=lambda x: x["source_importance"], reverse=True)
+        result[cluster_id]["incoming"] = result[cluster_id]["incoming"][:3]
+
+        # Sort outgoing by source_importance (descending) and take top 3
+        result[cluster_id]["outgoing"].sort(key=lambda x: x["source_importance"], reverse=True)
+        result[cluster_id]["outgoing"] = result[cluster_id]["outgoing"][:3]
+
+    return result
+
+
 def main() -> int:
     """Main entry point."""
     # Setup console encoding
@@ -351,6 +509,19 @@ def main() -> int:
         return EXIT_SUCCESS
 
     _log("INFO", f"Found {len(cluster_ids)} clusters")
+
+    # Find all inter-cluster links (PREREQUISITE and ELABORATES)
+    logger.info("Finding inter-cluster links (PREREQUISITE, ELABORATES)...")
+    _log("INFO", "Finding inter-cluster links (PREREQUISITE, ELABORATES)...")
+
+    # Create cluster_map for fast lookup
+    cluster_map = {node["id"]: node.get("cluster_id") for node in graph_data.get("nodes", [])}
+
+    all_inter_links = find_inter_cluster_links(graph_data, cluster_map, logger)
+
+    logger.info(f"Found inter-cluster links for {len(all_inter_links)} clusters")
+    _log("INFO", f"Found inter-cluster links for {len(all_inter_links)} clusters")
+
     _log("", "")  # Blank line
     _log("", "Processing clusters:")
 
@@ -375,9 +546,16 @@ def main() -> int:
         # Sort nodes (Concepts first)
         cluster_graph["nodes"] = sort_nodes(cluster_graph["nodes"])
 
-        # Create metadata (DELETE old, CREATE new)
+        # Get inter-cluster links for this cluster
+        inter_links = all_inter_links.get(cluster_id, {"incoming": [], "outgoing": []})
+
+        # Create metadata with inter-cluster links
         cluster_graph["_meta"] = create_cluster_metadata(
-            cluster_id, node_count, edge_count, original_title
+            cluster_id=cluster_id,
+            node_count=node_count,
+            edge_count=edge_count,
+            original_title=original_title,
+            inter_cluster_links=inter_links,
         )
 
         # Save cluster graph
@@ -389,6 +567,15 @@ def main() -> int:
             f"Cluster {cluster_id}: {node_count} nodes, {edge_count} edges kept, "
             f"{inter_cluster_count} inter-cluster edges removed",
         )
+
+        # Log inter-cluster links statistics
+        if inter_links["incoming"] or inter_links["outgoing"]:
+            _log(
+                "INFO",
+                f"  └─ Inter-cluster links: "
+                f"{len(inter_links['incoming'])} incoming, "
+                f"{len(inter_links['outgoing'])} outgoing",
+            )
 
         files_created += 1
 

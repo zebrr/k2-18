@@ -49,10 +49,14 @@ python -m viz.graph_split
 [12:34:56] INFO     | Loading: LearningChunkGraph_wow.json
 [12:34:56] INFO     | Graph: 255 nodes, 847 edges
 [12:34:56] INFO     | Found 16 clusters
+[12:34:56] INFO     | Finding inter-cluster links (PREREQUISITE, ELABORATES)...
+[12:34:56] INFO     | Found inter-cluster links for 14 clusters
 
 Processing clusters:
 [12:34:56] INFO     | Cluster 0: 45 nodes, 123 edges kept, 34 inter-cluster edges removed
+[12:34:56] INFO     |   └─ Inter-cluster links: 0 incoming, 3 outgoing
 [12:34:56] INFO     | Cluster 1: 32 nodes, 87 edges kept, 21 inter-cluster edges removed
+[12:34:56] INFO     |   └─ Inter-cluster links: 2 incoming, 1 outgoing
 [12:34:56] WARNING  | Skipping cluster 3: only 1 node
 [12:34:56] INFO     | Cluster 2: 28 nodes, 76 edges kept, 18 inter-cluster edges removed
 ...
@@ -117,11 +121,89 @@ For each cluster, calculate and display:
 - Edge count: edges kept (both endpoints in cluster)
 - Inter-cluster edges: edges removed (exactly one endpoint in cluster)
 
-#### 7. Boundary Cases
+#### 7. Find Inter-Cluster Links
+- Extract all PREREQUISITE and ELABORATES edges between Concept nodes from different clusters
+- For each cluster, identify top-3 incoming and top-3 outgoing links
+- Sort by source node's educational_importance (descending)
+- Include both link types without artificial priority
+
+See detailed algorithm in "Inter-Cluster Links Metadata" section below.
+
+#### 8. Boundary Cases
 - **Cluster with 1 node, 0 edges:**
   - Skip file creation
   - Print WARNING to console: "Skipping cluster {id}: only 1 node"
 - **Processing order:** Sort clusters by ID ascending (0, 1, 2, ...)
+
+## Inter-Cluster Links Metadata
+
+### Purpose
+Preserve semantic dependencies between clusters to enable navigation and content generation.
+
+### Link Types Included
+- **PREREQUISITE** (≥0.80 weight) - Learning order dependencies (A must be understood before B)
+- **ELABORATES** (0.50-0.75 weight) - Conceptual depth relationships (B deepens understanding of A)
+- **EXAMPLE_OF** (0.50-0.75 weight) - Illustrative examples and demonstrations
+- **TESTS** (≥0.80 weight) - Assessment relationships (A tests understanding of B)
+
+Other edge types (PARALLEL, HINT_FORWARD, REFER_BACK, etc.) are excluded as they don't affect learning trajectory.
+
+### Algorithm
+For each cluster, find top-3 inter-cluster links in each direction:
+- **incoming**: Concepts from other clusters that are prerequisites for or elaborate on concepts in this cluster
+- **outgoing**: Concepts in this cluster that are prerequisites for or elaborate on concepts in other clusters
+
+### Selection Criteria
+1. Edge types: PREREQUISITE, ELABORATES, EXAMPLE_OF, TESTS
+2. Node requirements:
+   - For TESTS: source must be Assessment (target can be any type)
+   - For others: at least one node must be Concept (source OR target)
+3. Source and target must be in different clusters
+4. Sort by `educational_importance` of source node (descending)
+5. Keep top 3 for each direction (no artificial priority by edge type)
+
+### Metadata Format
+```json
+{
+  "_meta": {
+    "title": "Course Title",
+    "subtitle": "Cluster 1 | Nodes 28 | Edges 76",
+    "inter_cluster_links": {
+      "incoming": [
+        {
+          "from_cluster": 0,
+          "source": "concept_id",
+          "source_text": "Concept Name",
+          "source_type": "Concept",
+          "source_importance": 0.045,
+          "target": "chunk_id",
+          "target_text": "Chunk content...",
+          "target_type": "Chunk",
+          "target_importance": 0.032,
+          "type": "PREREQUISITE",
+          "weight": 0.9,
+          "conditions": "Optional semantic explanation"
+        }
+      ],
+      "outgoing": [...]
+    }
+  }
+}
+```
+
+### Fields
+- `from_cluster`/`to_cluster` (int) - ID of the other cluster
+- `source` (str) - Source node ID
+- `source_text` (str) - Source node text (for readability)
+- `source_type` (str) - Source node type ("Concept", "Chunk", or "Assessment")
+- `source_importance` (float) - Source educational_importance (used for sorting)
+- `target` (str) - Target node ID
+- `target_text` (str) - Target node text (for readability)
+- `target_type` (str) - Target node type ("Concept", "Chunk", or "Assessment")
+- `target_importance` (float) - Target educational_importance (full context)
+- `type` (str) - Edge type ("PREREQUISITE", "ELABORATES", "EXAMPLE_OF", or "TESTS")
+- `weight` (float) - Edge weight [0.0-1.0]
+- `conditions` (str, optional) - Semantic explanation of the relationship
 
 ## Public API
 
@@ -179,19 +261,41 @@ Sort nodes: Concepts first (by id alphabetically), then others (preserve order).
   - Sort Concepts by 'id' field alphabetically
   - Concatenate: Concepts + Others (original order preserved)
 
-### create_cluster_metadata(cluster_id: int, node_count: int, edge_count: int, original_title: str) -> Dict
-Create new _meta section with subtitle.
+### find_inter_cluster_links(graph_data: Dict, cluster_map: Dict[str, int], logger: Logger) -> Dict[int, Dict[str, List[Dict]]]
+Find PREREQUISITE, ELABORATES, EXAMPLE_OF, and TESTS links between nodes from different clusters.
+- **Input**:
+  - graph_data (Dict) - Full graph with nodes and edges
+  - cluster_map (Dict[str, int]) - Mapping {node_id: cluster_id}
+  - logger (Logger) - Logger instance
+- **Returns**: Dictionary mapping cluster_id to {"incoming": [...], "outgoing": [...]}
+  - Each link contains: source, source_text, source_type, source_importance, target, target_text, target_type, target_importance, type, weight, conditions (optional), and from_cluster/to_cluster depending on direction
+- **Algorithm**:
+  1. Filter edges by type (PREREQUISITE, ELABORATES, EXAMPLE_OF, TESTS)
+  2. Filter nodes by type:
+     - For TESTS: source must be Assessment
+     - For others: at least one node must be Concept
+  3. Find edges crossing cluster boundaries
+  4. Sort by source node educational_importance
+  5. Keep top-3 for each direction per cluster
+
+### create_cluster_metadata(cluster_id: int, node_count: int, edge_count: int, original_title: str, inter_cluster_links: Optional[Dict[str, List[Dict]]] = None) -> Dict
+Create new _meta section with subtitle and optional inter-cluster links.
 - **Input**:
   - cluster_id (int) - Cluster ID
   - node_count (int) - Number of nodes in cluster
   - edge_count (int) - Number of edges in cluster
   - original_title (str) - Title from source graph
-- **Returns**: New _meta dictionary
+  - inter_cluster_links (Dict, optional) - Dict with "incoming" and "outgoing" lists
+- **Returns**: New _meta dictionary with optional inter_cluster_links section
 - **Format**:
   ```json
   {
     "title": "<original_title>",
-    "subtitle": "Cluster {cluster_id} | Nodes {node_count} | Edges {edge_count}"
+    "subtitle": "Cluster {cluster_id} | Nodes {node_count} | Edges {edge_count}",
+    "inter_cluster_links": {  // optional, only if links exist
+      "incoming": [...],
+      "outgoing": [...]
+    }
   }
   ```
 

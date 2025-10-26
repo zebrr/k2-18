@@ -443,6 +443,29 @@ def test_metadata_in_output(tmp_path, sample_graph):
     # OLD metadata should NOT be present (complete replacement)
     assert "version" not in data["_meta"]
 
+    # Check inter_cluster_links format if present
+    if "inter_cluster_links" in data["_meta"]:
+        links = data["_meta"]["inter_cluster_links"]
+        assert "incoming" in links
+        assert "outgoing" in links
+
+        # Verify structure of links
+        for direction in ["incoming", "outgoing"]:
+            for link in links[direction]:
+                assert "source" in link
+                assert "source_text" in link
+                assert "source_type" in link
+                assert link["source_type"] in ["Concept", "Chunk", "Assessment"]
+                assert "source_importance" in link
+                assert "target" in link
+                assert "target_text" in link
+                assert "target_type" in link
+                assert link["target_type"] in ["Concept", "Chunk", "Assessment"]
+                assert "target_importance" in link
+                assert "type" in link
+                assert link["type"] in ["PREREQUISITE", "ELABORATES", "EXAMPLE_OF", "TESTS"]
+                assert "weight" in link
+
 
 # Boundary Cases
 
@@ -505,3 +528,617 @@ def test_all_nodes_one_cluster():
     assert node_count == 3
     assert edge_count == 2
     assert inter_cluster_count == 0  # No other clusters, so no inter-cluster edges
+
+
+# New Tests for Inter-Cluster Links
+
+
+def test_find_inter_cluster_links_four_types():
+    """Test finding all 4 allowed link types with proper node filtering."""
+    import logging
+
+    from viz.graph_split import find_inter_cluster_links
+
+    logger = logging.getLogger("test")
+
+    # Create test graph with all 4 edge types and different node type combinations
+    # Cluster 0: concept_a (Concept), chunk_e (Chunk)
+    # Cluster 1: concept_b (Concept), chunk_f (Chunk), assessment_g (Assessment)
+    # Cluster 2: concept_d (Concept)
+    graph = {
+        "nodes": [
+            {
+                "id": "concept_a",
+                "type": "Concept",
+                "text": "Concept A",
+                "educational_importance": 0.05,
+                "node_offset": 0,
+            },
+            {
+                "id": "concept_b",
+                "type": "Concept",
+                "text": "Concept B",
+                "educational_importance": 0.03,
+                "node_offset": 10,
+            },
+            {
+                "id": "concept_d",
+                "type": "Concept",
+                "text": "Concept D",
+                "educational_importance": 0.02,
+                "node_offset": 20,
+            },
+            {
+                "id": "chunk_e",
+                "type": "Chunk",
+                "text": "Chunk E",
+                "educational_importance": 0.01,
+                "node_offset": 30,
+            },
+            {
+                "id": "chunk_f",
+                "type": "Chunk",
+                "text": "Chunk F",
+                "educational_importance": 0.04,
+                "node_offset": 40,
+            },
+            {
+                "id": "assessment_g",
+                "type": "Assessment",
+                "text": "Assessment G",
+                "educational_importance": 0.06,
+                "node_offset": 50,
+            },
+            {
+                "id": "chunk_i",
+                "type": "Chunk",
+                "text": "Chunk I",
+                "educational_importance": 0.001,
+                "node_offset": 60,
+            },
+            {
+                "id": "chunk_j",
+                "type": "Chunk",
+                "text": "Chunk J",
+                "educational_importance": 0.002,
+                "node_offset": 70,
+            },
+        ],
+        "edges": [
+            # 1. PREREQUISITE: Concept A (c0) -> Concept B (c1) - should be included
+            {"source": "concept_a", "target": "concept_b", "type": "PREREQUISITE", "weight": 0.9},
+            # 2. ELABORATES: Chunk F (c1) -> Concept D (c2) - should be included (has Concept)
+            {"source": "chunk_f", "target": "concept_d", "type": "ELABORATES", "weight": 0.8},
+            # 3. EXAMPLE_OF: Chunk E (c0) -> Concept B (c1) - should be included (has Concept)
+            {"source": "chunk_e", "target": "concept_b", "type": "EXAMPLE_OF", "weight": 0.7},
+            # 4. TESTS: Assessment G (c1) -> Concept D (c2) - should be included (source=Assessment)
+            {"source": "assessment_g", "target": "concept_d", "type": "TESTS", "weight": 0.85},
+            # 5. PARALLEL: should be IGNORED (wrong edge type)
+            {"source": "concept_a", "target": "concept_d", "type": "PARALLEL", "weight": 0.6},
+            # 6. EXAMPLE_OF: Chunk I (c0) -> Chunk J (c1) - should be IGNORED (no Concept)
+            {"source": "chunk_i", "target": "chunk_j", "type": "EXAMPLE_OF", "weight": 0.5},
+        ],
+    }
+
+    cluster_map = {
+        "concept_a": 0,
+        "chunk_e": 0,
+        "chunk_i": 0,
+        "concept_b": 1,
+        "chunk_f": 1,
+        "assessment_g": 1,
+        "chunk_j": 1,
+        "concept_d": 2,
+    }
+
+    result = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Collect all edge types found
+    all_types = set()
+    for cluster_id in result:
+        for link in result[cluster_id]["incoming"] + result[cluster_id]["outgoing"]:
+            all_types.add(link["type"])
+
+    # Verify all 4 types are captured
+    assert "PREREQUISITE" in all_types
+    assert "ELABORATES" in all_types
+    assert "EXAMPLE_OF" in all_types
+    assert "TESTS" in all_types
+
+    # Verify PARALLEL is not included
+    assert "PARALLEL" not in all_types
+
+    # Verify Chunk->Chunk EXAMPLE_OF is not included
+    all_sources = []
+    for cluster_id in result:
+        all_sources.extend([link["source"] for link in result[cluster_id]["incoming"]])
+        all_sources.extend([link["source"] for link in result[cluster_id]["outgoing"]])
+
+    assert "chunk_i" not in all_sources  # Chunk->Chunk EXAMPLE_OF ignored
+
+    # Verify source_type and target_type fields are present in all links
+    for cluster_id in result:
+        for link in result[cluster_id]["incoming"] + result[cluster_id]["outgoing"]:
+            assert "source_type" in link
+            assert link["source_type"] in ["Concept", "Chunk", "Assessment"]
+            assert "target_type" in link
+            assert link["target_type"] in ["Concept", "Chunk", "Assessment"]
+
+
+def test_inter_cluster_links_top3_selection():
+    """Test that only top-3 links by source importance are kept."""
+    import logging
+
+    from viz.graph_split import find_inter_cluster_links
+
+    logger = logging.getLogger("test")
+
+    # Create graph with 5 concepts in cluster 0, all connecting to 1 concept in cluster 1
+    # Different importance values: 0.05, 0.04, 0.03, 0.02, 0.01
+    graph = {
+        "nodes": [
+            {
+                "id": "c1",
+                "type": "Concept",
+                "text": "C1",
+                "educational_importance": 0.05,
+                "node_offset": 0,
+            },
+            {
+                "id": "c2",
+                "type": "Concept",
+                "text": "C2",
+                "educational_importance": 0.04,
+                "node_offset": 10,
+            },
+            {
+                "id": "c3",
+                "type": "Concept",
+                "text": "C3",
+                "educational_importance": 0.03,
+                "node_offset": 20,
+            },
+            {
+                "id": "c4",
+                "type": "Concept",
+                "text": "C4",
+                "educational_importance": 0.02,
+                "node_offset": 30,
+            },
+            {
+                "id": "c5",
+                "type": "Concept",
+                "text": "C5",
+                "educational_importance": 0.01,
+                "node_offset": 40,
+            },
+            {
+                "id": "target",
+                "type": "Concept",
+                "text": "Target",
+                "educational_importance": 0.06,
+                "node_offset": 50,
+            },
+        ],
+        "edges": [
+            {"source": "c1", "target": "target", "type": "PREREQUISITE", "weight": 0.9},
+            {"source": "c2", "target": "target", "type": "ELABORATES", "weight": 0.8},
+            {"source": "c3", "target": "target", "type": "PREREQUISITE", "weight": 0.7},
+            {"source": "c4", "target": "target", "type": "ELABORATES", "weight": 0.6},
+            {"source": "c5", "target": "target", "type": "PREREQUISITE", "weight": 0.5},
+        ],
+    }
+
+    cluster_map = {"c1": 0, "c2": 0, "c3": 0, "c4": 0, "c5": 0, "target": 1}
+
+    result = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Cluster 1 should have exactly 3 incoming links
+    assert len(result[1]["incoming"]) == 3
+
+    # Top-3 by source_importance: c1 (0.05), c2 (0.04), c3 (0.03)
+    incoming = result[1]["incoming"]
+    assert incoming[0]["source"] == "c1"
+    assert incoming[0]["source_importance"] == 0.05
+    assert incoming[1]["source"] == "c2"
+    assert incoming[1]["source_importance"] == 0.04
+    assert incoming[2]["source"] == "c3"
+    assert incoming[2]["source_importance"] == 0.03
+
+    # c4 and c5 should NOT be included (lower importance)
+    source_ids = [link["source"] for link in incoming]
+    assert "c4" not in source_ids
+    assert "c5" not in source_ids
+
+    # Verify no artificial priority by edge type (mix of PREREQUISITE and ELABORATES)
+    types = [link["type"] for link in incoming]
+    assert "PREREQUISITE" in types  # c1
+    assert "ELABORATES" in types  # c2
+
+
+def test_inter_cluster_links_importance_fields():
+    """Test that both source_importance and target_importance are included."""
+    import logging
+
+    from viz.graph_split import find_inter_cluster_links
+
+    logger = logging.getLogger("test")
+
+    graph = {
+        "nodes": [
+            {
+                "id": "src",
+                "type": "Concept",
+                "text": "Source",
+                "educational_importance": 0.05,
+                "node_offset": 0,
+            },
+            {
+                "id": "tgt",
+                "type": "Concept",
+                "text": "Target",
+                "educational_importance": 0.03,
+                "node_offset": 10,
+            },
+        ],
+        "edges": [
+            {
+                "source": "src",
+                "target": "tgt",
+                "type": "PREREQUISITE",
+                "weight": 0.9,
+                "conditions": "Test condition",
+            },
+        ],
+    }
+
+    cluster_map = {"src": 0, "tgt": 1}
+
+    result = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Check incoming link for cluster 1
+    link = result[1]["incoming"][0]
+
+    # Verify all required fields
+    assert "source" in link
+    assert link["source"] == "src"
+    assert "source_text" in link
+    assert link["source_text"] == "Source"
+    assert "source_importance" in link
+    assert link["source_importance"] == 0.05
+
+    assert "target" in link
+    assert link["target"] == "tgt"
+    assert "target_text" in link
+    assert link["target_text"] == "Target"
+    assert "target_importance" in link
+    assert link["target_importance"] == 0.03
+
+    assert "type" in link
+    assert link["type"] == "PREREQUISITE"
+    assert "weight" in link
+    assert link["weight"] == 0.9
+    assert "conditions" in link
+    assert link["conditions"] == "Test condition"
+
+    assert "from_cluster" in link
+    assert link["from_cluster"] == 0
+
+
+def test_inter_cluster_links_node_type_filtering():
+    """Test that node type requirements are enforced correctly."""
+    import logging
+
+    from viz.graph_split import find_inter_cluster_links
+
+    logger = logging.getLogger("test")
+
+    # Create graph with various node type combinations to test filtering rules
+    graph = {
+        "nodes": [
+            # Cluster 0
+            {
+                "id": "concept_1",
+                "type": "Concept",
+                "text": "C1",
+                "educational_importance": 0.05,
+                "node_offset": 0,
+            },
+            {
+                "id": "chunk_1",
+                "type": "Chunk",
+                "text": "Ch1",
+                "educational_importance": 0.04,
+                "node_offset": 10,
+            },
+            {
+                "id": "assessment_1",
+                "type": "Assessment",
+                "text": "A1",
+                "educational_importance": 0.03,
+                "node_offset": 20,
+            },
+            # Cluster 1
+            {
+                "id": "concept_2",
+                "type": "Concept",
+                "text": "C2",
+                "educational_importance": 0.02,
+                "node_offset": 30,
+            },
+            {
+                "id": "chunk_2",
+                "type": "Chunk",
+                "text": "Ch2",
+                "educational_importance": 0.01,
+                "node_offset": 40,
+            },
+            {
+                "id": "assessment_2",
+                "type": "Assessment",
+                "text": "A2",
+                "educational_importance": 0.06,
+                "node_offset": 50,
+            },
+        ],
+        "edges": [
+            # Test case 1: TESTS with Assessment source -> INCLUDED
+            {"source": "assessment_1", "target": "concept_2", "type": "TESTS", "weight": 0.9},
+            # Test case 2: TESTS with Chunk source -> EXCLUDED
+            {"source": "chunk_1", "target": "concept_2", "type": "TESTS", "weight": 0.9},
+            # Test case 3: PREREQUISITE with Concept->Chunk -> INCLUDED (has Concept)
+            {"source": "concept_1", "target": "chunk_2", "type": "PREREQUISITE", "weight": 0.8},
+            # Test case 4: PREREQUISITE with Chunk->Chunk -> EXCLUDED (no Concept)
+            {"source": "chunk_1", "target": "chunk_2", "type": "PREREQUISITE", "weight": 0.8},
+            # Test case 5: EXAMPLE_OF with Assessment->Concept -> INCLUDED (has Concept)
+            {"source": "assessment_2", "target": "concept_1", "type": "EXAMPLE_OF", "weight": 0.7},
+            # Test case 6: EXAMPLE_OF with Chunk->Assessment -> EXCLUDED (no Concept)
+            {"source": "chunk_2", "target": "assessment_1", "type": "EXAMPLE_OF", "weight": 0.7},
+        ],
+    }
+
+    cluster_map = {
+        "concept_1": 0,
+        "chunk_1": 0,
+        "assessment_1": 0,
+        "concept_2": 1,
+        "chunk_2": 1,
+        "assessment_2": 1,
+    }
+
+    result = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Collect all links
+    all_links = []
+    for cluster_id in result:
+        all_links.extend(result[cluster_id]["incoming"])
+        all_links.extend(result[cluster_id]["outgoing"])
+
+    # Test case 1: TESTS with Assessment source -> INCLUDED
+    assert any(
+        link["source"] == "assessment_1" and link["type"] == "TESTS" for link in all_links
+    ), "TESTS with Assessment source should be included"
+
+    # Test case 2: TESTS with Chunk source -> EXCLUDED
+    assert not any(
+        link["source"] == "chunk_1" and link["type"] == "TESTS" for link in all_links
+    ), "TESTS with Chunk source should be excluded"
+
+    # Test case 3: PREREQUISITE with Concept->Chunk -> INCLUDED
+    assert any(
+        link["source"] == "concept_1"
+        and link["target"] == "chunk_2"
+        and link["type"] == "PREREQUISITE"
+        for link in all_links
+    ), "PREREQUISITE with Concept->Chunk should be included"
+
+    # Test case 4: PREREQUISITE with Chunk->Chunk -> EXCLUDED
+    assert not any(
+        link["source"] == "chunk_1"
+        and link["target"] == "chunk_2"
+        and link["type"] == "PREREQUISITE"
+        for link in all_links
+    ), "PREREQUISITE with Chunk->Chunk should be excluded"
+
+    # Test case 5: EXAMPLE_OF with Assessment->Concept -> INCLUDED
+    assert any(
+        link["source"] == "assessment_2"
+        and link["target"] == "concept_1"
+        and link["type"] == "EXAMPLE_OF"
+        for link in all_links
+    ), "EXAMPLE_OF with Assessment->Concept should be included"
+
+    # Test case 6: EXAMPLE_OF with Chunk->Assessment -> EXCLUDED
+    assert not any(
+        link["source"] == "chunk_2"
+        and link["target"] == "assessment_1"
+        and link["type"] == "EXAMPLE_OF"
+        for link in all_links
+    ), "EXAMPLE_OF with Chunk->Assessment should be excluded"
+
+
+def test_inter_cluster_links_type_fields():
+    """Test that source_type and target_type are correctly populated."""
+    import logging
+
+    from viz.graph_split import find_inter_cluster_links
+
+    logger = logging.getLogger("test")
+
+    # Create links with different node type combinations
+    graph = {
+        "nodes": [
+            {
+                "id": "concept_a",
+                "type": "Concept",
+                "text": "CA",
+                "educational_importance": 0.05,
+                "node_offset": 0,
+            },
+            {
+                "id": "chunk_b",
+                "type": "Chunk",
+                "text": "ChB",
+                "educational_importance": 0.04,
+                "node_offset": 10,
+            },
+            {
+                "id": "assessment_c",
+                "type": "Assessment",
+                "text": "AC",
+                "educational_importance": 0.03,
+                "node_offset": 20,
+            },
+            {
+                "id": "concept_d",
+                "type": "Concept",
+                "text": "CD",
+                "educational_importance": 0.02,
+                "node_offset": 30,
+            },
+        ],
+        "edges": [
+            # Concept -> Chunk
+            {"source": "concept_a", "target": "chunk_b", "type": "PREREQUISITE", "weight": 0.9},
+            # Chunk -> Concept
+            {"source": "chunk_b", "target": "concept_d", "type": "ELABORATES", "weight": 0.8},
+            # Assessment -> Concept
+            {"source": "assessment_c", "target": "concept_d", "type": "TESTS", "weight": 0.85},
+        ],
+    }
+
+    cluster_map = {
+        "concept_a": 0,
+        "chunk_b": 1,
+        "assessment_c": 1,
+        "concept_d": 2,
+    }
+
+    result = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Collect all links
+    all_links = []
+    for cluster_id in result:
+        all_links.extend(result[cluster_id]["incoming"])
+        all_links.extend(result[cluster_id]["outgoing"])
+
+    # Find Concept -> Chunk link
+    concept_chunk_link = next(
+        link for link in all_links if link["source"] == "concept_a" and link["target"] == "chunk_b"
+    )
+    assert concept_chunk_link["source_type"] == "Concept"
+    assert concept_chunk_link["target_type"] == "Chunk"
+
+    # Find Chunk -> Concept link
+    chunk_concept_link = next(
+        link for link in all_links if link["source"] == "chunk_b" and link["target"] == "concept_d"
+    )
+    assert chunk_concept_link["source_type"] == "Chunk"
+    assert chunk_concept_link["target_type"] == "Concept"
+
+    # Find Assessment -> Concept link
+    assessment_concept_link = next(
+        link
+        for link in all_links
+        if link["source"] == "assessment_c" and link["target"] == "concept_d"
+    )
+    assert assessment_concept_link["source_type"] == "Assessment"
+    assert assessment_concept_link["target_type"] == "Concept"
+
+
+def test_inter_cluster_links_in_metadata(tmp_path):
+    """Test that inter-cluster links appear in cluster metadata."""
+    import json
+    import logging
+
+    from viz.graph_split import (
+        create_cluster_metadata,
+        extract_cluster,
+        find_inter_cluster_links,
+        save_cluster_graph,
+        sort_nodes,
+    )
+
+    logger = logging.getLogger("test")
+
+    # Create test graph with inter-cluster links
+    graph = {
+        "nodes": [
+            {
+                "id": "concept_a",
+                "type": "Concept",
+                "text": "Concept A",
+                "educational_importance": 0.05,
+                "cluster_id": 0,
+                "node_offset": 0,
+            },
+            {
+                "id": "concept_b",
+                "type": "Concept",
+                "text": "Concept B",
+                "educational_importance": 0.03,
+                "cluster_id": 1,
+                "node_offset": 10,
+            },
+            {
+                "id": "chunk_1",
+                "type": "Chunk",
+                "text": "Content",
+                "cluster_id": 0,
+                "node_offset": 20,
+            },
+        ],
+        "edges": [
+            {"source": "concept_a", "target": "concept_b", "type": "PREREQUISITE", "weight": 0.9},
+        ],
+        "_meta": {"title": "Test Graph"},
+    }
+
+    cluster_map = {"concept_a": 0, "concept_b": 1, "chunk_1": 0}
+
+    # Find inter-cluster links
+    all_inter_links = find_inter_cluster_links(graph, cluster_map, logger)
+
+    # Extract cluster 0
+    cluster_graph, node_count, edge_count, _ = extract_cluster(graph, 0, logger)
+    cluster_graph["nodes"] = sort_nodes(cluster_graph["nodes"])
+
+    # Get inter-cluster links for cluster 0
+    inter_links = all_inter_links.get(0, {"incoming": [], "outgoing": []})
+
+    # Create metadata with inter-cluster links
+    cluster_graph["_meta"] = create_cluster_metadata(
+        cluster_id=0,
+        node_count=node_count,
+        edge_count=edge_count,
+        original_title="Test Graph",
+        inter_cluster_links=inter_links,
+    )
+
+    # Save
+    save_cluster_graph(cluster_graph, 0, tmp_path, logger)
+
+    # Load and verify
+    output_file = tmp_path / "LearningChunkGraph_cluster_0.json"
+    with open(output_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Verify structure
+    assert "_meta" in data
+    assert "inter_cluster_links" in data["_meta"]
+
+    links = data["_meta"]["inter_cluster_links"]
+    assert "incoming" in links
+    assert "outgoing" in links
+
+    # Verify cluster 0 has 1 outgoing link (concept_a -> concept_b)
+    assert len(links["outgoing"]) == 1
+    assert links["outgoing"][0]["source"] == "concept_a"
+    assert links["outgoing"][0]["target"] == "concept_b"
+    assert links["outgoing"][0]["type"] == "PREREQUISITE"
+
+    # Verify both importance fields present
+    assert "source_importance" in links["outgoing"][0]
+    assert links["outgoing"][0]["source_importance"] == 0.05
+    assert "target_importance" in links["outgoing"][0]
+    assert links["outgoing"][0]["target_importance"] == 0.03

@@ -958,12 +958,14 @@ class OpenAIClient:
                         self.logger.error(f"Response {response_id[:12]} was cancelled unexpectedly")
                         raise ValueError("Response was cancelled")
 
-                    elif status == "queued":
+                    ## HOTFIX! OpenAI now returns `in_progress`
+                    elif status == "queued" or status == "in_progress":
                         # Show initial status only once
                         if poll_count == 0:
                             current_time = datetime.now().strftime("%H:%M:%S")
+                            emoji = "⏳" if status == "queued" else "⚙️"
                             print(
-                                f"[{current_time}] QUEUE    | ⏳ Response {response_id[:12]}... in progress"
+                                f"[{current_time}] QUEUE    | {emoji} Response {response_id[:12]}... {status}"
                             )
 
                         # Show progress every 3 checks (~21 sec with poll_interval=7)
@@ -979,7 +981,8 @@ class OpenAIClient:
                                 seconds = elapsed_time % 60
                                 time_str = f"{minutes}m {seconds}s"
 
-                            print(f"[{current_time}] PROGRESS | ⏳ Elapsed: {time_str}")
+                            emoji = "⏳" if status == "queued" else "⚙️"
+                            print(f"[{current_time}] PROGRESS | {emoji} Elapsed: {time_str}")
 
                         # Adaptive polling interval
                         if poll_count < 3:

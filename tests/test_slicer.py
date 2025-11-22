@@ -12,6 +12,7 @@ import json
 # Добавляем src в path для импорта
 import sys
 import tempfile
+import time
 import unicodedata
 from pathlib import Path
 
@@ -218,7 +219,6 @@ class TestValidateConfigParameters:
         valid_config = {
             "slicer": {
                 "max_tokens": 15000,
-                "overlap": 0,
                 "soft_boundary_max_shift": 500,
                 "allowed_extensions": ["json", "txt", "md", "html"],
             }
@@ -239,13 +239,12 @@ class TestValidateConfigParameters:
         config = {
             "slicer": {
                 "max_tokens": 15000,
-                # overlap отсутствует
-                "soft_boundary_max_shift": 500,
+                # soft_boundary_max_shift отсутствует
                 "allowed_extensions": ["txt"],
             }
         }
 
-        with pytest.raises(ValueError, match="Missing required parameter slicer.overlap"):
+        with pytest.raises(ValueError, match="Missing required parameter slicer.soft_boundary_max_shift"):
             validate_config_parameters(config)
 
     def test_invalid_max_tokens(self):
@@ -253,7 +252,6 @@ class TestValidateConfigParameters:
         config = {
             "slicer": {
                 "max_tokens": -100,  # Отрицательное значение
-                "overlap": 0,
                 "soft_boundary_max_shift": 500,
                 "allowed_extensions": ["txt"],
             }
@@ -262,54 +260,12 @@ class TestValidateConfigParameters:
         with pytest.raises(ValueError, match="must be a positive integer"):
             validate_config_parameters(config)
 
-    def test_invalid_overlap(self):
-        """Тест некорректного overlap."""
-        config = {
-            "slicer": {
-                "max_tokens": 15000,
-                "overlap": -5,  # Отрицательное значение
-                "soft_boundary_max_shift": 500,
-                "allowed_extensions": ["txt"],
-            }
-        }
-
-        with pytest.raises(ValueError, match="must be a non-negative integer"):
-            validate_config_parameters(config)
-
-    def test_overlap_greater_than_max_tokens(self):
-        """Тест overlap больше max_tokens."""
-        config = {
-            "slicer": {
-                "max_tokens": 1000,
-                "overlap": 1500,  # Больше max_tokens
-                "soft_boundary_max_shift": 500,
-                "allowed_extensions": ["txt"],
-            }
-        }
-
-        with pytest.raises(ValueError, match="must be less than max_tokens"):
-            validate_config_parameters(config)
-
-    def test_overlap_validation_with_shift(self):
-        """Тест специальной валидации для overlap > 0."""
-        config = {
-            "slicer": {
-                "max_tokens": 15000,
-                "overlap": 1000,
-                "soft_boundary_max_shift": 900,  # Больше overlap*0.8 (800)
-                "allowed_extensions": ["txt"],
-            }
-        }
-
-        with pytest.raises(ValueError, match="must not exceed overlap\\*0\\.8"):
-            validate_config_parameters(config)
 
     def test_empty_allowed_extensions(self):
         """Тест пустого списка расширений."""
         config = {
             "slicer": {
                 "max_tokens": 15000,
-                "overlap": 0,
                 "soft_boundary_max_shift": 500,
                 "allowed_extensions": [],  # Пустой список
             }
@@ -324,10 +280,10 @@ class TestSliceTextWithWindow:
 
     def test_empty_text(self):
         """Тест пустого текста."""
-        result = slice_text_with_window("", 1000, 0, True, 100)
+        result = slice_text_with_window("", 1000, True, 100)
         assert result == []
 
-        result = slice_text_with_window("   ", 1000, 0, True, 100)
+        result = slice_text_with_window("   ", 1000, True, 100)
         assert result == []
 
     def test_text_fits_in_one_slice(self):
@@ -335,7 +291,7 @@ class TestSliceTextWithWindow:
         text = "Короткий текст из нескольких слов."
         max_tokens = 1000
 
-        result = slice_text_with_window(text, max_tokens, 0, True, 100)
+        result = slice_text_with_window(text, max_tokens, True, 100)
 
         assert len(result) == 1
         slice_text, start, end = result[0]
@@ -344,12 +300,12 @@ class TestSliceTextWithWindow:
         assert end == count_tokens(text)
 
     def test_multiple_slices_no_overlap(self):
-        """Тест нескольких слайсов без перекрытий (overlap=0)."""
+        """Тест нескольких слайсов без перекрытий."""
         # Создаем текст, который точно разделится на несколько слайсов
         text = "Слово. " * 50  # Около 100 токенов
         max_tokens = 30
 
-        result = slice_text_with_window(text, max_tokens, 0, False, 0)
+        result = slice_text_with_window(text, max_tokens, False, 0)
 
         # Должно быть несколько слайсов
         assert len(result) > 1
@@ -359,7 +315,7 @@ class TestSliceTextWithWindow:
             current_slice = result[i]
             next_slice = result[i + 1]
 
-            # Конец текущего слайса = начало следующего (overlap=0)
+            # Конец текущего слайса = начало следующего (без перекрытий)
             assert current_slice[2] == next_slice[1]
 
         # Первый слайс начинается с 0
@@ -369,32 +325,14 @@ class TestSliceTextWithWindow:
         total_tokens = count_tokens(text)
         assert result[-1][2] == total_tokens
 
-    def test_multiple_slices_with_overlap(self):
-        """Тест нескольких слайсов с перекрытиями (overlap>0)."""
-        text = "Токен " * 50  # Около 50 токенов
-        max_tokens = 20
-        overlap = 5
-
-        result = slice_text_with_window(text, max_tokens, overlap, False, 0)
-
-        assert len(result) > 1
-
-        # Проверяем перекрытия
-        for i in range(len(result) - 1):
-            current_slice = result[i]
-            next_slice = result[i + 1]
-
-            # Начало следующего = конец текущего - overlap
-            expected_next_start = current_slice[2] - overlap
-            assert next_slice[1] == expected_next_start
 
     def test_no_token_loss(self):
         """Тест что токены не теряются при разбиении."""
         text = "Тестовый текст для проверки что все токены сохраняются при разбиении на слайсы."
         max_tokens = 15
 
-        # Тест для overlap=0
-        result_no_overlap = slice_text_with_window(text, max_tokens, 0, True, 10)
+        # Тест без перекрытий
+        result_no_overlap = slice_text_with_window(text, max_tokens, True, 10)
 
         # Собираем все токены из слайсов
         total_tokens_from_slices = 0
@@ -415,7 +353,7 @@ class TestSliceTextWithWindow:
         text = "Один два три четыре пять шесть семь восемь девять десять."
         max_tokens = 8
 
-        result = slice_text_with_window(text, max_tokens, 0, False, 0)
+        result = slice_text_with_window(text, max_tokens, False, 0)
 
         # Проверяем что slice_token_start inclusive, slice_token_end exclusive
         import tiktoken
@@ -444,10 +382,10 @@ class TestSliceTextWithWindow:
         max_tokens = 30
 
         # Без soft boundaries
-        result_hard = slice_text_with_window(text, max_tokens, 0, False, 0)
+        result_hard = slice_text_with_window(text, max_tokens, False, 0)
 
         # С soft boundaries
-        result_soft = slice_text_with_window(text, max_tokens, 0, True, 20)
+        result_soft = slice_text_with_window(text, max_tokens, True, 20)
 
         # Soft boundaries могут дать другое разбиение
         # (не всегда, но в общем случае возможно)
@@ -465,7 +403,7 @@ class TestSliceTextWithWindow:
         text = "Привет мир! 🌍 Это тест эмодзи и юникода: ñáéíóú çñ"
         max_tokens = 20
 
-        result = slice_text_with_window(text, max_tokens, 0, True, 5)
+        result = slice_text_with_window(text, max_tokens, True, 5)
 
         # Основная проверка - не должно быть исключений
         assert len(result) >= 1
@@ -643,7 +581,6 @@ class TestProcessFile:
         config = {
             "slicer": {
                 "max_tokens": 50,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt"],
@@ -670,7 +607,6 @@ class TestProcessFile:
         config = {
             "slicer": {
                 "max_tokens": 50,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt"],
@@ -693,7 +629,6 @@ class TestProcessFile:
         config = {
             "slicer": {
                 "max_tokens": 50,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt", "md"],
@@ -706,3 +641,100 @@ class TestProcessFile:
             assert "Unsupported file extension" in str(exc_info.value)
         finally:
             temp_path.unlink()
+
+
+class TestPerformance:
+    """Тесты производительности для оптимизированной версии."""
+
+    @pytest.fixture
+    def large_text(self):
+        """Генерирует большой текст для тестов производительности (около 2MB)."""
+        return "Test paragraph with some content. " * 50000  # ~2MB
+
+    def test_large_file_performance(self, large_text):
+        """Тест что большие файлы обрабатываются эффективно."""
+        # Должен завершиться без зависания
+        start_time = time.time()
+        slices = slice_text_with_window(large_text, 5000, True, 500)
+        elapsed = time.time() - start_time
+
+        assert elapsed < 10.0  # Должен завершиться менее чем за 10 секунд
+        assert len(slices) > 0
+
+        # Проверяем что нет пробелов в покрытии токенов
+        for i in range(1, len(slices)):
+            assert slices[i][1] == slices[i-1][2]  # start == previous end
+
+    def test_incremental_tokenization_consistency(self):
+        """Тест что инкрементальная токенизация дает идентичные границы."""
+        # Тестовый текст с известными границами
+        test_text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph." * 100
+
+        # Обрабатываем с новым инкрементальным подходом
+        slices = slice_text_with_window(test_text, 100, True, 20)
+
+        # Проверяем что границы на разрывах параграфов
+        for slice_text, _, _ in slices:
+            # Должны предпочтительно заканчиваться на границе параграфа
+            if slice_text != test_text[-len(slice_text):]:  # Если не последний слайс
+                assert (
+                    slice_text.endswith('.')
+                    or slice_text.endswith('\n\n')
+                    or slice_text.endswith('paragraph.\n')
+                ), f"Unexpected boundary: ...{slice_text[-30:]}"
+
+    def test_no_token_gaps(self):
+        """Тест что нет пробелов в токенах между слайсами."""
+        test_text = "This is a test. " * 1000
+
+        slices = slice_text_with_window(test_text, 50, False, 0)
+
+        # Проверяем последовательность токенов
+        prev_end = 0
+        for _, start, end in slices:
+            assert start == prev_end, f"Gap found: prev_end={prev_end}, start={start}"
+            assert end > start, f"Invalid slice: start={start}, end={end}"
+            prev_end = end
+
+    def test_deterministic_boundaries(self):
+        """Тест что границы детерминированы при повторных запусках."""
+        test_text = "Test sentence. Another sentence. " * 500
+
+        # Первый запуск
+        slices1 = slice_text_with_window(test_text, 100, True, 50)
+
+        # Второй запуск
+        slices2 = slice_text_with_window(test_text, 100, True, 50)
+
+        # Должны быть идентичны
+        assert len(slices1) == len(slices2)
+        for (text1, start1, end1), (text2, start2, end2) in zip(slices1, slices2):
+            assert text1 == text2
+            assert start1 == start2
+            assert end1 == end2
+
+    def test_memory_efficiency(self, large_text):
+        """Тест что память не растет линейно с размером файла."""
+        import tracemalloc
+
+        # Измеряем память для маленького текста
+        small_text = "Test. " * 100
+        tracemalloc.start()
+        _ = slice_text_with_window(small_text, 50, True, 20)
+        small_memory = tracemalloc.get_traced_memory()[1]  # peak
+        tracemalloc.stop()
+
+        # Измеряем память для большого текста
+        tracemalloc.start()
+        _ = slice_text_with_window(large_text, 5000, True, 500)
+        large_memory = tracemalloc.get_traced_memory()[1]  # peak
+        tracemalloc.stop()
+
+        # Память не должна расти пропорционально размеру
+        # (large_text в 500 раз больше, но память не должна быть в 500 раз больше)
+        memory_ratio = large_memory / small_memory
+        size_ratio = len(large_text) / len(small_text)
+
+        assert memory_ratio < size_ratio / 10, (
+            f"Memory grew too much: {memory_ratio:.1f}x for {size_ratio:.1f}x size increase"
+        )

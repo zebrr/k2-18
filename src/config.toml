@@ -1,6 +1,5 @@
 [slicer]
 max_tokens              = 5000
-overlap                 = 0
 soft_boundary           = true
 soft_boundary_max_shift = 500
 tokenizer               = "o200k_base"

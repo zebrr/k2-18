@@ -150,11 +150,11 @@ Main logic for creating response in asynchronous mode.
   2. TPM probe to update limits
   3. Create background request (background=true)
   4. Polling loop with status check
-  5. Handle statuses: completed, incomplete, failed, cancelled, queued
+  5. Handle statuses: completed, incomplete, failed, cancelled, queued, in_progress
   6. Save as unconfirmed_response_id (unless is_repair)
   7. Cancel on timeout with cancellation attempt
-- **Progress Display**: 
-  - Queued status shown at first detection
+- **Progress Display**:
+  - Queued/in_progress status shown at first detection
   - Progress displayed every 3 polling iterations with elapsed time
 
 ### OpenAIClient._prepare_request_params(instructions, input_data, previous_response_id) -> Dict[str, Any]
@@ -189,9 +189,10 @@ Clean response from markdown wrappers.
 Module uses structured terminal output with format `[HH:MM:SS] TAG | message`:
 
 ### Asynchronous Response Generation
-- **QUEUE** - waiting in OpenAI queue (shown at first detection)
+- **QUEUE** - waiting in OpenAI queue or processing (shown at first detection)
   ```
-  [10:30:01] QUEUE    | ⏳ Response 6871a162606c... in progress
+  [10:30:01] QUEUE    | ⏳ Response 6871a162606c... queued
+  [10:30:01] QUEUE    | ⚙️ Response 6871a162606c... in_progress
   ```
 
 - **PROGRESS** - waiting progress (every 3 polling iterations)
@@ -386,7 +387,7 @@ The client does NOT handle `tpm_limit_test` or `max_completion_test` parameters 
 ### Progress Display
 - **Optimized for readability**: progress shown every 3 polling iterations
 - **Time formatting**: below 60 seconds shown as "42s", after as "2m 15s"
-- **Single intermediate status**: only queued, no intermediate token information
+- **Two intermediate statuses**: queued and in_progress (different emoji: ⏳ vs ⚙️)
 
 ### TPM Probe Mechanism
 - **IMPORTANT**: OpenAI doesn't return rate limit headers in background mode
@@ -394,8 +395,9 @@ The client does NOT handle `tpm_limit_test` or `max_completion_test` parameters 
 - Overhead: ~20 tokens (0.02% of typical limit)
 
 ### Console Progress Output
-- [QUEUE] ⏳ - request in queue (first time only)
-- [PROGRESS] ⏳ - waiting progress with time (every 3 checks)
+- [QUEUE] ⏳ - request queued (first time only)
+- [QUEUE] ⚙️ - request in_progress (first time only)
+- [PROGRESS] ⏳/⚙️ - waiting progress with time (every 3 checks)
 - [ERROR] ❌ - generation errors
 - [RETRY] ⏳ - waiting before retry
 - [RETRY] 🔄 - token limit increase on incomplete

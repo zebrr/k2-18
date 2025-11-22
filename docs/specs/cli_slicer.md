@@ -33,18 +33,18 @@ python -m src.slicer
 
 ### Sliding Window Algorithm
 - **Window size**: max_tokens (configurable)
-- **Overlap**: configurable overlap between slices 
+- **Incremental processing**: Tokenizes only current window + buffer (not entire file)
+- **Window buffer**: (max_tokens + soft_boundary_max_shift * 2) * 10 characters
 - **Soft boundaries**: search for semantic boundaries within soft_boundary_max_shift tokens
-- **Token conversion**: soft_boundary_max_shift is converted from characters to tokens (≈1 token = 4 characters)
-- **Boundary detection**: uses find_safe_token_boundary from utils.tokenizer for optimal boundary search
+- **Boundary detection**: uses optimized find_safe_token_boundary with decode caching
 - **Token calculation**: precise counting via tiktoken o200k_base
+- **No overlap**: slices are sequential without overlapping tokens
+- **Performance**: Handles files of any size without memory issues
 
 ### Boundary Rules
-- With overlap = 0: slice_token_start(next) = slice_token_end(current)
-- With overlap > 0: slice_token_start(next) = slice_token_end(current) - overlap
-- Infinite loop protection: if new start ≤ old, then start = old + 1
-- Edge cases: last fragment with overlap updates previous slice
-- File boundaries: hard boundaries, overlap never captures next file
+- Next slice starts where previous ends: slice_token_start(next) = slice_token_end(current)
+- File boundaries: hard boundaries between files, each file processed independently
+- Last fragment: processed as-is regardless of size
 
 ## Terminal Output
 
@@ -61,23 +61,29 @@ The utility uses standard logging with format:
 ```
 [10:30:00] INFO     | Starting slicer.py
 [10:30:00] INFO     | Found 3 files for processing
-[10:30:00] INFO     | Processing file: chapter1.md
+[10:30:00] INFO     | Processing file: chapter1.md (1.25MB)
+[10:30:00] INFO     | Processing file: chapter1.md (1.3MB, ~325,000 tokens)
+[10:30:00] INFO     | Estimated slices: ~9
+[10:30:00] INFO     | Creating slice_001 (tokens 0-5000) [0%]
 [10:30:01] INFO     | Soft boundary found: shift +15 tokens
+[10:30:01] INFO     | Creating slice_002 (tokens 5000-10000) [12%]
 [10:30:01] INFO     | Slice saved: data\staging\slice_001.slice.json
-[10:30:01] INFO     | File chapter1.md: created 4 slices
+[10:30:01] INFO     | Completed: 9 slices from chapter1.md
 [10:30:02] INFO     | Processing completed: 8 slices saved in data\staging
 [10:30:02] INFO     | Terminating with code: SUCCESS (0)
 ```
+
+**Note**: Token ranges use Python convention (exclusive end), so slice ending at 5000 contains tokens 0-4999, and next slice starts at 5000.
 
 ### Debug Output Examples
 In DEBUG mode, boundary type is shown:
 ```
 [10:30:01] INFO     | Soft boundary found: shift -23 tokens
-[10:30:01] DEBUG    | Boundary type: double line break
+[10:30:01] DEBUG    | Boundary type: paragraph
 [10:30:01] INFO     | Soft boundary found: shift +8 tokens
-[10:30:01] DEBUG    | Boundary type: end of sentence
+[10:30:01] DEBUG    | Boundary type: sentence
 [10:30:01] INFO     | Soft boundary found: shift +12 tokens
-[10:30:01] DEBUG    | Boundary type: HTML heading
+[10:30:01] DEBUG    | Boundary type: markdown_header
 ```
 
 ### Warning and Error Examples
@@ -105,16 +111,23 @@ Applies preprocessing to text.
 
 ### validate_config_parameters(config: Dict[str, Any]) -> None
 Validates slicer configuration parameters.
-- **Checks**: required parameters, types, ranges, special overlap rules
-- **Constraint**: with overlap > 0, soft_boundary_max_shift ≤ overlap * 0.8
+- **Checks**: required parameters, types, ranges
 - **Raises**: ValueError with detailed error description
 
-### slice_text_with_window(text: str, max_tokens: int, overlap: int, soft_boundary: bool, soft_boundary_max_shift: int) -> List[Tuple[str, int, int]]
-Main text slicing algorithm.
+### slice_text_with_window(text: str, max_tokens: int, soft_boundary: bool, soft_boundary_max_shift: int, file_name: Optional[str] = None) -> List[Tuple[str, int, int]]
+Main text slicing algorithm with incremental tokenization and improved progress reporting.
 - **Returns**: list of tuples (slice_text, slice_token_start, slice_token_end)
-- **Features**: soft boundary detection via find_safe_token_boundary, overlap handling, edge cases
-- **Token conversion**: soft_boundary_max_shift divided by 4 for character-to-token conversion
-- **Imports**: uses find_safe_token_boundary from utils.tokenizer
+- **Features**:
+  - Incremental tokenization (processes only current window + buffer)
+  - Soft boundary detection via `find_safe_token_boundary_with_fallback`
+  - Smart candidate selection (prioritizes boundaries BEFORE headers)
+  - Fallback for large blocks (expands search up to 30% of window)
+  - Protection for lists and tables
+  - Sequential slicing without overlaps
+  - Memory-efficient for large files
+  - Improved progress logging with file_name parameter
+- **soft_boundary_max_shift**: interpreted directly as tokens (no conversion needed)
+- **Imports**: uses find_safe_token_boundary_with_fallback from utils.tokenizer
 
 ### load_and_validate_file(file_path: Path, allowed_extensions: List[str]) -> str
 Loads file with automatic encoding detection.
@@ -165,16 +178,15 @@ Sets up logging for slicer.
 
 ### Required Parameters (slicer section)
 - **max_tokens** (int, >0) - window size in tokens
-- **overlap** (int, ≥0) - overlap between slices  
 - **soft_boundary** (bool) - use soft boundaries
-- **soft_boundary_max_shift** (int, ≥0) - maximum shift for boundary search (in characters)
+- **soft_boundary_max_shift** (int, ≥0) - maximum shift for boundary search (in tokens)
 - **tokenizer** (str, ="o200k_base") - tokenizer
 - **allowed_extensions** (list, non-empty) - allowed file extensions
 - **log_level** (str) - logging level (debug/info/warning/error)
 
 ### Validation Rules
-- overlap < max_tokens
-- With overlap > 0: soft_boundary_max_shift ≤ overlap * 0.8
+- max_tokens must be positive integer
+- soft_boundary_max_shift must be non-negative integer
 - allowed_extensions non-empty list
 
 ## Error Handling & Exit Codes
@@ -207,16 +219,14 @@ EXIT_INPUT_ERROR with message: "Empty file detected: {filename}. Please remove e
 Warning: "Unsupported file skipped: {filename}"
 
 ### Last Fragment Handling
-- **overlap = 0**: separate slice created regardless of size
-- **overlap > 0**: if last fragment < overlap, previous slice is updated
+- Separate slice created regardless of size
+- No merging with previous slices
 
 ### No Files Found
 When no files to process:
 - Warns about supported extensions
 - Returns EXIT_SUCCESS (not considered an error)
 
-### Infinite Loop Protection
-Overlap calculation has protection: if new start ≤ old, force increment by 1.
 
 ## Test Coverage
 
@@ -239,14 +249,12 @@ Overlap calculation has protection: if new start ≤ old, force increment by 1.
   - test_valid_config
   - test_missing_parameters
   - test_invalid_types
-  - test_overlap_constraint
 
 - **test_slice_text_with_window**: slicing algorithm tests
   - test_single_slice
   - test_multiple_slices_no_overlap
-  - test_overlap_handling
   - test_soft_boundary_detection
-  - test_infinite_loop_protection
+  - test_no_token_loss
 
 - **test_process_file**: file processing tests
   - test_successful_processing
@@ -257,15 +265,21 @@ Overlap calculation has protection: if new start ≤ old, force increment by 1.
 - **large file tests**: performance on large files
 
 ## Dependencies
-- **Standard Library**: argparse, json, logging, sys, unicodedata, pathlib, typing, re
+- **Standard Library**: argparse, json, logging, sys, unicodedata, pathlib, typing
 - **External**: unidecode, beautifulsoup4 (bs4), tiktoken, python-dotenv
-- **Internal**: utils.config, utils.tokenizer (find_safe_token_boundary), utils.validation, utils.exit_codes, utils.console_encoding
+- **Internal**: utils.config, utils.tokenizer (find_safe_token_boundary_with_fallback), utils.validation, utils.exit_codes, utils.console_encoding
+
+## Performance Optimizations
+- **Incremental tokenization**: Processes files in windows to avoid tokenizing entire file
+- **Decode caching**: Single decode operation per boundary search (vs 4000 in v1)
+- **Memory usage**: O(window_size) instead of O(file_size)
+- **Scalability**: Can process multi-GB files without hanging
 
 ## Performance Notes
 - **Deterministic processing**: lexicographic file order
 - **Accurate token counting**: via tiktoken o200k_base
-- **Efficient large file handling**: through streaming tokenization
-- **Soft boundary search**: with automatic character-to-token conversion
+- **Efficient large file handling**: through incremental tokenization
+- **Soft boundary search**: using token-based max_shift directly
 - **Cross-platform file search**: case-aware extension matching
 - **Environment variables**: loaded via dotenv for flexibility
 

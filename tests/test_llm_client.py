@@ -274,13 +274,14 @@ class TestOpenAIClient:
         assert "is_reasoning" in str(exc_info.value)
         assert "required" in str(exc_info.value).lower()
 
+    @pytest.mark.parametrize("intermediate_status", ["queued", "in_progress"])
     @patch("src.utils.llm_client.OpenAIClient._update_tpm_via_probe")
     @patch("src.utils.llm_client.tiktoken.get_encoding")
     @patch("src.utils.llm_client.OpenAI")
     def test_successful_response(
-        self, mock_openai_class, mock_get_encoding, mock_probe, test_config
+        self, mock_openai_class, mock_get_encoding, mock_probe, test_config, intermediate_status
     ):
-        """Проверка успешного вызова API с асинхронной логикой"""
+        """Проверка успешного вызова API с асинхронной логикой (queued и in_progress)"""
         # Настройка mock encoder
         mock_encoder = MagicMock()
         mock_encoder.encode.return_value = list(range(100))  # 100 токенов
@@ -301,7 +302,7 @@ class TestOpenAIClient:
         }
 
         # Initial response
-        initial_response = Mock(id="resp_12345", status="queued")
+        initial_response = Mock(id="resp_12345", status=intermediate_status)
         mock_raw_initial = MagicMock()
         mock_raw_initial.headers = initial_headers
         mock_raw_initial.parse.return_value = initial_response
@@ -310,7 +311,9 @@ class TestOpenAIClient:
         final_response = MockResponse("Generated text response", headers=status_headers)
 
         # Создаем sequence для retrieve
-        retrieve_responses = create_async_response_sequence(final_response)
+        retrieve_responses = create_async_response_sequence(
+            final_response, intermediate_statuses=[intermediate_status]
+        )
 
         # Настраиваем mock для create
         mock_client_instance.responses.with_raw_response.create.return_value = mock_raw_initial

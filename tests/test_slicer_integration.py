@@ -55,7 +55,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 50,  # Маленький размер для гарантии множественных слайсов
-                "overlap": 0,
                 "soft_boundary": True,
                 "soft_boundary_max_shift": 20,
                 "allowed_extensions": ["json", "txt", "md", "html"],
@@ -129,7 +128,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 30,
-                "overlap": 0,
                 "soft_boundary": False,  # Отключаем для стабильности
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt", "md"],
@@ -198,7 +196,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 100,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt", "md", "html"],
@@ -258,7 +255,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 100,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt"],
@@ -295,7 +291,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 100,
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt"],  # Только txt поддерживается
@@ -339,7 +334,6 @@ class TestSlicerIntegration:
         test_config = {
             "slicer": {
                 "max_tokens": 10,  # Маленький размер для множественных слайсов
-                "overlap": 0,
                 "soft_boundary": False,
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["txt"],

@@ -170,7 +170,6 @@ def _validate_slicer_section(section: Dict[str, Any]) -> None:
     """Валидирует секцию [slicer]."""
     required_fields = {
         "max_tokens": int,
-        "overlap": int,
         "soft_boundary": bool,
         "soft_boundary_max_shift": int,
         "tokenizer": str,
@@ -183,20 +182,8 @@ def _validate_slicer_section(section: Dict[str, Any]) -> None:
     if section["max_tokens"] <= 0:
         raise ConfigValidationError("slicer.max_tokens must be positive")
 
-    if section["overlap"] < 0:
-        raise ConfigValidationError("slicer.overlap must be non-negative")
-
     if section["soft_boundary_max_shift"] < 0:
         raise ConfigValidationError("slicer.soft_boundary_max_shift must be non-negative")
-
-    # Валидация зависимости overlap и soft_boundary_max_shift
-    if section["overlap"] > 0:
-        max_allowed_shift = int(section["overlap"] * 0.8)
-        if section["soft_boundary_max_shift"] > max_allowed_shift:
-            raise ConfigValidationError(
-                f"slicer.soft_boundary_max_shift ({section['soft_boundary_max_shift']}) "
-                f"cannot exceed overlap*0.8 ({max_allowed_shift}) when overlap > 0"
-            )
 
     # Проверяем tokenizer
     if section["tokenizer"] != "o200k_base":

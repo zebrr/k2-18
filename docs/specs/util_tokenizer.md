@@ -41,30 +41,91 @@ Finds the nearest semantic boundary in text for soft breaks using priority hiera
 5. **word (weight 5)** - word boundaries (fallback):
    - Any whitespace character
 
-### find_safe_token_boundary(text: str, tokens: List[int], encoding, target_token_pos: int, max_shift_tokens: int) -> int
-Finds a safe boundary for cutting at token level.
+### find_safe_token_boundary(text: str, tokens: List[int], encoding, target_token_pos: int, max_shift_tokens: int) -> Tuple[int, str]
+Finds a safe boundary for cutting at token level using smart candidate selection.
 - **Input**:
-  - text (str) - source text
+  - text (str) - source text (unused, kept for compatibility)
   - tokens (List[int]) - list of tokens
   - encoding - tiktoken encoding object
   - target_token_pos (int) - target position in tokens
   - max_shift_tokens (int) - maximum offset in tokens
+- **Returns**: Tuple[int, str] - (safe position in tokens, boundary_type)
+- **Boundary types**: "markdown_header", "html_header", "text_header", "subheader", "paragraph", "code_block_end", "sentence", "line", "phrase", "word", "fallback", "empty", "edge", "none"
+- **Algorithm**:
+  - Decodes working range ONCE
+  - Uses `find_boundary_candidates()` for smart candidate selection
+  - Prioritizes boundaries BEFORE headers (not after)
+  - Falls back to checking all positions if no candidates found
+- **Optimization**: Smart candidate selection instead of checking all positions
+
+### find_boundary_candidates(decoded_text: str, target_char_pos: int, max_char_shift: int) -> List[Tuple[int, str]]
+Find boundary candidates with priorities. Key change: boundaries are now BEFORE headers.
+- **Input**:
+  - decoded_text (str) - the decoded text to search in
+  - target_char_pos (int) - target position in characters
+  - max_char_shift (int) - maximum offset from target_pos
+- **Returns**: List of (position, boundary_type) tuples sorted by score
+- **Priority levels**:
+  1. BEFORE headers (markdown, HTML, text headers)
+  2. BEFORE subheaders, AFTER paragraphs, code block ends
+  3. AFTER sentences
+  4. AFTER lines
+  5. AFTER phrases
+  6. Between words (fallback)
+- **Scoring**: score = priority × 1000 + distance
+
+### find_safe_token_boundary_with_fallback(text: str, tokens: List[int], encoding, target_token_pos: int, max_shift_tokens: int, max_tokens: int) -> int
+Find safe boundary with smart fallback for large blocks.
+- **Input**:
+  - text (str) - source text (unused, kept for compatibility)
+  - tokens (List[int]) - list of tokens
+  - encoding - tiktoken encoding object
+  - target_token_pos (int) - target position in tokens
+  - max_shift_tokens (int) - maximum offset in tokens
+  - max_tokens (int) - window size for calculating extended range
 - **Returns**: int - safe position in tokens for cutting
-- **Algorithm**: Checks each position for safety and selects best by quality
+- **Algorithm**:
+  - First tries normal search via `find_safe_token_boundary()`
+  - If no safe boundary found, expands search up to 30% of window size
+  - Logs boundary type and shift for debugging
+- **Use case**: Main entry point for slicer.py
+
+## Helper Functions
+
+### _build_token_char_mapping(tokens: List[int], encoding) -> dict
+Build mapping from token index to character position.
+- **Input**:
+  - tokens (List[int]) - list of token IDs
+  - encoding - tiktoken encoding object
+- **Returns**: dict - mapping token index to character position
+- **Algorithm**: Decodes prefixes to build accurate mapping
+
+### _get_text_at_boundary(decoded_text: str, char_pos: int) -> tuple
+Split decoded text at character position.
+- **Input**:
+  - decoded_text (str) - the decoded text
+  - char_pos (int) - character position to split at
+- **Returns**: tuple (text_before, text_after)
 
 ## Internal Methods
 
-### is_safe_cut_position(text: str, tokens: List[int], encoding, pos: int) -> bool
-Checks if it's safe to cut at given token position.
+### is_safe_cut_position(text=None, tokens=None, encoding=None, pos=None, text_before=None, text_after=None) -> bool
+Checks if it's safe to cut at given token position. Supports two modes:
+- **Legacy mode**: Provide text, tokens, encoding, pos
+- **Cached mode**: Provide text_before, text_after (for performance)
 - Doesn't cut inside a word
 - Doesn't cut inside URL
 - Doesn't cut inside markdown link
 - Doesn't cut inside HTML tag
 - Doesn't cut inside formula
 - Doesn't cut inside code block
+- Doesn't cut inside lists (up to 2 levels of nesting)
+- Doesn't cut inside tables (Markdown and HTML)
 
-### evaluate_boundary_quality(text: str, tokens: List[int], encoding, pos: int) -> float
-Evaluates boundary quality (lower value is better).
+### evaluate_boundary_quality(text=None, tokens=None, encoding=None, pos=None, text_before=None, text_after=None) -> float
+Evaluates boundary quality (lower value is better). Supports two modes:
+- **Legacy mode**: Provide text, tokens, encoding, pos
+- **Cached mode**: Provide text_before, text_after (for performance)
 - Headers: score = 1.0
 - Double line break: score = 5.0
 - End of sentence: score = 10.0
@@ -87,6 +148,16 @@ Checks if position is inside mathematical formula `$...$` or `$$...$$`.
 
 ### is_inside_code_block(text_before: str, text_after: str) -> bool
 Checks if position is inside code block ` ```...``` `.
+
+### is_inside_list(text_before: str, text_after: str) -> bool
+Checks if position is inside a list structure (up to 2 levels of nesting).
+- Detects numbered lists (1., 2., a., b.) and bullet lists (-, *, +, •)
+- Supports indented nested items
+
+### is_inside_table(text_before: str, text_after: str) -> bool
+Checks if position is inside a table structure.
+- Detects Markdown tables (|---|---| format)
+- Detects HTML tables (<table>...</table>)
 
 ## Test Coverage
 
@@ -121,6 +192,17 @@ Checks if position is inside code block ` ```...``` `.
   - test_mixed_fixture
   - test_token_consistency
 
+- **TestNewBoundaryFunctions**: 9 tests (added in SLICER_REFACTOR_03)
+  - test_is_inside_list_numbered
+  - test_is_inside_list_bullet
+  - test_is_inside_list_nested
+  - test_is_inside_table_markdown
+  - test_is_inside_table_html
+  - test_find_boundary_candidates_headers
+  - test_find_boundary_candidates_priorities
+  - test_find_safe_token_boundary_with_fallback_normal
+  - test_find_safe_token_boundary_with_fallback_returns_int
+
 ## Dependencies
 - **Standard Library**: re, logging, typing
 - **External**: tiktoken
@@ -131,6 +213,8 @@ Checks if position is inside code block ` ```...``` `.
 - find_soft_boundary performs multiple regex searches by priority hierarchy
 - Selection algorithm optimized for educational content
 - tiktoken is fast enough for processing large texts
+- **Decode caching optimization**: find_safe_token_boundary now uses single decode operation (4000x speedup)
+- Helper functions enable efficient text manipulation without repeated decoding
 
 ## Usage Examples
 ```python

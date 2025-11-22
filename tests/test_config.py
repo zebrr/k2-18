@@ -194,65 +194,6 @@ class TestSlicerValidation:
 
         Path(f.name).unlink()
 
-    def test_overlap_soft_boundary_validation(self):
-        """Тест валидации зависимости overlap и soft_boundary_max_shift."""
-        config_with_invalid_overlap = textwrap.dedent(
-            """
-        [slicer]
-        max_tokens = 40000
-        overlap = 1000
-        soft_boundary = true
-        soft_boundary_max_shift = 900
-        tokenizer = "o200k_base"
-        allowed_extensions = ["json"]
-
-        [itext2kg]
-        is_reasoning = false
-        model = "gpt-4o"
-        tpm_limit = 120000
-        max_completion = 4096
-        log_level = "info"
-        api_key = "sk-test"
-        timeout = 45
-        max_retries = 6
-
-        [dedup]
-        embedding_model = "text-embedding-3-small"
-        sim_threshold = 0.97
-        len_ratio_min = 0.8
-        faiss_M = 32
-        faiss_efC = 200
-        faiss_metric = "INNER_PRODUCT"
-        k_neighbors = 5
-
-        [refiner]
-        is_reasoning = false
-        run = true
-        embedding_model = "text-embedding-3-small"
-        sim_threshold = 0.80
-        max_pairs_per_node = 20
-        model = "gpt-4o-mini"
-        api_key = "sk-test"
-        tpm_limit = 60000
-        max_completion = 2048
-        timeout = 30
-        max_retries = 3
-        # Веса удалены - теперь в промптах
-        # weight_low = 0.3
-        # weight_mid = 0.6
-        # weight_high = 0.9
-        """
-        )
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write(config_with_invalid_overlap)
-            f.flush()
-
-            with pytest.raises(ConfigValidationError, match="cannot exceed overlap\\*0.8"):
-                load_config(f.name)
-
-        Path(f.name).unlink()
-
     def test_wrong_tokenizer(self):
         """Test that tokenizer must be 'o200k_base'."""
         config_with_wrong_tokenizer = textwrap.dedent(
@@ -1917,7 +1858,6 @@ class TestParametrizedValidation:
             # slicer numeric validations
             ("slicer", "max_tokens", 0, "must be positive"),
             ("slicer", "max_tokens", -1000, "must be positive"),
-            ("slicer", "overlap", -10, "must be non-negative"),
             ("slicer", "soft_boundary_max_shift", -5, "must be non-negative"),
         ],
     )
@@ -2372,65 +2312,6 @@ class TestDedupValidation:
             f.flush()
 
             with pytest.raises(ConfigValidationError, match="dedup.faiss_M must be positive"):
-                load_config(f.name)
-
-        Path(f.name).unlink()
-
-    def test_slicer_negative_overlap(self):
-        """Тест валидации отрицательного overlap (покрытие строки 182)."""
-        config_with_negative_overlap = textwrap.dedent(
-            """
-        [slicer]
-        log_level = "info"
-        max_tokens = 4000
-        overlap = -10
-        tokenizer = "o200k_base"
-        allowed_extensions = ["md", "txt", "json", "html"]
-        soft_boundary = true
-        soft_boundary_max_shift = 200
-
-        [itext2kg]
-        is_reasoning = false
-        model = "gpt-4o"
-        api_key = "sk-test"
-        tpm_limit = 60000
-        max_completion = 2048
-        timeout = 30
-        max_retries = 3
-
-        [dedup]
-        embedding_model = "text-embedding-3-small"
-        sim_threshold = 0.97
-        len_ratio_min = 0.8
-        faiss_M = 32
-        faiss_efC = 200
-        faiss_metric = "INNER_PRODUCT"
-        k_neighbors = 5
-
-        [refiner]
-        is_reasoning = false
-        run = true
-        embedding_model = "text-embedding-3-small"
-        sim_threshold = 0.80
-        max_pairs_per_node = 20
-        model = "gpt-4o-mini"
-        api_key = "sk-test"
-        tpm_limit = 60000
-        max_completion = 2048
-        timeout = 30
-        max_retries = 3
-        # Веса удалены - теперь в промптах
-        # weight_low = 0.3
-        # weight_mid = 0.6
-        # weight_high = 0.9
-        """
-        )
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write(config_with_negative_overlap)
-            f.flush()
-
-            with pytest.raises(ConfigValidationError, match="slicer.overlap must be non-negative"):
                 load_config(f.name)
 
         Path(f.name).unlink()

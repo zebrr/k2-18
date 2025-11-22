@@ -70,7 +70,6 @@ class TestSlicerLargeFiles:
         test_config = {
             "slicer": {
                 "max_tokens": 30000,  # Увеличиваем размер слайсов для быстрой обработки
-                "overlap": 0,
                 "soft_boundary": False,  # ОТКЛЮЧАЕМ для ускорения
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["md"],
@@ -132,7 +131,6 @@ class TestSlicerLargeFiles:
         test_config = {
             "slicer": {
                 "max_tokens": 10000,  # Меньший размер для более быстрого теста
-                "overlap": 0,
                 "soft_boundary": False,  # Отключаем для детерминированности
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["json", "md"],
@@ -230,7 +228,6 @@ class TestSlicerLargeFiles:
         test_config = {
             "slicer": {
                 "max_tokens": 20000,  # УВЕЛИЧИВАЕМ размер слайсов для ускорения
-                "overlap": 0,
                 "soft_boundary": False,  # ОТКЛЮЧАЕМ soft_boundary для ускорения
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["md"],
@@ -342,7 +339,6 @@ class TestSlicerLargeFiles:
         test_config = {
             "slicer": {
                 "max_tokens": 12000,
-                "overlap": 0,
                 "soft_boundary": False,  # Отключаем для стабильности
                 "soft_boundary_max_shift": 0,
                 "allowed_extensions": ["md"],

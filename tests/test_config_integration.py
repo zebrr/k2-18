@@ -24,8 +24,6 @@ class TestConfigIntegration:
         slicer = config["slicer"]
         assert isinstance(slicer["max_tokens"], int)
         assert slicer["max_tokens"] > 0
-        assert isinstance(slicer["overlap"], int)
-        assert slicer["overlap"] >= 0
         assert isinstance(slicer["soft_boundary"], bool)
         assert slicer["tokenizer"] == "o200k_base"
         assert isinstance(slicer["allowed_extensions"], list)

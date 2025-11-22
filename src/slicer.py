@@ -19,13 +19,12 @@ load_dotenv()
 import argparse
 import json
 import logging
-import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from src.utils.tokenizer import count_tokens, find_safe_token_boundary
+from src.utils.tokenizer import find_safe_token_boundary_with_fallback
 
 # Add project root to PYTHONPATH for correct imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -97,7 +96,6 @@ def validate_config_parameters(config: Dict[str, Any]) -> None:
     # Check required parameters
     required_params = [
         "max_tokens",
-        "overlap",
         "soft_boundary_max_shift",
         "allowed_extensions",
     ]
@@ -110,25 +108,9 @@ def validate_config_parameters(config: Dict[str, Any]) -> None:
     if not isinstance(max_tokens, int) or max_tokens <= 0:
         raise ValueError(f"slicer.max_tokens must be a positive integer, got: {max_tokens}")
 
-    overlap = slicer_config["overlap"]
-    if not isinstance(overlap, int) or overlap < 0:
-        raise ValueError(f"slicer.overlap must be a non-negative integer, got: {overlap}")
-
-    if overlap >= max_tokens:
-        raise ValueError(f"slicer.overlap ({overlap}) must be less than max_tokens ({max_tokens})")
-
     soft_boundary_max_shift = slicer_config["soft_boundary_max_shift"]
     if not isinstance(soft_boundary_max_shift, int) or soft_boundary_max_shift < 0:
         raise ValueError("slicer.soft_boundary_max_shift must be a non-negative integer")
-
-    # Special validation for overlap > 0
-    if overlap > 0:
-        max_allowed_shift = int(overlap * 0.8)
-        if soft_boundary_max_shift > max_allowed_shift:
-            raise ValueError(
-                f"When overlap > 0, soft_boundary_max_shift ({soft_boundary_max_shift}) "
-                f"must not exceed overlap*0.8 ({max_allowed_shift})"
-            )
 
     allowed_extensions = slicer_config["allowed_extensions"]
     if not isinstance(allowed_extensions, list) or not allowed_extensions:
@@ -270,19 +252,25 @@ def load_and_validate_file(file_path: Path, allowed_extensions: List[str]) -> st
 def slice_text_with_window(
     text: str,
     max_tokens: int,
-    overlap: int,
     soft_boundary: bool,
     soft_boundary_max_shift: int,
+    file_name: Optional[str] = None,
 ) -> List[Tuple[str, int, int]]:
     """
-    Slices text into chunks using sliding window.
+    Slices text into chunks using incremental tokenization with improved progress reporting.
+
+    Key optimizations:
+    - Tokenizes only current window + buffer, not entire file
+    - Tracks global token count for slice_token_start/end
+    - Uses character positions for navigation between windows
+    - Uses smart candidate selection for boundary detection
 
     Args:
         text: Source text for slicing
         max_tokens: Maximum slice size in tokens
-        overlap: Number of overlapping tokens
         soft_boundary: Whether to use soft boundaries
-        soft_boundary_max_shift: Maximum shift for soft boundaries
+        soft_boundary_max_shift: Maximum shift for soft boundaries (in tokens)
+        file_name: Optional file name for improved logging
 
     Returns:
         List of tuples (slice_text, slice_token_start, slice_token_end)
@@ -290,102 +278,119 @@ def slice_text_with_window(
     if not text or not text.strip():
         return []
 
-    # Count total tokens in text
-    total_tokens = count_tokens(text)
-
-    # If entire text fits in one slice
-    if total_tokens <= max_tokens:
-        return [(text, 0, total_tokens)]
-
-    # Tokenize entire text for position handling
     encoding = tiktoken.get_encoding("o200k_base")
-    tokens = encoding.encode(text)
+
+    # Quick check if entire text fits in one slice
+    # We'll do a full tokenization only for small texts
+    if len(text) <= max_tokens * 10:  # Conservative estimate
+        tokens = encoding.encode(text)
+        if len(tokens) <= max_tokens:
+            logging.info(f"File fits in single slice: {len(tokens)} tokens")
+            return [(text, 0, len(tokens))]
+
+    # For large files, estimate total tokens (without full tokenization!)
+    estimated_total_tokens = len(text) // 4  # Rough estimate
+    estimated_slices = (estimated_total_tokens // max_tokens) + 1
+
+    if file_name:
+        file_size_mb = len(text) / (1024 * 1024)
+        logging.info(
+            f"Processing file: {file_name} "
+            f"({file_size_mb:.1f}MB, ~{estimated_total_tokens:,} tokens)"
+        )
+        logging.info(f"Estimated slices: ~{estimated_slices}")
 
     slices = []
-    current_token_start = 0
+    char_pos = 0
+    global_token_offset = 0  # For tracking slice_token_start/end
+    slice_num = 1
 
-    while current_token_start < len(tokens):
-        # Determine end of current window
-        window_end = min(current_token_start + max_tokens, len(tokens))
+    while char_pos < len(text):
+        # Calculate window size with buffer
+        # Factor 10 guarantees coverage for any language
+        window_chars = max_tokens * 10
+        buffer_chars = soft_boundary_max_shift * 10 if soft_boundary else 0
+        total_window_chars = window_chars + buffer_chars
 
-        # If this is the last fragment, take to the end
-        if window_end == len(tokens):
-            slice_tokens = tokens[current_token_start:]
-            slice_text = encoding.decode(slice_tokens)
-            slice_token_start = current_token_start
-            slice_token_end = len(tokens)
-
-            slices.append((slice_text, slice_token_start, slice_token_end))
+        # Extract window text
+        window_text = text[char_pos : char_pos + total_window_chars]
+        if not window_text:
             break
 
-        # Look for soft boundary if enabled
-        actual_end = window_end
-        if soft_boundary and soft_boundary_max_shift > 0:
-            # Convert soft_boundary_max_shift from characters to approximate token count
-            # Approximate ratio: 1 token ≈ 4 characters (for o200k_base)
-            max_shift_tokens = max(1, soft_boundary_max_shift // 4)
+        window_tokens = encoding.encode(window_text)
 
-            # Use new function to find safe boundary
-            safe_end = find_safe_token_boundary(
-                text=text,
-                tokens=tokens,
-                encoding=encoding,
-                target_token_pos=window_end,
-                max_shift_tokens=max_shift_tokens,
+        # Handle last window
+        if len(window_tokens) <= max_tokens:
+            # Take everything remaining
+            slice_text = window_text
+            slice_token_count = len(window_tokens)
+
+            logging.info(
+                f"Creating slice_{slice_num:03d} "
+                f"(tokens {global_token_offset}-{global_token_offset + slice_token_count}) "
+                f"[100%]"
             )
 
-            # Logging for debugging
-            if safe_end != window_end:
-                shift = safe_end - window_end
-                logging.info(f"Soft boundary found: shift {shift:+d} tokens")
-
-                # Show boundary type for debugging
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    context = encoding.decode(tokens[max(0, safe_end - 20) : safe_end])
-                    if context.endswith("\n\n"):
-                        logging.debug("Boundary type: double line break")
-                    elif re.search(r"[.!?]\s*$", context):
-                        logging.debug("Boundary type: end of sentence")
-                    elif re.search(r"</h[1-6]>\s*$", context):
-                        logging.debug("Boundary type: HTML heading")
-
-            actual_end = safe_end
-
-        # Create final slice
-        final_slice_tokens = tokens[current_token_start:actual_end]
-        slice_text = encoding.decode(final_slice_tokens)
-        slice_token_start = current_token_start
-        slice_token_end = actual_end
-
-        slices.append((slice_text, slice_token_start, slice_token_end))
-
-        # Calculate start of next window
-        if overlap == 0:
-            current_token_start = actual_end  # Without overlaps
+            slices.append(
+                (
+                    slice_text,
+                    global_token_offset,  # slice_token_start
+                    global_token_offset + slice_token_count,  # slice_token_end
+                )
+            )
+            break
         else:
-            current_token_start = actual_end - overlap  # With overlap
-            # Protection from infinite loop
-            if current_token_start <= slice_token_start:
-                current_token_start = slice_token_start + 1
+            # Find boundary in window
+            target_pos = min(max_tokens, len(window_tokens))
 
-    # Handle edge cases for overlap > 0 according to specification
-    if overlap > 0 and len(slices) >= 2:
-        last_slice = slices[-1]
-        prev_slice = slices[-2]
+            if soft_boundary and soft_boundary_max_shift > 0:
+                # Use new fallback function (logging is inside)
+                boundary_token_pos = find_safe_token_boundary_with_fallback(
+                    text=window_text,
+                    tokens=window_tokens,
+                    encoding=encoding,
+                    target_token_pos=target_pos,
+                    max_shift_tokens=soft_boundary_max_shift,
+                    max_tokens=max_tokens,
+                )
+            else:
+                boundary_token_pos = target_pos
 
-        # If last fragment is smaller than overlap, merge with previous
-        last_slice_size = last_slice[2] - last_slice[1]  # token_end - token_start
-        if last_slice_size < overlap:
-            # Update previous slice
-            prev_start = prev_slice[1]
-            combined_end = last_slice[2]
-            combined_tokens = tokens[prev_start:combined_end]
-            combined_text = encoding.decode(combined_tokens)
+            # Get slice text
+            slice_text = encoding.decode(window_tokens[:boundary_token_pos])
+            slice_token_count = boundary_token_pos
 
-            # Replace previous slice with updated one
-            slices[-2] = (combined_text, prev_start, combined_end)
-            # Remove last slice
-            slices.pop()
+            # Log progress with exact token range
+            progress_pct = (char_pos / len(text)) * 100
+            logging.info(
+                f"Creating slice_{slice_num:03d} "
+                f"(tokens {global_token_offset}-{global_token_offset + slice_token_count}) "
+                f"[{progress_pct:.0f}%]"
+            )
+
+        # Verify no gaps
+        if slices and global_token_offset != slices[-1][2]:
+            logging.warning(
+                f"Gap detected: previous ended at {slices[-1][2]}, "
+                f"current starts at {global_token_offset}"
+            )
+
+        # Add slice with global token positions
+        slices.append(
+            (
+                slice_text,
+                global_token_offset,  # slice_token_start
+                global_token_offset + slice_token_count,  # slice_token_end
+            )
+        )
+
+        # Update positions for next iteration
+        char_pos += len(slice_text)
+        global_token_offset += slice_token_count
+        slice_num += 1
+
+    if file_name:
+        logging.info(f"Completed: {len(slices)} slices from {file_name}")
 
     return slices
 
@@ -434,7 +439,11 @@ def process_file(
     """
     slicer_config = config["slicer"]
 
-    logging.info(f"Processing file: {file_path.name}")
+    # Calculate file size for logging
+    file_size = file_path.stat().st_size
+    file_size_mb = file_size / (1024 * 1024)
+
+    logging.info(f"Processing file: {file_path.name} ({file_size_mb:.2f}MB)")
 
     try:
         # Load and validate file
@@ -443,13 +452,13 @@ def process_file(
         # Create slug
         slug = create_slug(file_path.name)
 
-        # Slice into chunks
+        # Slice into chunks (pass filename for improved logging)
         slices_data = slice_text_with_window(
             content,
             slicer_config["max_tokens"],
-            slicer_config["overlap"],
             slicer_config["soft_boundary"],
             slicer_config["soft_boundary_max_shift"],
+            file_name=file_path.name,
         )
 
         # Create slice objects

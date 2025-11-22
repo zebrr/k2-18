@@ -16,6 +16,9 @@ from src.utils.llm_client import IncompleteResponseError, OpenAIClient
 # Загружаем .env файл
 load_dotenv()
 
+# Пометка для интеграционных тестов
+pytestmark = pytest.mark.integration
+
 
 def get_test_config():
     """Получить конфигурацию для тестов."""

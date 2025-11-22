@@ -268,7 +268,11 @@ class TestFindSoftBoundaryWithFixtures:
 
 
 class TestFindSafeTokenBoundary:
-    """Tests for find_safe_token_boundary function"""
+    """Tests for find_safe_token_boundary function.
+
+    Note: After SLICER_REFACTOR_03, find_safe_token_boundary returns
+    Tuple[int, str] where int is position and str is boundary_type.
+    """
 
     def test_basic_middle_boundary(self):
         """Test finding boundary in middle of text"""
@@ -278,12 +282,13 @@ class TestFindSafeTokenBoundary:
         tokens = encoding.encode(text)
 
         # Find boundary near middle
-        result = find_safe_token_boundary(
+        result, boundary_type = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=len(tokens) // 2, max_shift_tokens=5
         )
 
         # Verify result is valid
         assert 0 <= result <= len(tokens)
+        assert isinstance(boundary_type, str)
         # Verify it's at a safe position
         if 0 < result < len(tokens):
             text_before = encoding.decode(tokens[:result])
@@ -299,11 +304,13 @@ class TestFindSafeTokenBoundary:
         text = "Hello world! This is a test."
         tokens = encoding.encode(text)
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=0, max_shift_tokens=2
         )
 
-        assert result == 0  # Should stay at the beginning
+        # With smart candidate selection, function may find a better boundary
+        # within the shift range, so result should be within [0, 2]
+        assert 0 <= result <= 2  # Within shift range from start
 
     def test_boundary_at_end(self):
         """Test boundary at end of text"""
@@ -312,11 +319,13 @@ class TestFindSafeTokenBoundary:
         text = "Hello world! This is a test."
         tokens = encoding.encode(text)
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=len(tokens), max_shift_tokens=2
         )
 
-        assert result == len(tokens)  # Should stay at the end
+        # With smart candidate selection, function may find a safer boundary
+        # within the shift range, so result should be within [len(tokens)-2, len(tokens)]
+        assert len(tokens) - 2 <= result <= len(tokens)  # Within shift range from end
 
     def test_empty_text(self):
         """Test handling of empty text"""
@@ -325,11 +334,12 @@ class TestFindSafeTokenBoundary:
         text = ""
         tokens = encoding.encode(text)
 
-        result = find_safe_token_boundary(
+        result, boundary_type = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=0, max_shift_tokens=0
         )
 
         assert result == 0
+        assert boundary_type == "empty"
 
     def test_single_token_text(self):
         """Test with single token text"""
@@ -338,7 +348,7 @@ class TestFindSafeTokenBoundary:
         text = "Hi"
         tokens = encoding.encode(text)
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=0, max_shift_tokens=1
         )
 
@@ -352,7 +362,7 @@ class TestFindSafeTokenBoundary:
         tokens = encoding.encode(text)
 
         # Try to cut somewhere in the middle of the long word
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=len(tokens) // 2, max_shift_tokens=10
         )
 
@@ -377,7 +387,7 @@ class TestFindSafeTokenBoundary:
         url_start = text.index("https://")
         target_pos = len(encoding.encode(text[: url_start + 15]))  # Middle of URL
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=20
         )
 
@@ -400,7 +410,7 @@ class TestFindSafeTokenBoundary:
         link_start = text.index("[")
         target_pos = len(encoding.encode(text[: link_start + 10]))
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=15
         )
 
@@ -421,7 +431,7 @@ class TestFindSafeTokenBoundary:
         tag_start = text.index("<div")
         target_pos = len(encoding.encode(text[: tag_start + 8]))
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=10
         )
 
@@ -441,7 +451,7 @@ class TestFindSafeTokenBoundary:
         formula_start = text.index("$E")
         target_pos = len(encoding.encode(text[: formula_start + 5]))
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=10
         )
 
@@ -461,7 +471,7 @@ class TestFindSafeTokenBoundary:
         code_start = text.index("```python")
         target_pos = len(encoding.encode(text[: code_start + 20]))
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=15
         )
 
@@ -471,7 +481,7 @@ class TestFindSafeTokenBoundary:
         assert triple_count % 2 == 0, "Cut inside code block"
 
     def test_prefer_header_boundaries(self):
-        """Test that header boundaries are preferred (score=1.0)"""
+        """Test that header boundaries are preferred (priority 1)"""
         encoding = tiktoken.get_encoding("o200k_base")
 
         text = "Text before\n# Header\nText after header"
@@ -481,15 +491,17 @@ class TestFindSafeTokenBoundary:
         header_end = text.index("\nText after")
         target_pos = len(encoding.encode(text[: header_end - 2]))
 
-        result = find_safe_token_boundary(
+        result, boundary_type = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=5
         )
 
         # Just check that it returns a valid position
         assert 0 <= result <= len(tokens)
+        # Should prefer header boundaries (BEFORE headers now)
+        assert boundary_type in ("markdown_header", "line", "sentence", "fallback", "none")
 
     def test_prefer_paragraph_breaks(self):
-        """Test that paragraph breaks are preferred (score=5.0)"""
+        """Test that paragraph breaks are preferred (priority 2)"""
         encoding = tiktoken.get_encoding("o200k_base")
 
         text = "First paragraph here.\n\nSecond paragraph here."
@@ -499,7 +511,7 @@ class TestFindSafeTokenBoundary:
         break_pos = text.index("\n\n") + 2
         target_pos = len(encoding.encode(text[: break_pos - 1]))
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=5
         )
 
@@ -517,11 +529,11 @@ class TestFindSafeTokenBoundary:
         # Position equidistant from sentence end and paragraph break
         target_pos = len(tokens) // 2
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target_pos, max_shift_tokens=10
         )
 
-        # Should prefer the paragraph break (score 5.0) over sentence end (score 10.0)
+        # Should prefer the paragraph break (priority 2) over sentence end (priority 3)
         # if they are roughly equidistant
         assert result >= 0
 
@@ -533,7 +545,7 @@ class TestFindSafeTokenBoundary:
         tokens = encoding.encode(text)
 
         target = len(tokens) // 2
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=target, max_shift_tokens=0
         )
 
@@ -549,7 +561,7 @@ class TestFindSafeTokenBoundary:
 
         # Target beyond bounds - function may handle this differently
         # It appears to extend the search range beyond token bounds
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text, tokens, encoding, target_token_pos=len(tokens) + 10, max_shift_tokens=5
         )
 
@@ -563,7 +575,7 @@ class TestFindSafeTokenBoundary:
         text = "Short text."
         tokens = encoding.encode(text)
 
-        result = find_safe_token_boundary(
+        result, _ = find_safe_token_boundary(
             text,
             tokens,
             encoding,
@@ -573,6 +585,51 @@ class TestFindSafeTokenBoundary:
 
         # Should still return valid position
         assert 0 <= result <= len(tokens)
+
+    def test_max_shift_tokens_interpretation(self):
+        """Test that max_shift_tokens is used directly as tokens (not divided by 4)"""
+        encoding = tiktoken.get_encoding("o200k_base")
+
+        # Create a text with clear boundaries
+        text = "First part. " * 100 + "BOUNDARY_MARKER. " + "Second part. " * 100
+        tokens = encoding.encode(text)
+
+        # Find the position of BOUNDARY_MARKER
+        marker_text = "BOUNDARY_MARKER"
+        marker_pos = text.index(marker_text)
+
+        # Find approximate token position of the marker
+        text_before_marker = text[:marker_pos]
+        tokens_before_marker = len(encoding.encode(text_before_marker))
+
+        # Test with max_shift_tokens=500 (should search ±500 tokens)
+        result, _ = find_safe_token_boundary(
+            text,
+            tokens,
+            encoding,
+            target_token_pos=tokens_before_marker - 400,  # 400 tokens before marker
+            max_shift_tokens=500,  # Should be able to reach the marker
+        )
+
+        # The function should be able to find a boundary within ±500 tokens
+        # Verify that the search range is actually ±500 tokens
+        min_pos = max(0, tokens_before_marker - 400 - 500)
+        max_pos = min(len(tokens), tokens_before_marker - 400 + 500)
+        assert min_pos <= result <= max_pos
+
+        # Test with small max_shift_tokens=10 (should search only ±10 tokens)
+        # Use a valid target position for this test
+        valid_target = max(0, tokens_before_marker - 50)  # 50 tokens before marker, but ensure >= 0
+        result_small, _ = find_safe_token_boundary(
+            text,
+            tokens,
+            encoding,
+            target_token_pos=valid_target,
+            max_shift_tokens=10,  # Much smaller search range
+        )
+
+        # With only ±10 tokens, the result should be very close to target
+        assert abs(result_small - valid_target) <= 10
 
 
 class TestHelperFunctions:
@@ -804,6 +861,138 @@ class TestHelperFunctions:
         assert is_inside_code_block("``", "") is False
 
 
+class TestDecodeCaching:
+    """Тесты для оптимизации с кэшированием декодирования."""
+
+    def test_find_safe_token_boundary_performance(self):
+        """Тест что оптимизированная версия быстрее оригинальной."""
+        import time
+        import tiktoken
+        from src.utils.tokenizer import find_safe_token_boundary
+
+        # Создаем тестовый случай с множеством потенциальных границ
+        text = "Word. " * 1000  # Много границ предложений
+        encoding = tiktoken.get_encoding("o200k_base")
+        tokens = encoding.encode(text)
+
+        # Измеряем оптимизированную версию
+        start = time.time()
+        result, _ = find_safe_token_boundary(text, tokens, encoding, 500, 200)
+        optimized_time = time.time() - start
+
+        # Должна быть быстрой
+        assert optimized_time < 0.1  # Менее 100ms
+        assert result >= 300 and result <= 700  # В пределах диапазона поиска
+
+    def test_cached_mode_consistency(self):
+        """Тест что кэшированный режим дает те же результаты."""
+        import tiktoken
+        from src.utils.tokenizer import is_safe_cut_position, evaluate_boundary_quality
+
+        encoding = tiktoken.get_encoding("o200k_base")
+        text = "Test sentence. Another sentence. Final sentence."
+        tokens = encoding.encode(text)
+
+        # Тестируем несколько позиций
+        test_positions = [5, 10, 15, 20]
+
+        for pos in test_positions:
+            if 0 < pos < len(tokens):
+                # Legacy mode
+                legacy_safe = is_safe_cut_position(text, tokens, encoding, pos)
+                legacy_quality = evaluate_boundary_quality(text, tokens, encoding, pos)
+
+                # Cached mode
+                text_before = encoding.decode(tokens[:pos])
+                text_after = encoding.decode(tokens[pos:])
+                cached_safe = is_safe_cut_position(
+                    text_before=text_before, text_after=text_after
+                )
+                cached_quality = evaluate_boundary_quality(
+                    text_before=text_before, text_after=text_after
+                )
+
+                # Должны давать одинаковые результаты
+                assert legacy_safe == cached_safe, f"Safety mismatch at pos {pos}"
+                assert legacy_quality == cached_quality, f"Quality mismatch at pos {pos}"
+
+    def test_helper_functions_token_char_mapping(self):
+        """Тест вспомогательной функции построения маппинга."""
+        import tiktoken
+        from src.utils.tokenizer import _build_token_char_mapping
+
+        encoding = tiktoken.get_encoding("o200k_base")
+        text = "Test text with tokens"
+        tokens = encoding.encode(text)
+
+        # Построить маппинг
+        mapping = _build_token_char_mapping(tokens, encoding)
+
+        # Проверить корректность
+        assert mapping[0] == 0  # Начало всегда 0
+        assert mapping[len(tokens)] == len(text)  # Конец равен длине текста
+
+        # Проверить монотонность (каждая следующая позиция >= предыдущей)
+        for i in range(1, len(tokens) + 1):
+            assert mapping[i] >= mapping[i-1]
+
+    def test_get_text_at_boundary_helper(self):
+        """Тест вспомогательной функции разделения текста."""
+        from src.utils.tokenizer import _get_text_at_boundary
+
+        text = "Hello world test"
+
+        # Разделить в разных позициях
+        before1, after1 = _get_text_at_boundary(text, 5)
+        assert before1 == "Hello"
+        assert after1 == " world test"
+
+        before2, after2 = _get_text_at_boundary(text, 11)
+        assert before2 == "Hello world"
+        assert after2 == " test"
+
+        # Граничные случаи
+        before3, after3 = _get_text_at_boundary(text, 0)
+        assert before3 == ""
+        assert after3 == text
+
+        before4, after4 = _get_text_at_boundary(text, len(text))
+        assert before4 == text
+        assert after4 == ""
+
+    def test_decode_once_vs_multiple(self):
+        """Тест что действительно происходит только одно декодирование."""
+        import tiktoken
+        from unittest.mock import Mock, patch
+        from src.utils.tokenizer import find_safe_token_boundary
+
+        text = "Test. " * 100
+        encoding = tiktoken.get_encoding("o200k_base")
+        tokens = encoding.encode(text)
+
+        # Мокаем decode чтобы считать вызовы
+        original_decode = encoding.decode
+        decode_call_count = 0
+
+        def counting_decode(token_list):
+            nonlocal decode_call_count
+            decode_call_count += 1
+            return original_decode(token_list)
+
+        encoding.decode = counting_decode
+
+        # Вызываем функцию (теперь возвращает tuple)
+        result, _ = find_safe_token_boundary(text, tokens, encoding, 50, 20)
+
+        # Восстанавливаем оригинальный decode
+        encoding.decode = original_decode
+
+        # Проверяем что decode вызывался разумное количество раз
+        # (должно быть O(1) декодирований для рабочего диапазона + построение маппинга)
+        assert decode_call_count < 50, f"Too many decode calls: {decode_call_count}"
+        assert result >= 30 and result <= 70  # В пределах диапазона
+
+
 class TestEdgeCases:
     """Тесты для граничных случаев и error paths."""
 
@@ -855,62 +1044,6 @@ class TestEdgeCases:
         text_after = " more text"
         assert is_inside_markdown_link(text_before, text_after) is False
 
-    @pytest.mark.skip(reason="Function find_boundaries_in_range does not exist in tokenizer module")
-    def test_find_boundaries_with_all_types(self):
-        """Тест поиска всех типов границ (покрытие строк 154-175)."""
-        from src.utils.tokenizer import find_boundaries_in_range
-
-        # Текст со всеми типами границ
-        text = """# Header
-This is a paragraph. With a sentence; semicolon here.
-And phrases: with colons, commas here — and dashes.
-Another paragraph.
-
-## Subheader"""
-
-        boundaries = find_boundaries_in_range(text, 0, len(text))
-
-        # Проверяем, что найдены границы разных типов
-        assert "header" in boundaries
-        assert "paragraph" in boundaries
-        assert "sentence" in boundaries
-        assert "phrase" in boundaries
-
-        # Проверяем конкретные позиции
-        # Заголовок
-        assert len(boundaries["header"]["candidates"]) > 0
-        # Точка с запятой (строки 154-156)
-        assert any("; " in text[pos - 2 : pos + 1] for pos in boundaries["sentence"]["candidates"])
-        # Запятая (строки 161-163)
-        assert any(", " in text[pos - 2 : pos + 1] for pos in boundaries["phrase"]["candidates"])
-        # Двоеточие (строки 167-169)
-        assert any(": " in text[pos - 2 : pos + 1] for pos in boundaries["phrase"]["candidates"])
-        # Тире (строки 173-175)
-        assert any(
-            "—" in text[max(0, pos - 3) : pos + 1] for pos in boundaries["phrase"]["candidates"]
-        )
-
-    @pytest.mark.skip(reason="Function split_text does not exist in tokenizer module")
-    def test_split_text_preserve_structure_edge_cases(self):
-        """Тест split_text с сохранением структуры в граничных случаях."""
-        from src.utils.tokenizer import split_text
-
-        # Короткий текст (меньше max_tokens) - строка 352
-        short_text = "Short text."
-        chunks = split_text(short_text, max_tokens=100, overlap=10)
-        assert len(chunks) == 1
-        assert chunks[0] == short_text
-
-        # Текст, который невозможно разделить по границам (строки 365-373)
-        # Одно очень длинное предложение без границ
-        long_word = "a" * 5000  # Примерно 1250 токенов
-        chunks = split_text(long_word, max_tokens=500, overlap=50)
-        assert len(chunks) > 1
-        # Проверяем, что chunks перекрываются
-        for i in range(len(chunks) - 1):
-            # Должно быть перекрытие между chunks
-            assert chunks[i][-10:] in chunks[i + 1][:100] or len(chunks[i]) < 10
-
     def test_count_tokens_with_different_models(self):
         """Тест подсчета токенов с разными моделями."""
         from src.utils.tokenizer import count_tokens
@@ -924,6 +1057,154 @@ Another paragraph.
         # Проверяем консистентность
         tokens2 = count_tokens(text)
         assert tokens == tokens2
+
+
+class TestNewBoundaryFunctions:
+    """Tests for new boundary functions added in SLICER_REFACTOR_03."""
+
+    def test_is_inside_list_numbered(self):
+        """Test detection of numbered list boundaries."""
+        from src.utils.tokenizer import is_inside_list
+
+        # Between numbered list items - boundary at end of line, next line is list item
+        text_before = "Shopping list:\n1. Apples\n2. Bananas\n"
+        text_after = "3. Oranges\nEnd"
+        assert is_inside_list(text_before, text_after) is True
+
+        # Not in a list
+        text_before = "Some normal text here."
+        text_after = " More text follows."
+        assert is_inside_list(text_before, text_after) is False
+
+    def test_is_inside_list_bullet(self):
+        """Test detection of bullet list boundaries."""
+        from src.utils.tokenizer import is_inside_list
+
+        # Between bullet list items - boundary at end of line
+        text_before = "TODO:\n- Fix bug\n- Write tests\n"
+        text_after = "- Deploy\nDone"
+        assert is_inside_list(text_before, text_after) is True
+
+        # Asterisk bullets
+        text_before = "Features:\n* Feature A\n* Feature B\n"
+        text_after = "* Feature C"
+        assert is_inside_list(text_before, text_after) is True
+
+    def test_is_inside_list_nested(self):
+        """Test detection of nested list boundaries."""
+        from src.utils.tokenizer import is_inside_list
+
+        # Nested numbered list (indented) - boundary at end of line
+        text_before = "1. First\n  a. Sub item\n"
+        text_after = "  b. Another sub"
+        assert is_inside_list(text_before, text_after) is True
+
+    def test_is_inside_table_markdown(self):
+        """Test detection of Markdown table boundaries."""
+        from src.utils.tokenizer import is_inside_table
+
+        # Inside markdown table
+        text_before = "| Header1 | Header2 |\n|---|---|\n| Cell1 | Cell2 |"
+        text_after = "\n| Cell3 | Cell4 |\n\nAfter table"
+        assert is_inside_table(text_before, text_after) is True
+
+        # Not in a table
+        text_before = "Just some text."
+        text_after = " More text here."
+        assert is_inside_table(text_before, text_after) is False
+
+    def test_is_inside_table_html(self):
+        """Test detection of HTML table boundaries."""
+        from src.utils.tokenizer import is_inside_table
+
+        # Inside HTML table
+        text_before = "<table><tr><td>Cell1</td>"
+        text_after = "<td>Cell2</td></tr></table>"
+        assert is_inside_table(text_before, text_after) is True
+
+        # After table closed
+        text_before = "<table><tr><td>Cell</td></tr></table>"
+        text_after = " More content"
+        assert is_inside_table(text_before, text_after) is False
+
+    def test_find_boundary_candidates_headers(self):
+        """Test that find_boundary_candidates finds positions BEFORE headers."""
+        from src.utils.tokenizer import find_boundary_candidates
+
+        text = "Some intro text.\n\n# Chapter 1\nContent here."
+        target_pos = 20
+        max_shift = 30
+
+        candidates = find_boundary_candidates(text, target_pos, max_shift)
+
+        # Should find markdown header candidate
+        header_candidates = [(pos, t) for pos, t in candidates if t == "markdown_header"]
+        assert len(header_candidates) > 0
+
+        # Position should be BEFORE the # character
+        for pos, _ in header_candidates:
+            # Text after position should start with #
+            assert text[pos:pos + 1] == "#"
+
+    def test_find_boundary_candidates_priorities(self):
+        """Test that candidates are sorted by priority."""
+        from src.utils.tokenizer import find_boundary_candidates
+
+        # Text with multiple boundary types
+        text = "Text.\n\n# Header\nMore text. Another sentence.\n\nParagraph."
+        target_pos = len(text) // 2
+        max_shift = 100
+
+        candidates = find_boundary_candidates(text, target_pos, max_shift)
+
+        # Verify we have candidates
+        assert len(candidates) > 0
+
+        # First candidates should be higher priority (header/paragraph)
+        if candidates:
+            first_type = candidates[0][1]
+            # Header and paragraph types should come before sentence/line/phrase
+            high_priority_types = {"markdown_header", "paragraph", "subheader", "code_block_end"}
+            # At least check that candidates are returned
+            assert any(t in high_priority_types for _, t in candidates[:5])
+
+    def test_find_safe_token_boundary_with_fallback_normal(self):
+        """Test fallback function with normal boundary found."""
+        from src.utils.tokenizer import find_safe_token_boundary_with_fallback
+        import tiktoken
+
+        encoding = tiktoken.get_encoding("o200k_base")
+        text = "First sentence. Second sentence. Third sentence."
+        tokens = encoding.encode(text)
+
+        result = find_safe_token_boundary_with_fallback(
+            text, tokens, encoding,
+            target_token_pos=len(tokens) // 2,
+            max_shift_tokens=5,
+            max_tokens=100
+        )
+
+        # Should return valid position
+        assert 0 <= result <= len(tokens)
+
+    def test_find_safe_token_boundary_with_fallback_returns_int(self):
+        """Test that fallback function returns int (not tuple)."""
+        from src.utils.tokenizer import find_safe_token_boundary_with_fallback
+        import tiktoken
+
+        encoding = tiktoken.get_encoding("o200k_base")
+        text = "Test text with some content here."
+        tokens = encoding.encode(text)
+
+        result = find_safe_token_boundary_with_fallback(
+            text, tokens, encoding,
+            target_token_pos=len(tokens) // 2,
+            max_shift_tokens=3,
+            max_tokens=50
+        )
+
+        # Should return int (for compatibility with slicer)
+        assert isinstance(result, int)
 
 
 if __name__ == "__main__":

@@ -333,11 +333,13 @@ class TestOpenAIClientIntegration:
         ), f"Expected QUEUE or PROGRESS messages, but got neither. Captured: {captured.out[:200]}"
 
         if has_queue:
-            assert "⏳" in captured.out
+            # Emoji depends on status: ⏳ for queued, ⚙️ for in_progress
+            assert "⏳" in captured.out or "⚙️" in captured.out
             assert "Response" in captured.out
 
         if has_progress:
-            assert "⏳" in captured.out
+            # Emoji depends on status: ⏳ for queued, ⚙️ for in_progress
+            assert "⏳" in captured.out or "⚙️" in captured.out
             assert "Elapsed" in captured.out
 
         # Response ID должен быть в выводе (первые 8 символов)

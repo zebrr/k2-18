@@ -49,15 +49,15 @@ Raw Content (.md, .txt, .html)
 
 After running the pipeline, you can:
 
-- **Import into Neo4j**: Use the JSON graph directly with Neo4j's import tools (see Neo4j documentation for import details)
-- **Build Learning Paths**: Find optimal prerequisite chains between topics
 - **Curriculum Analysis**: Identify knowledge gaps and redundancies
+- **Build Learning Paths**: Find optimal prerequisite chains between topics
 - **Adaptive Learning**: Power recommendation systems with concept dependencies
 - **Content Quality**: Detect missing prerequisites or circular dependencies
+- **Import into Neo4j**: Use the JSON graph directly with Neo4j's import tools (see Neo4j documentation)
 
 ### Key Features
 
-- **Incremental Processing**: Handles books of 100-1000 pages by processing in chunks
+- **Incremental Processing**: Handles books of multiple pages by processing in chunks
 - **Context Preservation**: Maintains semantic continuity across chunk boundaries
 - **Smart Deduplication**: Uses embeddings to identify and merge semantically identical content
 - **Long-range Connections**: Discovers relationships between concepts separated by many pages (forward/backward pass)
@@ -81,9 +81,9 @@ For detailed documentation, see [Visualization Module Guide](./viz/README.md).
 ## Requirements
 
 - Python 3.11+
-- OpenAI API access (Responses API)
+- OpenAI API access (Responses/Embeddings API)
 - Memory: Not tested (entire corpus processed in memory)
-- OS: Windows, macOS
+- OS: Windows, MacOS
 
 ## Installation
 
@@ -128,10 +128,10 @@ pytest tests/
    # Place educational materials in:
    data/raw/
    ```
-   Supported formats: `.md`, `.txt`, `.html`
+   Supported formats: `.md`, `.txt`, `.html`. All content must be merged into one file.
 
 2. **Configure processing** (optional):
-   Edit `src/config.toml` to adjust parameters like chunk size, overlap, and model selection.
+   Edit `src/config.toml` to adjust parameters like chunk size, timeouts, and model selection.
 
 3. **Run the pipeline**:
    ```bash
@@ -159,7 +159,6 @@ Main settings in `src/config.toml`:
 ```toml
 [slicer]
 max_tokens = 5000          # Chunk size in tokens
-overlap = 0                # Context window size managed by response_chain_depth
 soft_boundary = true       # Respect semantic boundaries
 
 [itext2kg]
@@ -197,7 +196,7 @@ All data formats are defined by JSON schemas in `/src/schemas/`:
   - `refiner_longrange_fw.md` - forward pass for long-range connections
   - `refiner_longrange_bw.md` - backward pass for long-range connections
   
-**⚠️ Important**: Current prompts are optimized for Computer Science or Economics content in Russian. For other domains (management, history, biology, etc.) or languages, prompts **REQUIRE** adaptation to domain-specific terminology and concept patterns.
+**⚠️ Important**: Current prompts are optimized for Computer Science, Management or Economics content in Russian. For other domains (management, history, biology, etc.) or languages, prompts **REQUIRE** adaptation to domain-specific terminology and concept patterns.
 
 ## Limitations
 

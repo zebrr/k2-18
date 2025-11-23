@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.2-gpt-5 @ Computer Science
+# Graph Refiner Longrange BACKWARD PASS v4.3-gpt-5 @ Computer Science
 
 ## Role and Objective
 
@@ -6,7 +6,7 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 
 ## Instructions
 
-- Begin with a concise checklist (3-7 bullets) of what you will do; keep items conceptual, not implementation-level.
+- Think through the task step by step if helpful, but **DO NOT** include your reasoning or any checklist in the output. The final output MUST be only the JSON object described below.
 - Consider that Node A (always `source`) appears **AFTER** all candidate nodes Bi (always `target`.) in the educational material.
 - For each pair of Nodes (A, Bi) read both Nodes `text` closely and decide:
   1. Whether a directed, meaningful semantic connection A→Bi exists.

@@ -154,6 +154,9 @@ def create_slug(filename: str) -> str:
     # Replace spaces with underscores
     slug = lowercased.replace(" ", "_")
 
+    # Replace dots with underscores
+    slug = slug.replace(".", "_")
+
     return slug
 
 

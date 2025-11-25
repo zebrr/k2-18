@@ -46,7 +46,14 @@ class EmbeddingsClient:
         if not api_key:
             raise ValueError("API key not found in config (embedding_api_key or api_key)")
 
-        self.client = OpenAI(api_key=api_key)
+        client_kwargs = {"api_key": api_key}
+
+        # Optional custom base URL (e.g., OpenAI-compatible local server)
+        base_url = config.get("embedding_base_url") or config.get("base_url")
+        if base_url:
+            client_kwargs["base_url"] = base_url
+
+        self.client = OpenAI(**client_kwargs)
         self.model = config.get("embedding_model", "text-embedding-3-small")
 
         # TPM control
@@ -69,9 +76,11 @@ class EmbeddingsClient:
         self.max_texts_per_request = self.max_texts_per_batch
         self.max_tokens_per_text = 8192
 
+        base_url_note = f", base_url={base_url}" if base_url else ""
+
         logger.info(
             f"EmbeddingsClient initialized with model={self.model}, tpm_limit={self.tpm_limit}, "
-            f"max_batch_tokens={self.max_batch_tokens}, max_texts_per_batch={self.max_texts_per_batch}"
+            f"max_batch_tokens={self.max_batch_tokens}, max_texts_per_batch={self.max_texts_per_batch}{base_url_note}"
         )
 
     def _count_tokens(self, text: str) -> int:

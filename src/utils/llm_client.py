@@ -329,7 +329,17 @@ class OpenAIClient:
                 - truncation (str, optional): Truncation strategy ("auto", "disabled")
         """
         self.config = config
-        self.client = OpenAI(api_key=config["api_key"], timeout=config.get("timeout", 60.0))
+
+        # API type: "responses" (default) or "chat" (OpenAI-compatible chat/completions, e.g., vLLM)
+        self.api_type = config.get("api_type", "responses").lower()
+        if self.api_type not in {"responses", "chat"}:
+            raise ValueError("Unsupported api_type. Use 'responses' or 'chat'.")
+
+        client_kwargs = {"api_key": config["api_key"], "timeout": config.get("timeout", 60.0)}
+        if config.get("base_url"):
+            client_kwargs["base_url"] = config["base_url"]
+
+        self.client = OpenAI(**client_kwargs)
         self.tpm_bucket = TPMBucket(config["tpm_limit"])
         self.logger = logging.getLogger(__name__)
 
@@ -349,16 +359,22 @@ class OpenAIClient:
         self.response_chain_depth = config.get("response_chain_depth")
         self.truncation = config.get("truncation")
 
-        # Initialize response chain only if depth > 0
-        if self.response_chain_depth is not None and self.response_chain_depth > 0:
-            self.response_chain = deque()
-            chain_mode = f"sliding window (depth={self.response_chain_depth})"
-        elif self.response_chain_depth == 0:
-            self.response_chain = None
-            chain_mode = "independent requests"
+        # Initialize response chain only for Responses API
+        if self.api_type == "responses":
+            if self.response_chain_depth is not None and self.response_chain_depth > 0:
+                self.response_chain = deque()
+                chain_mode = f"sliding window (depth={self.response_chain_depth})"
+            elif self.response_chain_depth == 0:
+                self.response_chain = None
+                chain_mode = "independent requests"
+            else:
+                self.response_chain = None
+                chain_mode = "unlimited chain"
         else:
             self.response_chain = None
-            chain_mode = "unlimited chain"
+            chain_mode = "chat/completions"
+            self.chat_history = deque()
+            self.pending_chat_exchange = None
 
         # Setup probe model and fallback chain
         self.probe_model = config.get("probe_model", "gpt-4.1-nano-2025-04-14")
@@ -387,9 +403,13 @@ class OpenAIClient:
         self.unconfirmed_response_id = None  # Awaiting confirmation
         self.last_response_id = None  # For backward compatibility
 
+        base_url = config.get("base_url")
+        base_url_note = f", base_url={base_url}" if base_url else ""
+
         self.logger.info(
             f"Initialized OpenAI client: model={config['model']}, "
-            f"reasoning={self.is_reasoning_model}, chain_mode={chain_mode}"
+            f"reasoning={self.is_reasoning_model}, chain_mode={chain_mode}{base_url_note}, "
+            f"api_type={self.api_type}"
         )
 
         # Initialize tokenizer for precise counting
@@ -714,6 +734,119 @@ class OpenAIClient:
         )
         self.tpm_bucket.remaining_tokens = self._cached_tpm_remaining
         self.tpm_bucket.initial_limit = self._cached_tpm_limit
+
+    # -------------------------------
+    # Chat/completions (vLLM, etc.)
+    # -------------------------------
+    def _trim_chat_history(self) -> None:
+        """Trim chat history according to response_chain_depth (pairs of user/assistant messages)."""
+
+        if self.response_chain_depth is None or self.response_chain_depth < 0:
+            return  # unlimited
+
+        # Keep last N exchanges (each exchange = user + assistant)
+        max_messages = self.response_chain_depth * 2
+        while len(self.chat_history) > max_messages:
+            self.chat_history.popleft()
+
+    def _create_response_chat(
+        self, instructions: str, input_data: str, is_repair: bool = False
+    ) -> Tuple[str, str, ResponseUsage]:
+        """
+        Create response via chat/completions API (OpenAI-compatible, e.g., vLLM).
+
+        Notes:
+            - Uses system message = instructions, user message = input_data
+            - Maintains a lightweight chat history limited by response_chain_depth
+            - No previous_response_id support (Responses-only feature)
+        """
+
+        if self.pending_chat_exchange and not is_repair:
+            self.logger.warning(
+                "Previous chat response was not confirmed; discarding pending exchange"
+            )
+            self.pending_chat_exchange = None
+            self.unconfirmed_response_id = None
+
+        # Prepare base messages
+        if self.response_chain_depth == 0:
+            self.chat_history.clear()
+
+        messages = [{"role": "system", "content": instructions}]
+        if self.chat_history:
+            messages.extend(self.chat_history)
+
+        user_msg = {"role": "user", "content": input_data}
+        messages.append(user_msg)
+
+        params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": self.config.get("max_completion"),
+        }
+
+        if self.config.get("temperature") is not None:
+            params["temperature"] = self.config["temperature"]
+
+        # Simple retry loop (chat endpoints usually don't expose TPM headers)
+        retry_count = 0
+        last_exception = None
+        backoff = 1.0
+
+        while retry_count <= self.config["max_retries"]:
+            try:
+                response = self.client.chat.completions.create(**params)
+
+                content = ""
+                if response.choices:
+                    content = response.choices[0].message.content or ""
+
+                usage = getattr(response, "usage", None)
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+                total_tokens = getattr(usage, "total_tokens", 0) if usage else 0
+                if total_tokens == 0:
+                    total_tokens = prompt_tokens + completion_tokens
+
+                usage_info = ResponseUsage(
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    reasoning_tokens=0,
+                )
+
+                response_id = getattr(response, "id", None) or f"chat-{int(time.time()*1000)}"
+
+                # Defer adding to history until confirmation
+                assistant_msg = {"role": "assistant", "content": content}
+                self.pending_chat_exchange = (user_msg, assistant_msg)
+
+                # Track IDs similarly to Responses flow
+                self.unconfirmed_response_id = response_id
+                self.last_response_id = response_id
+
+                # Save usage for next estimation (best effort)
+                self.last_usage = usage_info
+
+                self.logger.debug(
+                    f"Chat response success: id={response_id}, tokens={usage_info.total_tokens}"
+                )
+
+                return content, response_id, usage_info
+
+            except Exception as e:
+                last_exception = e
+                retry_count += 1
+                if retry_count > self.config["max_retries"]:
+                    break
+                sleep_time = backoff * (2 ** (retry_count - 1))
+                self.logger.warning(
+                    f"Chat API error (attempt {retry_count}/{self.config['max_retries']+1}): {e}. "
+                    f"Retrying in {sleep_time:.1f}s"
+                )
+                time.sleep(sleep_time)
+
+        raise last_exception or Exception("Chat API: max retries exceeded")
 
     def _create_response_async(
         self,
@@ -1095,7 +1228,10 @@ class OpenAIClient:
             ...     previous_response_id=resp_id
             ... )
         """
-        # Use passed previous_response_id or saved one
+        if self.api_type == "chat":
+            return self._create_response_chat(instructions, input_data, is_repair)
+
+        # Use passed previous_response_id or saved one (Responses API only)
         if previous_response_id is None:
             previous_response_id = self.last_response_id
 
@@ -1162,7 +1298,23 @@ class OpenAIClient:
         response_id = self.unconfirmed_response_id
         self.logger.debug(f"Confirming response {response_id[:12]}")
 
-        # Update confirmed ID
+        # Chat/completions flow: update history only
+        if self.api_type == "chat":
+            if self.pending_chat_exchange:
+                user_msg, assistant_msg = self.pending_chat_exchange
+                self.chat_history.extend([user_msg, assistant_msg])
+                self._trim_chat_history()
+                self.pending_chat_exchange = None
+
+            self.last_confirmed_response_id = response_id
+            self.last_response_id = response_id
+            self.unconfirmed_response_id = None
+            self.logger.debug(
+                f"Chat response {response_id[:12]} confirmed; history size={len(self.chat_history)}"
+            )
+            return
+
+        # Responses API flow
         self.last_confirmed_response_id = response_id
         self.last_response_id = response_id  # Backward compatibility
 

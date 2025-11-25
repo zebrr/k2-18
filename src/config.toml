@@ -18,6 +18,8 @@ response_chain_depth = 1      # Глубина цепочки (1-N) | заком
 # Основная модель
 model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+api_type           = "responses"        # "responses" (OpenAI) | "chat" (например, vLLM chat/completions)
+base_url           = ""                 # Опционально: кастомный OpenAI-compatible endpoint (например, http://localhost:8000/v1)
 max_context_tokens  = 400000
 tpm_limit           = 450000
 max_completion      = 100000
@@ -53,6 +55,7 @@ poll_interval       = 10
 [dedup]
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
+embedding_base_url  = ""  # Optional custom endpoint for embeddings
 embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
@@ -74,6 +77,8 @@ response_chain_depth = 0      # Глубина цепочки (1-N) | заком
 # Основная модель
 model 				= "gpt-5-2025-08-07" # Новый ризонер: 400,000 / 128,000
 # model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+api_type           = "responses"        # "responses" (OpenAI) | "chat" (например, vLLM chat/completions)
+base_url            = ""                  # Опционально: кастомный OpenAI-compatible endpoint (например, http://localhost:8000/v1)
 max_context_tokens  = 400000
 tpm_limit           = 450000
 max_completion      = 100000
@@ -96,6 +101,7 @@ reasoning_summary   = "auto"
 run                 = true
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
+embedding_base_url  = ""  # Optional custom endpoint for embeddings
 embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе

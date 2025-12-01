@@ -60,7 +60,7 @@ class TestCreateSlug:
     def test_complex_filename(self):
         """Тест сложного имени файла."""
         result = create_slug("Глава 2. Основы Python (часть-1).txt")
-        assert result == "glava_2._osnovy_python_(chast'-1)"
+        assert result == "glava_2__osnovy_python_(chast'-1)"
 
     def test_special_characters(self):
         """Тест специальных символов."""

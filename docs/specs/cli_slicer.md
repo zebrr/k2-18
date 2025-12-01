@@ -100,8 +100,8 @@ In DEBUG mode, boundary type is shown:
 
 ### create_slug(filename: str) -> str
 Creates slug from filename.
-- **Rules**: remove extension, transliterate Cyrillic (unidecode), lowercase, spaces → "_"
-- **Examples**: "Алгоритмы.txt" → "algoritmy", "My Course 1.md" → "my_course_1"
+- **Rules**: remove extension, transliterate Cyrillic (unidecode), lowercase, spaces → "_", dots → "_"
+- **Examples**: "Алгоритмы.txt" → "algoritmy", "My Course 1.md" → "my_course_1", "Глава 2. Основы.txt" → "glava_2__osnovy"
 
 ### preprocess_text(text: str) -> str
 Applies preprocessing to text.

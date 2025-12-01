@@ -284,26 +284,25 @@ class TestOpenAIClientIntegration:
     @pytest.mark.timeout(60)
     def test_timeout_cancellation(self, integration_config):
         """Тест отмены запроса при timeout"""
-        # Устанавливаем очень маленький timeout
-        integration_config["timeout"] = 2  # 2 секунды
+        integration_config["timeout"] = 2  # 2 секунды клиентский таймаут
+        integration_config["max_completion"] = 500  # Ограничиваем бюджет токенов!
         integration_config["max_retries"] = 0  # Без retry для чистоты теста
 
         client = OpenAIClient(integration_config)
 
         with pytest.raises(TimeoutError) as exc_info:
-            # Запрос который может занять больше 2 секунд
-            # (зависит от загрузки API, может и не сработать)
             client.create_response(
-                instructions="Think step by step very carefully",
-                input_data="Calculate the 50th Fibonacci number showing all steps",
+                instructions="Think carefully step by step",
+                input_data=(
+                    "Prove that there are infinitely many prime numbers. "
+                    "Show complete formal proof."
+                ),
             )
 
         error_msg = str(exc_info.value)
         assert "exceeded" in error_msg and "2s" in error_msg
 
-    @pytest.mark.slow
-    @pytest.mark.timeout(45)
-    @pytest.mark.timeout(60)
+    @pytest.mark.skip(reason="Duplicates test_background_mode_verification")
     def test_console_progress_output(self, integration_config, capsys):
         """Тест вывода прогресса в консоль"""
         # Используем max_completion из конфига (уже установлен в fixture)
@@ -345,30 +344,31 @@ class TestOpenAIClientIntegration:
         # Response ID должен быть в выводе (первые 8 символов)
         assert response_id[:8] in captured.out
 
-    @pytest.mark.skip(reason="Test hangs due to insufficient token limit for reasoning models")
-    @pytest.mark.timeout(120)
+    @pytest.mark.timeout(140)  # 2+ минуты запас
     def test_incomplete_with_reasoning_model(self, integration_config):
-        """Тест incomplete для reasoning модели (нужно больше токенов)"""
+        """Тест incomplete для reasoning модели (недостаточно токенов)"""
+        # Проверяем что используется reasoning модель
         if not integration_config.get("is_reasoning", False):
             pytest.skip("Test requires reasoning model")
 
-        # Очень маленький лимит для reasoning модели
-        integration_config["max_completion"] = 50  # Слишком мало для reasoning!
-        integration_config["max_retries"] = 1  # Один retry
+        # Настраиваем параметры для гарантированного incomplete
+        integration_config["max_completion"] = 300  # Точно не хватит для reasoning
+        integration_config["timeout"] = 120  # 2 минуты
+        integration_config["poll_interval"] = 10  # Реже опрашиваем
+        integration_config["max_retries"] = 0  # Без retry
 
         client = OpenAIClient(integration_config)
 
-        try:
-            response_text, response_id, usage = client.create_response(
-                instructions="Solve this step by step", input_data="What is 789 * 654?"
+        with pytest.raises(IncompleteResponseError) as exc_info:
+            client.create_response(
+                instructions="Solve with detailed step-by-step mathematical proof",
+                input_data=(
+                    "Prove the Riemann hypothesis or explain in detail " "why it remains unproven."
+                ),
             )
 
-            # Если получили ответ после retry - успех
-            assert "516006" in response_text or "516,006" in response_text
-
-        except (ValueError, IncompleteResponseError) as e:
-            # Проверяем что это именно incomplete ошибка
-            assert "incomplete" in str(e).lower()
+        # Проверяем что исключение содержит нужную информацию
+        assert "incomplete" in str(exc_info.value).lower()
 
     @pytest.mark.timeout(60)
     def test_tpm_probe_mechanism(self, integration_config, caplog):

@@ -174,6 +174,29 @@ run = true                 # Enable/disable refiner stage
 sim_threshold = 0.7        # Threshold for new connections
 ```
 
+### Using custom OpenAI-compatible endpoints
+
+- Set `OPENAI_BASE_URL` (and optionally `OPENAI_EMBEDDING_BASE_URL`) in your environment or fill `base_url`/`embedding_base_url` in `src/config.toml`.
+- `api_type` in config: `responses` (default, needs full OpenAI Responses API) or `chat` (plain `/v1/chat/completions`, e.g., vLLM).
+- For vLLM: set `api_type="chat"`, `base_url=http://<host>:<port>/v1`, and your model name (e.g., `gpt-oss-20b`). Responses-only features (previous_response_id, response storage/deletion, TPM headers) are emulated with a lightweight chat history; ensure your prompts are self-contained for best results.
+
+Example `.env` for vLLM chat endpoint:
+
+```
+OPENAI_BASE_URL=http://localhost:8000/v1
+OPENAI_API_KEY=not-needed-but-set-something
+```
+
+And matching `src/config.toml` overrides (itext2kg/refiner sections):
+
+```toml
+api_type = "chat"
+model    = "gpt-oss-20b"   # your vLLM model id
+base_url = "http://localhost:8000/v1"
+```
+
+Embeddings: vLLM обычно не отдает `/embeddings`. Если embeddings недоступны, dedup/refiner упадут — нужно прокинуть отдельный endpoint с embedding-моделью или оставить OpenAI для embeddings (`embedding_base_url`/`OPENAI_EMBEDDING_BASE_URL`).
+
 ## Data Formats
 
 All data formats are defined by JSON schemas in `/src/schemas/`:

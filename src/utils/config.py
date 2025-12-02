@@ -28,46 +28,56 @@ class ConfigValidationError(Exception):
 
 def _inject_env_api_keys(config: Dict[str, Any]) -> None:
     """
-    Injects API keys from environment variables.
+    Injects API keys and optional base URLs from environment variables.
 
     Priority:
     1. Environment variable (if set)
     2. Value from config.toml (if not placeholder)
     3. Validation error
     """
-    # Main API key
+    # Main API key / base URL
     env_api_key = os.getenv("OPENAI_API_KEY")
+    env_base_url = os.getenv("OPENAI_BASE_URL")
 
-    # itext2kg.api_key
-    if env_api_key:
-        if "itext2kg" in config:
-            current_key = config["itext2kg"].get("api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["itext2kg"]["api_key"] = env_api_key
+    # itext2kg.api_key / base_url
+    if env_api_key and "itext2kg" in config:
+        current_key = config["itext2kg"].get("api_key", "")
+        if not current_key or current_key.startswith("sk-..."):
+            config["itext2kg"]["api_key"] = env_api_key
+    if env_base_url and "itext2kg" in config:
+        if not config["itext2kg"].get("base_url"):
+            config["itext2kg"]["base_url"] = env_base_url
 
-    # refiner.api_key
-    if env_api_key:
-        if "refiner" in config:
-            current_key = config["refiner"].get("api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["refiner"]["api_key"] = env_api_key
+    # refiner.api_key / base_url
+    if env_api_key and "refiner" in config:
+        current_key = config["refiner"].get("api_key", "")
+        if not current_key or current_key.startswith("sk-..."):
+            config["refiner"]["api_key"] = env_api_key
+    if env_base_url and "refiner" in config:
+        if not config["refiner"].get("base_url"):
+            config["refiner"]["base_url"] = env_base_url
 
-    # Embedding API keys (can use separate key)
+    # Embedding API keys / base URLs (can use separate key)
     env_embedding_key = os.getenv("OPENAI_EMBEDDING_API_KEY", env_api_key)
+    env_embedding_base_url = os.getenv("OPENAI_EMBEDDING_BASE_URL", env_base_url)
 
-    # dedup.embedding_api_key
-    if env_embedding_key:
-        if "dedup" in config:
-            current_key = config["dedup"].get("embedding_api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["dedup"]["embedding_api_key"] = env_embedding_key
+    # dedup.embedding_api_key / embedding_base_url
+    if env_embedding_key and "dedup" in config:
+        current_key = config["dedup"].get("embedding_api_key", "")
+        if not current_key or current_key.startswith("sk-..."):
+            config["dedup"]["embedding_api_key"] = env_embedding_key
+    if env_embedding_base_url and "dedup" in config:
+        if not config["dedup"].get("embedding_base_url"):
+            config["dedup"]["embedding_base_url"] = env_embedding_base_url
 
-    # refiner.embedding_api_key
-    if env_embedding_key:
-        if "refiner" in config:
-            current_key = config["refiner"].get("embedding_api_key", "")
-            if not current_key or current_key.startswith("sk-..."):
-                config["refiner"]["embedding_api_key"] = env_embedding_key
+    # refiner.embedding_api_key / embedding_base_url
+    if env_embedding_key and "refiner" in config:
+        current_key = config["refiner"].get("embedding_api_key", "")
+        if not current_key or current_key.startswith("sk-..."):
+            config["refiner"]["embedding_api_key"] = env_embedding_key
+    if env_embedding_base_url and "refiner" in config:
+        if not config["refiner"].get("embedding_base_url"):
+            config["refiner"]["embedding_base_url"] = env_embedding_base_url
 
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
@@ -208,6 +218,10 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
 
     _validate_required_fields(section, required_fields, "itext2kg")
 
+    api_type = section.get("api_type", "responses")
+    if api_type not in ["responses", "chat"]:
+        raise ConfigValidationError("itext2kg.api_type must be 'responses' or 'chat'")
+
     # Проверяем диапазоны
     if section["tpm_limit"] <= 0:
         raise ConfigValidationError("itext2kg.tpm_limit must be positive")
@@ -221,12 +235,22 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
         )
 
     # Updated api_key check
-    if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
-        if not os.getenv("OPENAI_API_KEY"):
+    api_key = section["api_key"].strip()
+    base_url = section.get("base_url", "").strip()
+
+    if api_type == "responses":
+        if not api_key or api_key.startswith("sk-..."):
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ConfigValidationError(
+                    "itext2kg.api_key not configured. Either:\n"
+                    "1. Set OPENAI_API_KEY environment variable\n"
+                    "2. Provide valid key in config.toml"
+                )
+    else:
+        # Chat/completions endpoints may allow no key; require at least key or base_url
+        if not api_key and not os.getenv("OPENAI_API_KEY") and not base_url:
             raise ConfigValidationError(
-                "itext2kg.api_key not configured. Either:\n"
-                "1. Set OPENAI_API_KEY environment variable\n"
-                "2. Provide valid key in config.toml"
+                "itext2kg: provide api_key or base_url for chat api_type"
             )
 
     if section["timeout"] <= 0:
@@ -323,6 +347,10 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
 
     _validate_required_fields(section, required_fields, "refiner")
 
+    api_type = section.get("api_type", "responses")
+    if api_type not in ["responses", "chat"]:
+        raise ConfigValidationError("refiner.api_type must be 'responses' or 'chat'")
+
     # Проверяем диапазоны
     if not (0.0 <= section["sim_threshold"] <= 1.0):
         raise ConfigValidationError("refiner.sim_threshold must be between 0.0 and 1.0")
@@ -331,13 +359,20 @@ def _validate_refiner_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("refiner.max_pairs_per_node must be positive")
 
     # Updated api_key check
-    if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ConfigValidationError(
-                "refiner.api_key not configured. Either:\n"
-                "1. Set OPENAI_API_KEY environment variable\n"
-                "2. Provide valid key in config.toml"
-            )
+    api_key = section["api_key"].strip()
+    base_url = section.get("base_url", "").strip()
+
+    if api_type == "responses":
+        if not api_key or api_key.startswith("sk-..."):
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ConfigValidationError(
+                    "refiner.api_key not configured. Either:\n"
+                    "1. Set OPENAI_API_KEY environment variable\n"
+                    "2. Provide valid key in config.toml"
+                )
+    else:
+        if not api_key and not os.getenv("OPENAI_API_KEY") and not base_url:
+            raise ConfigValidationError("refiner: provide api_key or base_url for chat api_type")
 
     if section["tpm_limit"] <= 0:
         raise ConfigValidationError("refiner.tpm_limit must be positive")

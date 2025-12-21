@@ -84,7 +84,7 @@
               "HINT_FORWARD", "REFER_BACK", "PARALLEL",
               "TESTS", "REVISION_OF", "MENTIONS"
             ],
-            "description": "Type of semantic relationship"
+            "description": "Type of semantic relationship. Use ONLY these 9 allowed edge types. NO other edge types exist."
           },
           "weight": { 
             "type": "number", 

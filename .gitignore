@@ -1,9 +1,4 @@
 .DS_Store
-/docs/*.*
-OpenAI_Embeddings_API_K2-18_Reference.md
-OpenAI_Responses_API_K2-18_Reference.md
-/*.md
-!README.md
 logs/*
 !logs/.gitkeep
 .env
@@ -15,7 +10,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.claude/
 .coverage
 htmlcov/
 data/out/*

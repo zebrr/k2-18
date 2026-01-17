@@ -1,5 +1,7 @@
 # viz_path_finder.md - Path Finder Module Specification
 
+## Status: IN_PROGRESS
+
 ## Overview
 Path Finder module (`/viz/static/path_finder.js`) implements the Learning Path Finder (GPS Mode) for the K2-18 knowledge graph visualization. It allows users to select two nodes and visualize the shortest path between them.
 

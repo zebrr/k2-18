@@ -1,6 +1,6 @@
 # viz_graph2metrics.md
 
-## Status: READY (Data Enrichment Implemented)
+## Status: READY
 
 Module for computing comprehensive NetworkX metrics on K2-18 knowledge graph for visualization, including clustering, bridge detection, and data enrichment for interactive visualization.
 

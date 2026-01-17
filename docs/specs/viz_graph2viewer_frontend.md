@@ -1,6 +1,6 @@
 # viz_graph2viewer_frontend.md
 
-## Status: ACTIVE
+## Status: READY
 
 Frontend architecture and JavaScript modules for the knowledge graph viewer.
 

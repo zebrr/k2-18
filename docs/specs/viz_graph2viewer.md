@@ -1,6 +1,6 @@
 # viz_graph2viewer.md
 
-## Status: ACTIVE
+## Status: READY
 
 Module for generating HTML viewer for methodologists to explore knowledge graph in detail.
 Supports both production and test modes with tabular data exploration interface.

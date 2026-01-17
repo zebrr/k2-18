@@ -227,7 +227,7 @@ class TestItext2kgConceptsMain:
         """Тест успешного выполнения"""
         # Setup configuration
         mock_load_config.return_value = {
-            "itext2kg": {
+            "itext2kg_concepts": {
                 "max_context_tokens": 10000,
                 "max_context_tokens_test": 5000,
             }
@@ -252,7 +252,7 @@ class TestItext2kgConceptsMain:
     def test_main_invalid_max_context(self, mock_load_config):
         """Тест невалидного max_context_tokens"""
         mock_load_config.return_value = {
-            "itext2kg": {
+            "itext2kg_concepts": {
                 "max_context_tokens": 500,  # Too small
                 "max_context_tokens_test": 5000,
             }
@@ -287,7 +287,7 @@ class TestItext2kgGraphMain:
         """Тест успешного выполнения"""
         # Setup configuration
         mock_load_config.return_value = {
-            "itext2kg": {
+            "itext2kg_graph": {
                 "llm": {"model": "gpt-4"},
                 "max_context_tokens": 10000,
             }

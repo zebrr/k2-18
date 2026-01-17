@@ -35,6 +35,8 @@ Both sections now support independent configuration allowing different LLM model
 - **tests/test_config_integration.py**: Updated required sections and config access
 - **tests/test_llm_client.py**: Updated `test_config_has_test_parameters` for both new sections
 - **tests/test_llm_client_integration.py**: Updated `integration_config` fixture to use `itext2kg_concepts`
+- **tests/test_cli_main.py**: Updated mock configs to use `itext2kg_concepts` and `itext2kg_graph`
+- **tests/test_llm_embeddings_integration.py**: Updated `embedding_tpm_limit` to 5M (tier upgrade)
 - **tests/test_itext2kg_concepts.py**: Updated `mock_config` fixture
 - **tests/test_itext2kg_graph.py**: Updated `sample_config` fixture
 - **tests/test_itext2kg_graph_deduplication.py**: Updated config in processor fixture
@@ -99,6 +101,12 @@ Both sections now support independent configuration allowing different LLM model
 4. **Test for missing is_reasoning in refiner**: Config was incorrectly modified by bulk replace, fixed by removing accidentally added `is_reasoning` parameter
 
 5. **Integration tests missed in initial update**: `test_llm_client_integration.py` fixture used `config["itext2kg"]` — fixed to `config["itext2kg_concepts"]`
+
+6. **CLI main() function missed**: `src/itext2kg_concepts.py` lines 1016, 1020 still used `config["itext2kg"]` — fixed to `config["itext2kg_concepts"]`
+
+7. **CLI tests missed**: `tests/test_cli_main.py` mock configs used `"itext2kg"` — fixed to `"itext2kg_concepts"` and `"itext2kg_graph"`
+
+8. **Embeddings TPM limit outdated**: OpenAI tier upgraded to 5M TPM — updated `embedding_tpm_limit` in config.toml and test fixtures
 
 ## Next Steps
 None — task complete.

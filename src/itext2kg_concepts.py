@@ -1013,11 +1013,11 @@ def main():
         config = load_config(CONFIG_PATH)
 
         # Validate max_context_tokens parameters
-        max_context = config["itext2kg"].get("max_context_tokens", 128000)
+        max_context = config["itext2kg_concepts"].get("max_context_tokens", 128000)
         if not isinstance(max_context, int) or max_context < 1000:
             raise ValueError(f"Invalid max_context_tokens: {max_context}. Must be integer >= 1000")
 
-        max_context_test = config["itext2kg"].get("max_context_tokens_test", 128000)
+        max_context_test = config["itext2kg_concepts"].get("max_context_tokens_test", 128000)
         if not isinstance(max_context_test, int) or max_context_test < 1000:
             raise ValueError(
                 f"Invalid max_context_tokens_test: {max_context_test}. Must be integer >= 1000"

@@ -17,7 +17,7 @@ class TestGraphTimeoutRetryMechanism:
     def mock_config(self):
         """Create mock configuration with max_retries."""
         return {
-            "itext2kg": {
+            "itext2kg_graph": {
                 "model": "test-model",
                 "tpm_limit": 100000,
                 "log_level": "info",

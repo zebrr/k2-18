@@ -17,7 +17,7 @@ class TestSliceProcessor:
     def mock_config(self):
         """Create mock configuration."""
         return {
-            "itext2kg": {
+            "itext2kg_concepts": {
                 "model": "test-model",
                 "tpm_limit": 100000,
                 "log_level": "info",
@@ -680,7 +680,7 @@ class TestTimeoutRetryMechanism:
     def mock_config(self):
         """Create mock configuration with max_retries."""
         return {
-            "itext2kg": {
+            "itext2kg_concepts": {
                 "model": "test-model",
                 "tpm_limit": 100000,
                 "log_level": "info",

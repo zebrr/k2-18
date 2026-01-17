@@ -45,30 +45,30 @@ def integration_config(api_key):
 
     config = load_config()
 
-    # Используем TEST параметры для тестов
+    # Используем TEST параметры для тестов (из itext2kg_concepts секции)
     test_config = {
         "api_key": api_key,
-        "model": config["itext2kg"]["model_test"],
-        "is_reasoning": config["itext2kg"]["is_reasoning"],
-        "tpm_limit": config["itext2kg"]["tpm_limit_test"],  # Используем test версию!
-        "tpm_safety_margin": config["itext2kg"].get("tpm_safety_margin", 0.15),
-        "max_completion": config["itext2kg"]["max_completion_test"],  # И тут test версию!
-        "timeout": config["itext2kg"]["timeout"],
+        "model": config["itext2kg_concepts"]["model_test"],
+        "is_reasoning": config["itext2kg_concepts"]["is_reasoning"],
+        "tpm_limit": config["itext2kg_concepts"]["tpm_limit_test"],  # Используем test версию!
+        "tpm_safety_margin": config["itext2kg_concepts"].get("tpm_safety_margin", 0.15),
+        "max_completion": config["itext2kg_concepts"]["max_completion_test"],  # И тут test версию!
+        "timeout": config["itext2kg_concepts"]["timeout"],
         "max_retries": 2,
-        "poll_interval": config["itext2kg"].get("poll_interval", 5),
-        "max_context_tokens": config["itext2kg"].get("max_context_tokens_test", 128000),
+        "poll_interval": config["itext2kg_concepts"].get("poll_interval", 5),
+        "max_context_tokens": config["itext2kg_concepts"].get("max_context_tokens_test", 128000),
     }
 
     # Добавляем temperature всегда (может быть None)
-    test_config["temperature"] = config["itext2kg"].get("temperature")
+    test_config["temperature"] = config["itext2kg_concepts"].get("temperature")
 
     # Добавляем reasoning параметры ТОЛЬКО для reasoning моделей
     if test_config["is_reasoning"]:
-        test_config["reasoning_effort"] = config["itext2kg"].get("reasoning_effort")
-        test_config["reasoning_summary"] = config["itext2kg"].get("reasoning_summary")
+        test_config["reasoning_effort"] = config["itext2kg_concepts"].get("reasoning_effort")
+        test_config["reasoning_summary"] = config["itext2kg_concepts"].get("reasoning_summary")
 
     # Verbosity может быть для любых моделей
-    test_config["verbosity"] = config["itext2kg"].get("verbosity")
+    test_config["verbosity"] = config["itext2kg_concepts"].get("verbosity")
 
     return test_config
 

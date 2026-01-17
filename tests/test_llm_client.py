@@ -1518,15 +1518,25 @@ class TestConfigHasTestParameters:
 
         config = load_config()
 
-        # Проверка для itext2kg
-        assert "model_test" in config["itext2kg"], "itext2kg должен содержать model_test"
+        # Проверка для itext2kg_concepts
+        assert "model_test" in config["itext2kg_concepts"], "itext2kg_concepts должен содержать model_test"
         assert (
-            "max_context_tokens_test" in config["itext2kg"]
-        ), "itext2kg должен содержать max_context_tokens_test"
-        assert "tpm_limit_test" in config["itext2kg"], "itext2kg должен содержать tpm_limit_test"
+            "max_context_tokens_test" in config["itext2kg_concepts"]
+        ), "itext2kg_concepts должен содержать max_context_tokens_test"
+        assert "tpm_limit_test" in config["itext2kg_concepts"], "itext2kg_concepts должен содержать tpm_limit_test"
         assert (
-            "max_completion_test" in config["itext2kg"]
-        ), "itext2kg должен содержать max_completion_test"
+            "max_completion_test" in config["itext2kg_concepts"]
+        ), "itext2kg_concepts должен содержать max_completion_test"
+
+        # Проверка для itext2kg_graph
+        assert "model_test" in config["itext2kg_graph"], "itext2kg_graph должен содержать model_test"
+        assert (
+            "max_context_tokens_test" in config["itext2kg_graph"]
+        ), "itext2kg_graph должен содержать max_context_tokens_test"
+        assert "tpm_limit_test" in config["itext2kg_graph"], "itext2kg_graph должен содержать tpm_limit_test"
+        assert (
+            "max_completion_test" in config["itext2kg_graph"]
+        ), "itext2kg_graph должен содержать max_completion_test"
 
         # Проверка для refiner
         assert "model_test" in config["refiner"], "refiner должен содержать model_test"
@@ -1540,10 +1550,10 @@ class TestConfigHasTestParameters:
 
         # Проверка что test параметры отличаются от основных (обычно меньше)
         assert (
-            config["itext2kg"]["tpm_limit_test"] <= config["itext2kg"]["tpm_limit"]
+            config["itext2kg_concepts"]["tpm_limit_test"] <= config["itext2kg_concepts"]["tpm_limit"]
         ), "tpm_limit_test должен быть меньше или равен tpm_limit"
         assert (
-            config["itext2kg"]["max_completion_test"] <= config["itext2kg"]["max_completion"]
+            config["itext2kg_concepts"]["max_completion_test"] <= config["itext2kg_concepts"]["max_completion"]
         ), "max_completion_test должен быть меньше или равен max_completion"
 
         assert (

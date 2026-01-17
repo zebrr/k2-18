@@ -27,9 +27,19 @@ class TestConfigLoading:
         tokenizer = "o200k_base"
         allowed_extensions = ["json", "txt", "md", "html"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test123"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o-graph"
         tpm_limit = 120000
         max_completion = 4096
         log_level = "info"
@@ -73,13 +83,15 @@ class TestConfigLoading:
 
             # Проверяем основные секции
             assert "slicer" in config
-            assert "itext2kg" in config
+            assert "itext2kg_concepts" in config
+            assert "itext2kg_graph" in config
             assert "dedup" in config
             assert "refiner" in config
 
             # Проверяем несколько ключевых значений
             assert config["slicer"]["max_tokens"] == 40000
-            assert config["itext2kg"]["model"] == "gpt-4o"
+            assert config["itext2kg_concepts"]["model"] == "gpt-4o"
+            assert config["itext2kg_graph"]["model"] == "gpt-4o-graph"
             assert config["dedup"]["sim_threshold"] == 0.97
             # Веса больше не в конфиге - перенесены в промпты
             # assert config["refiner"]["weight_low"] == 0.3
@@ -112,7 +124,7 @@ class TestSlicerValidation:
         """Тест ошибки при отсутствующей секции [slicer]."""
         config_without_slicer = textwrap.dedent(
             """
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -147,7 +159,17 @@ class TestSlicerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -206,7 +228,17 @@ class TestSlicerValidation:
         tokenizer = "gpt2"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -267,7 +299,17 @@ class TestSlicerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = []
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -318,7 +360,7 @@ class TestSlicerValidation:
 
 
 class TestItext2kgValidation:
-    """Тесты валидации секции [itext2kg]."""
+    """Тесты валидации секции [itext2kg_concepts]."""
 
     def test_invalid_log_level(self):
         """Тест валидации log_level."""
@@ -332,12 +374,22 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
         max_completion = 4096
         log_level = "invalid_level"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
@@ -352,6 +404,7 @@ class TestItext2kgValidation:
         k_neighbors = 5
 
         [refiner]
+        is_reasoning = false
         run = true
         embedding_model = "text-embedding-3-small"
         sim_threshold = 0.80
@@ -398,13 +451,23 @@ class TestItext2kgValidation:
             tokenizer = "o200k_base"
             allowed_extensions = ["json"]
 
-            [itext2kg]
+            [itext2kg_concepts]
             is_reasoning = false
             model = "gpt-4o"
             tpm_limit = 120000
             max_completion = 4096
             log_level = "info"
             api_key = "   "
+            timeout = 45
+            max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
             timeout = 45
             max_retries = 6
 
@@ -439,7 +502,7 @@ class TestItext2kgValidation:
                 f.write(config_with_empty_api_key)
                 f.flush()
 
-                with pytest.raises(ConfigValidationError, match="api_key not configured"):
+                with pytest.raises(ConfigValidationError, match="itext2kg_concepts.api_key not configured"):
                     load_config(f.name)
         finally:
             # Восстанавливаем переменную окружения
@@ -460,7 +523,17 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
+        is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
         max_completion = 4096
@@ -503,7 +576,7 @@ class TestItext2kgValidation:
 
             with pytest.raises(
                 ConfigValidationError,
-                match="Parameter 'is_reasoning' is required in \\[itext2kg\\] section",
+                match="Parameter 'is_reasoning' is required in \\[itext2kg_concepts\\] section",
             ):
                 load_config(f.name)
 
@@ -523,10 +596,20 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = true
         model = "o1-preview"
         temperature = 0.5
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
         tpm_limit = 120000
         max_completion = 4096
         log_level = "info"
@@ -574,7 +657,7 @@ class TestItext2kgValidation:
                 "Reasoning model with temperature parameter" in record.message
                 for record in caplog.records
             )
-            assert any("[itext2kg]" in record.message for record in caplog.records)
+            assert any("[itext2kg_concepts]" in record.message for record in caplog.records)
 
         Path(f.name).unlink()
 
@@ -592,10 +675,20 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         reasoning_effort = "medium"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
         tpm_limit = 120000
         max_completion = 4096
         log_level = "info"
@@ -643,7 +736,7 @@ class TestItext2kgValidation:
                 "Non-reasoning model with reasoning_effort" in record.message
                 for record in caplog.records
             )
-            assert any("[itext2kg]" in record.message for record in caplog.records)
+            assert any("[itext2kg_concepts]" in record.message for record in caplog.records)
 
         Path(f.name).unlink()
 
@@ -659,7 +752,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -668,6 +761,16 @@ class TestItext2kgValidation:
         api_key = "sk-test"
         timeout = -5
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -701,7 +804,7 @@ class TestItext2kgValidation:
             f.write(config_with_negative_timeout)
             f.flush()
 
-            with pytest.raises(ConfigValidationError, match="itext2kg.timeout must be positive"):
+            with pytest.raises(ConfigValidationError, match="itext2kg_concepts.timeout must be positive"):
                 load_config(f.name)
 
         Path(f.name).unlink()
@@ -718,7 +821,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -727,6 +830,16 @@ class TestItext2kgValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = -1
+
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -761,7 +874,7 @@ class TestItext2kgValidation:
             f.flush()
 
             with pytest.raises(
-                ConfigValidationError, match="itext2kg.max_retries must be non-negative"
+                ConfigValidationError, match="itext2kg_concepts.max_retries must be non-negative"
             ):
                 load_config(f.name)
 
@@ -779,7 +892,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -790,7 +903,18 @@ class TestItext2kgValidation:
         max_retries = 6
         response_chain_depth = "not_an_integer"
 
-        [dedup]
+        
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+[dedup]
         embedding_model = "text-embedding-3-small"
         sim_threshold = 0.97
         len_ratio_min = 0.8
@@ -841,7 +965,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -852,7 +976,18 @@ class TestItext2kgValidation:
         max_retries = 6
         response_chain_depth = -5
 
-        [dedup]
+        
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+[dedup]
         embedding_model = "text-embedding-3-small"
         sim_threshold = 0.97
         len_ratio_min = 0.8
@@ -903,7 +1038,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -914,7 +1049,18 @@ class TestItext2kgValidation:
         max_retries = 6
         truncation = "invalid_value"
 
-        [dedup]
+        
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+[dedup]
         embedding_model = "text-embedding-3-small"
         sim_threshold = 0.97
         len_ratio_min = 0.8
@@ -965,7 +1111,7 @@ class TestItext2kgValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -976,7 +1122,18 @@ class TestItext2kgValidation:
         max_retries = 6
         truncation = 123
 
-        [dedup]
+        
+        [itext2kg_graph]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+[dedup]
         embedding_model = "text-embedding-3-small"
         sim_threshold = 0.97
         len_ratio_min = 0.8
@@ -1033,7 +1190,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1042,6 +1199,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1095,7 +1262,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1104,6 +1271,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1155,7 +1332,17 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1216,7 +1403,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1225,6 +1412,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1275,7 +1472,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1284,6 +1481,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1336,7 +1543,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1345,6 +1552,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1397,7 +1614,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1406,6 +1623,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1460,7 +1687,7 @@ class TestRefinerValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1469,6 +1696,16 @@ class TestRefinerValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -1526,7 +1763,17 @@ class TestTypeValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        tpm_limit = 120000
+        max_completion = 4096
+        log_level = "info"
+        api_key = "sk-test"
+        timeout = 45
+        max_retries = 6
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -1596,7 +1843,17 @@ class TestEnvironmentVariables:
             tokenizer = "o200k_base"
             allowed_extensions = ["json"]
 
-            [itext2kg]
+            [itext2kg_concepts]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-..."
+            timeout = 45
+            max_retries = 6
+
+            [itext2kg_graph]
             is_reasoning = false
             model = "gpt-4o"
             tpm_limit = 120000
@@ -1627,9 +1884,6 @@ class TestEnvironmentVariables:
             max_completion = 2048
             timeout = 30
             max_retries = 3
-            weight_low = 0.3
-            weight_mid = 0.6
-            weight_high = 0.9
             """
             )
 
@@ -1640,7 +1894,8 @@ class TestEnvironmentVariables:
                 config = load_config(f.name)
 
                 # Check that API keys were injected from env
-                assert config["itext2kg"]["api_key"] == "sk-test-from-env"
+                assert config["itext2kg_concepts"]["api_key"] == "sk-test-from-env"
+                assert config["itext2kg_graph"]["api_key"] == "sk-test-from-env"
                 assert config["refiner"]["api_key"] == "sk-test-from-env"
 
             Path(f.name).unlink()
@@ -1673,7 +1928,17 @@ class TestEnvironmentVariables:
             tokenizer = "o200k_base"
             allowed_extensions = ["json"]
 
-            [itext2kg]
+            [itext2kg_concepts]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
+
+            [itext2kg_graph]
             is_reasoning = false
             model = "gpt-4o"
             tpm_limit = 120000
@@ -1771,13 +2036,23 @@ class TestEnvironmentVariables:
             tokenizer = "o200k_base"
             allowed_extensions = ["json"]
 
-            [itext2kg]
+            [itext2kg_concepts]
             is_reasoning = false
             model = "gpt-4o"
             tpm_limit = 120000
             max_completion = 4096
             log_level = "info"
             api_key = "sk-..."
+            timeout = 45
+            max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
             timeout = 45
             max_retries = 6
 
@@ -1831,13 +2106,13 @@ class TestParametrizedValidation:
         "section,field,value,error_pattern",
         [
             # itext2kg numeric validations
-            ("itext2kg", "timeout", 0, "must be positive"),
-            ("itext2kg", "timeout", -1, "must be positive"),
-            ("itext2kg", "tpm_limit", 0, "must be positive"),
-            ("itext2kg", "tpm_limit", -100, "must be positive"),
-            ("itext2kg", "max_completion", 0, "must be between 1 and 100000"),
-            ("itext2kg", "max_completion", 100001, "must be between 1 and 100000"),
-            ("itext2kg", "max_retries", -1, "must be non-negative"),
+            ("itext2kg_concepts", "timeout", 0, "must be positive"),
+            ("itext2kg_concepts", "timeout", -1, "must be positive"),
+            ("itext2kg_concepts", "tpm_limit", 0, "must be positive"),
+            ("itext2kg_concepts", "tpm_limit", -100, "must be positive"),
+            ("itext2kg_concepts", "max_completion", 0, "must be between 1 and 100000"),
+            ("itext2kg_concepts", "max_completion", 100001, "must be between 1 and 100000"),
+            ("itext2kg_concepts", "max_retries", -1, "must be non-negative"),
             # refiner numeric validations
             ("refiner", "timeout", 0, "must be positive"),
             ("refiner", "timeout", -5, "must be positive"),
@@ -1907,8 +2182,8 @@ class TestParametrizedValidation:
         "section,field,value,error_pattern",
         [
             # String enum validations
-            ("itext2kg", "log_level", "invalid", "must be one of"),
-            ("itext2kg", "log_level", "trace", "must be one of"),
+            ("itext2kg_concepts", "log_level", "invalid", "must be one of"),
+            ("itext2kg_concepts", "log_level", "trace", "must be one of"),
             ("dedup", "faiss_metric", "COSINE", "must be 'INNER_PRODUCT' or 'L2'"),
             ("dedup", "faiss_metric", "EUCLIDEAN", "must be 'INNER_PRODUCT' or 'L2'"),
             ("slicer", "tokenizer", "gpt2", "must be 'o200k_base'"),
@@ -1949,26 +2224,26 @@ class TestExtremeValues:
     def test_max_completion_at_boundary(self):
         """Test max_completion exactly at boundary values."""
         # Test at lower boundary
-        config = get_config_with_override("itext2kg", "max_completion", 1)
+        config = get_config_with_override("itext2kg_concepts", "max_completion", 1)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(config)
             f.flush()
 
             result = load_config(f.name)
-            assert result["itext2kg"]["max_completion"] == 1
+            assert result["itext2kg_concepts"]["max_completion"] == 1
 
         Path(f.name).unlink()
 
         # Test at upper boundary
-        config = get_config_with_override("itext2kg", "max_completion", 100000)
+        config = get_config_with_override("itext2kg_concepts", "max_completion", 100000)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(config)
             f.flush()
 
             result = load_config(f.name)
-            assert result["itext2kg"]["max_completion"] == 100000
+            assert result["itext2kg_concepts"]["max_completion"] == 100000
 
         Path(f.name).unlink()
 
@@ -2015,20 +2290,20 @@ class TestExtremeValues:
             f.flush()
 
             result = load_config(f.name)
-            assert result["itext2kg"]["response_chain_depth"] == 0
+            assert result["itext2kg_concepts"]["response_chain_depth"] == 0
 
         Path(f.name).unlink()
 
     def test_very_large_tpm_limit(self):
         """Test very large TPM limit value."""
-        config = get_config_with_override("itext2kg", "tpm_limit", 10000000)
+        config = get_config_with_override("itext2kg_concepts", "tpm_limit", 10000000)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(config)
             f.flush()
 
             result = load_config(f.name)
-            assert result["itext2kg"]["tpm_limit"] == 10000000
+            assert result["itext2kg_concepts"]["tpm_limit"] == 10000000
 
         Path(f.name).unlink()
 
@@ -2094,7 +2369,17 @@ def get_minimal_valid_config():
         soft_boundary = true
         soft_boundary_max_shift = 200
 
-        [itext2kg]
+        [itext2kg_concepts]
+        is_reasoning = false
+        model = "gpt-4o"
+        api_key = "sk-test"
+        tpm_limit = 60000
+        max_completion = 2048
+        timeout = 30
+        max_retries = 3
+        log_level = "info"
+
+        [itext2kg_graph]
         is_reasoning = false
         model = "gpt-4o"
         api_key = "sk-test"
@@ -2148,7 +2433,7 @@ class TestDedupValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -2157,6 +2442,16 @@ class TestDedupValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         sim_threshold = 0.97
@@ -2208,7 +2503,7 @@ class TestDedupValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -2217,6 +2512,16 @@ class TestDedupValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"
@@ -2269,7 +2574,7 @@ class TestDedupValidation:
         tokenizer = "o200k_base"
         allowed_extensions = ["json"]
 
-        [itext2kg]
+        [itext2kg_concepts]
         is_reasoning = false
         model = "gpt-4o"
         tpm_limit = 120000
@@ -2278,6 +2583,16 @@ class TestDedupValidation:
         api_key = "sk-test"
         timeout = 45
         max_retries = 6
+
+            [itext2kg_graph]
+            is_reasoning = false
+            model = "gpt-4o"
+            tpm_limit = 120000
+            max_completion = 4096
+            log_level = "info"
+            api_key = "sk-test"
+            timeout = 45
+            max_retries = 6
 
         [dedup]
         embedding_model = "text-embedding-3-small"

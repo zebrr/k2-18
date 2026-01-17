@@ -16,7 +16,7 @@ class TestConfigIntegration:
         config = load_config()
 
         # Проверяем, что все обязательные секции присутствуют
-        required_sections = ["slicer", "itext2kg", "dedup", "refiner"]
+        required_sections = ["slicer", "itext2kg_concepts", "itext2kg_graph", "dedup", "refiner"]
         for section in required_sections:
             assert section in config, f"Missing section: {section}"
 
@@ -29,16 +29,27 @@ class TestConfigIntegration:
         assert isinstance(slicer["allowed_extensions"], list)
         assert len(slicer["allowed_extensions"]) > 0
 
-        # Проверяем ключевые параметры itext2kg
-        itext2kg = config["itext2kg"]
-        assert isinstance(itext2kg["model"], str)
-        assert len(itext2kg["model"]) > 0
-        assert isinstance(itext2kg["tpm_limit"], int)
-        assert itext2kg["tpm_limit"] > 0
-        assert 1 <= itext2kg["max_completion"] <= 100000  # Обновлено согласно валидации
-        assert itext2kg["log_level"] in ["debug", "info", "warning", "error"]
-        assert isinstance(itext2kg["api_key"], str)
-        assert len(itext2kg["api_key"].strip()) > 0
+        # Проверяем ключевые параметры itext2kg_concepts
+        itext2kg_concepts = config["itext2kg_concepts"]
+        assert isinstance(itext2kg_concepts["model"], str)
+        assert len(itext2kg_concepts["model"]) > 0
+        assert isinstance(itext2kg_concepts["tpm_limit"], int)
+        assert itext2kg_concepts["tpm_limit"] > 0
+        assert 1 <= itext2kg_concepts["max_completion"] <= 100000
+        assert itext2kg_concepts["log_level"] in ["debug", "info", "warning", "error"]
+        assert isinstance(itext2kg_concepts["api_key"], str)
+        assert len(itext2kg_concepts["api_key"].strip()) > 0
+
+        # Проверяем ключевые параметры itext2kg_graph
+        itext2kg_graph = config["itext2kg_graph"]
+        assert isinstance(itext2kg_graph["model"], str)
+        assert len(itext2kg_graph["model"]) > 0
+        assert isinstance(itext2kg_graph["tpm_limit"], int)
+        assert itext2kg_graph["tpm_limit"] > 0
+        assert 1 <= itext2kg_graph["max_completion"] <= 100000
+        assert itext2kg_graph["log_level"] in ["debug", "info", "warning", "error"]
+        assert isinstance(itext2kg_graph["api_key"], str)
+        assert len(itext2kg_graph["api_key"].strip()) > 0
 
         # Проверяем ключевые параметры dedup
         dedup = config["dedup"]
@@ -96,6 +107,6 @@ class TestConfigIntegration:
         tokenizer_name = config["slicer"]["tokenizer"]
         assert tokenizer_name == "o200k_base"
 
-        model_name = config["itext2kg"]["model"]
+        model_name = config["itext2kg_concepts"]["model"]
         assert isinstance(model_name, str)
         assert len(model_name) > 0

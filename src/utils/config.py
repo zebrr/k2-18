@@ -15,8 +15,7 @@ else:
         import tomli as tomllib
     except ImportError:
         raise ImportError(
-            "tomli library is required for Python < 3.11. "
-            "Install it with: pip install tomli>=2.0.0"
+            "tomli library is required for Python < 3.11. Install it with: pip install tomli>=2.0.0"
         )
 
 
@@ -38,12 +37,19 @@ def _inject_env_api_keys(config: Dict[str, Any]) -> None:
     # Main API key
     env_api_key = os.getenv("OPENAI_API_KEY")
 
-    # itext2kg.api_key
+    # itext2kg_concepts.api_key
     if env_api_key:
-        if "itext2kg" in config:
-            current_key = config["itext2kg"].get("api_key", "")
+        if "itext2kg_concepts" in config:
+            current_key = config["itext2kg_concepts"].get("api_key", "")
             if not current_key or current_key.startswith("sk-..."):
-                config["itext2kg"]["api_key"] = env_api_key
+                config["itext2kg_concepts"]["api_key"] = env_api_key
+
+    # itext2kg_graph.api_key
+    if env_api_key:
+        if "itext2kg_graph" in config:
+            current_key = config["itext2kg_graph"].get("api_key", "")
+            if not current_key or current_key.startswith("sk-..."):
+                config["itext2kg_graph"]["api_key"] = env_api_key
 
     # refiner.api_key
     if env_api_key:
@@ -117,10 +123,16 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
             raise ConfigValidationError(f"Configuration validation failed: {e}")
 
     # Validate is_reasoning parameter is present (only for main pipeline)
-    if "itext2kg" in config:
-        if "is_reasoning" not in config["itext2kg"]:
+    if "itext2kg_concepts" in config:
+        if "is_reasoning" not in config["itext2kg_concepts"]:
             raise ConfigValidationError(
-                "Parameter 'is_reasoning' is required in [itext2kg] section"
+                "Parameter 'is_reasoning' is required in [itext2kg_concepts] section"
+            )
+
+    if "itext2kg_graph" in config:
+        if "is_reasoning" not in config["itext2kg_graph"]:
+            raise ConfigValidationError(
+                "Parameter 'is_reasoning' is required in [itext2kg_graph] section"
             )
 
     if "refiner" in config:
@@ -131,7 +143,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
     import logging
 
     logger = logging.getLogger(__name__)
-    for section in ["itext2kg", "refiner"]:
+    for section in ["itext2kg_concepts", "itext2kg_graph", "refiner"]:
         if section in config:
             is_reasoning = config[section].get("is_reasoning", False)
             has_temperature = config[section].get("temperature") is not None
@@ -153,7 +165,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
 
 def _validate_config(config: Dict[str, Any]) -> None:
     """Валидирует полную структуру конфигурации."""
-    required_sections = ["slicer", "itext2kg", "dedup", "refiner"]
+    required_sections = ["slicer", "itext2kg_concepts", "itext2kg_graph", "dedup", "refiner"]
 
     for section in required_sections:
         if section not in config:
@@ -161,7 +173,8 @@ def _validate_config(config: Dict[str, Any]) -> None:
 
     # Валидируем каждую секцию
     _validate_slicer_section(config["slicer"])
-    _validate_itext2kg_section(config["itext2kg"])
+    _validate_itext2kg_concepts_section(config["itext2kg_concepts"])
+    _validate_itext2kg_graph_section(config["itext2kg_graph"])
     _validate_dedup_section(config["dedup"])
     _validate_refiner_section(config["refiner"])
 
@@ -194,8 +207,8 @@ def _validate_slicer_section(section: Dict[str, Any]) -> None:
         raise ConfigValidationError("slicer.allowed_extensions cannot be empty")
 
 
-def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
-    """Валидирует секцию [itext2kg]."""
+def _validate_itext2kg_concepts_section(section: Dict[str, Any]) -> None:
+    """Валидирует секцию [itext2kg_concepts]."""
     required_fields = {
         "model": str,
         "tpm_limit": int,
@@ -206,54 +219,124 @@ def _validate_itext2kg_section(section: Dict[str, Any]) -> None:
         "max_retries": int,
     }
 
-    _validate_required_fields(section, required_fields, "itext2kg")
+    _validate_required_fields(section, required_fields, "itext2kg_concepts")
 
     # Проверяем диапазоны
     if section["tpm_limit"] <= 0:
-        raise ConfigValidationError("itext2kg.tpm_limit must be positive")
+        raise ConfigValidationError("itext2kg_concepts.tpm_limit must be positive")
 
     if not (1 <= section["max_completion"] <= 100000):
-        raise ConfigValidationError("itext2kg.max_completion must be between 1 and 100000")
+        raise ConfigValidationError("itext2kg_concepts.max_completion must be between 1 and 100000")
 
     if section["log_level"] not in ["debug", "info", "warning", "error"]:
         raise ConfigValidationError(
-            "itext2kg.log_level must be one of: debug, info, warning, error"
+            "itext2kg_concepts.log_level must be one of: debug, info, warning, error"
         )
 
     # Updated api_key check
     if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
         if not os.getenv("OPENAI_API_KEY"):
             raise ConfigValidationError(
-                "itext2kg.api_key not configured. Either:\n"
+                "itext2kg_concepts.api_key not configured. Either:\n"
                 "1. Set OPENAI_API_KEY environment variable\n"
                 "2. Provide valid key in config.toml"
             )
 
     if section["timeout"] <= 0:
-        raise ConfigValidationError("itext2kg.timeout must be positive")
+        raise ConfigValidationError("itext2kg_concepts.timeout must be positive")
 
     if section["max_retries"] < 0:
-        raise ConfigValidationError("itext2kg.max_retries must be non-negative")
+        raise ConfigValidationError("itext2kg_concepts.max_retries must be non-negative")
 
     # Проверяем температуру, если она указана
     if "temperature" in section:
         temp = section["temperature"]
         if not (0 <= temp <= 2):
-            raise ConfigValidationError("itext2kg.temperature must be between 0 and 2")
+            raise ConfigValidationError("itext2kg_concepts.temperature must be between 0 and 2")
 
     # Validate optional response_chain_depth
     if "response_chain_depth" in section:
         depth = section["response_chain_depth"]
         if not isinstance(depth, int) or depth < 0:
             raise ConfigValidationError(
-                "itext2kg.response_chain_depth must be a non-negative integer"
+                "itext2kg_concepts.response_chain_depth must be a non-negative integer"
             )
 
     # Validate optional truncation
     if "truncation" in section:
         truncation = section["truncation"]
         if truncation not in ["auto", "disabled"]:
-            raise ConfigValidationError("itext2kg.truncation must be 'auto' or 'disabled'")
+            raise ConfigValidationError("itext2kg_concepts.truncation must be 'auto' or 'disabled'")
+
+
+def _validate_itext2kg_graph_section(section: Dict[str, Any]) -> None:
+    """Валидирует секцию [itext2kg_graph]."""
+    required_fields = {
+        "model": str,
+        "tpm_limit": int,
+        "max_completion": int,
+        "log_level": str,
+        "api_key": str,
+        "timeout": int,
+        "max_retries": int,
+    }
+
+    _validate_required_fields(section, required_fields, "itext2kg_graph")
+
+    # Проверяем диапазоны
+    if section["tpm_limit"] <= 0:
+        raise ConfigValidationError("itext2kg_graph.tpm_limit must be positive")
+
+    if not (1 <= section["max_completion"] <= 100000):
+        raise ConfigValidationError("itext2kg_graph.max_completion must be between 1 and 100000")
+
+    if section["log_level"] not in ["debug", "info", "warning", "error"]:
+        raise ConfigValidationError(
+            "itext2kg_graph.log_level must be one of: debug, info, warning, error"
+        )
+
+    # Updated api_key check
+    if not section["api_key"].strip() or section["api_key"].startswith("sk-..."):
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ConfigValidationError(
+                "itext2kg_graph.api_key not configured. Either:\n"
+                "1. Set OPENAI_API_KEY environment variable\n"
+                "2. Provide valid key in config.toml"
+            )
+
+    if section["timeout"] <= 0:
+        raise ConfigValidationError("itext2kg_graph.timeout must be positive")
+
+    if section["max_retries"] < 0:
+        raise ConfigValidationError("itext2kg_graph.max_retries must be non-negative")
+
+    # Проверяем температуру, если она указана
+    if "temperature" in section:
+        temp = section["temperature"]
+        if not (0 <= temp <= 2):
+            raise ConfigValidationError("itext2kg_graph.temperature must be between 0 and 2")
+
+    # Validate optional response_chain_depth
+    if "response_chain_depth" in section:
+        depth = section["response_chain_depth"]
+        if not isinstance(depth, int) or depth < 0:
+            raise ConfigValidationError(
+                "itext2kg_graph.response_chain_depth must be a non-negative integer"
+            )
+
+    # Validate optional truncation
+    if "truncation" in section:
+        truncation = section["truncation"]
+        if truncation not in ["auto", "disabled"]:
+            raise ConfigValidationError("itext2kg_graph.truncation must be 'auto' or 'disabled'")
+
+    # Validate optional auto_mentions_weight (only for graph)
+    if "auto_mentions_weight" in section:
+        weight = section["auto_mentions_weight"]
+        if not isinstance(weight, (int, float)) or not (0.0 <= weight <= 1.0):
+            raise ConfigValidationError(
+                "itext2kg_graph.auto_mentions_weight must be between 0.0 and 1.0"
+            )
 
 
 def _validate_dedup_section(section: Dict[str, Any]) -> None:

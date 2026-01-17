@@ -91,7 +91,7 @@ class SliceProcessor:
         Args:
             config: Configuration from config.toml
         """
-        self.config = config["itext2kg"]
+        self.config = config["itext2kg_graph"]
         self.full_config = config  # Save full config for accessing slicer settings
         self.llm_client = OpenAIClient(self.config)
         self.logger = self._setup_logger()
@@ -1175,11 +1175,10 @@ class SliceProcessor:
                         f"{slice_id} | Timeout after {max_retries} retries"
                     )
                     print(
-                        f"[{current_time}] FAILED   | ❌ Cannot continue without slice "
-                        f"{slice_id}"
+                        f"[{current_time}] FAILED   | ❌ Cannot continue without slice {slice_id}"
                     )
                     self.logger.error(
-                        f"Timeout processing slice {slice_id} after {max_retries} " f"retries: {e}"
+                        f"Timeout processing slice {slice_id} after {max_retries} retries: {e}"
                     )
                     self._save_temp_dumps(f"timeout_failure_{slice_id}")
                     return False  # Will lead to EXIT_RUNTIME_ERROR
@@ -1205,9 +1204,7 @@ class SliceProcessor:
                     f"{slice_order:03d}/{self.stats.total_slices:03d} | "
                     f"{slice_id} | Unexpected error: {type(e).__name__}"
                 )
-                print(
-                    f"[{current_time}] FAILED   | ❌ Cannot continue without slice " f"{slice_id}"
-                )
+                print(f"[{current_time}] FAILED   | ❌ Cannot continue without slice {slice_id}")
                 self._save_temp_dumps(f"unexpected_error_{slice_id}")
                 return False  # Will lead to EXIT_RUNTIME_ERROR
 
@@ -1252,7 +1249,7 @@ class SliceProcessor:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(
             f"[{timestamp}] START    | {self.stats.total_slices} slices | "
-            f"model={model} | tpm={tpm_limit//1000}k"
+            f"model={model} | tpm={tpm_limit // 1000}k"
         )
 
         # Process each slice

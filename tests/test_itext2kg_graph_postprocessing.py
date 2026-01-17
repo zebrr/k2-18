@@ -22,7 +22,7 @@ class TestIDPostProcessing:
     def mock_config(self):
         """Create minimal config for processor."""
         return {
-            "itext2kg": {
+            "itext2kg_graph": {
                 "model": "test-model",
                 "tpm_limit": 100000,
                 "log_level": "debug",

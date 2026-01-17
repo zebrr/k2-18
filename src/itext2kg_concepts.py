@@ -92,7 +92,7 @@ class SliceProcessor:
         Args:
             config: Configuration from config.toml
         """
-        self.config = config["itext2kg"]
+        self.config = config["itext2kg_concepts"]
         self.full_config = config  # Save full config for accessing slicer settings
         self.llm_client = OpenAIClient(self.config)
         self.logger = self._setup_logger()
@@ -807,7 +807,7 @@ class SliceProcessor:
                 # Output error status
                 current_time = datetime.now().strftime("%H:%M:%S")
                 print(f"[{current_time}] FAILED   | ❌ All slices failed processing")
-                print(f"[{current_time}] SAVING   | " "💾 Attempting to save empty structures...")
+                print(f"[{current_time}] SAVING   | 💾 Attempting to save empty structures...")
 
                 # Try to save at least empty structures
                 try:
@@ -819,8 +819,7 @@ class SliceProcessor:
                 except Exception as dump_error:
                     current_time = datetime.now().strftime("%H:%M:%S")
                     print(
-                        f"[{current_time}] ERROR    | ⚠️ Failed to save "
-                        f"temp dumps: {dump_error}",
+                        f"[{current_time}] ERROR    | ⚠️ Failed to save temp dumps: {dump_error}",
                         file=sys.stderr,
                     )
 
@@ -858,7 +857,7 @@ class SliceProcessor:
         current_time = datetime.now().strftime("%H:%M:%S")
         print(
             f"[{current_time}] START    | {self.stats.total_slices} slices | "
-            f"model={self.config['model']} | tpm={self.config['tpm_limit']//1000}k"
+            f"model={self.config['model']} | tpm={self.config['tpm_limit'] // 1000}k"
         )
 
     def _finalize_and_save(self) -> int:

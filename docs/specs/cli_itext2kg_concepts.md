@@ -173,7 +173,7 @@ The utility uses structured progress output with unified format:
 
 ## Configuration
 
-Section `[itext2kg]` in config.toml:
+Section `[itext2kg_concepts]` in config.toml:
 
 ### Required Parameters
 - **model** (str) - LLM model (o4-mini-2025-04-16)

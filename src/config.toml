@@ -8,7 +8,7 @@ allowed_extensions      = ["txt", "md", "html"]
 # gpt-5-2025-08-07 - дорогая
 # gpt-5-mini-2025-08-07 - дешевая
 
-[itext2kg]
+[itext2kg_concepts]
 is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
 
 # Управление контекстом
@@ -17,7 +17,7 @@ response_chain_depth = 1      # Глубина цепочки (1-N) | заком
 
 # Основная модель
 model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
-# model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+# model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768
 max_context_tokens  = 400000
 tpm_limit           = 450000
 max_completion      = 100000
@@ -25,7 +25,7 @@ max_completion      = 100000
 # Тестовая модель (только эти 4 параметра уникальные)
 # Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
 model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 400,000 / 128,000
-# model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768 
+# model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768
 max_context_tokens_test = 400000
 tpm_limit_test          = 450000
 max_completion_test     = 100000
@@ -39,7 +39,46 @@ reasoning_summary   = "auto"
 # Model for TPM probe requests (optional, defaults to cheapest available)
 probe_model = "gpt-4.1-nano-2025-04-14"
 
-# Weight for automatic MENTIONS edges (itext2kg_graph)
+# Остальные параметры утилиты (НЕ УДАЛЯТЬ! Копировать текущие значения)
+api_key             = "sk-..."  # Set via OPENAI_API_KEY env variable
+tpm_safety_margin   = 0.15
+log_level           = "info"
+timeout             = 1200
+max_retries         = 3
+poll_interval       = 10
+
+[itext2kg_graph]
+is_reasoning        = true        # ОБЯЗАТЕЛЬНЫЙ! Иначе падаем с ошибкой. Проверь модель!
+
+# Управление контекстом
+truncation = "auto"           # "auto" | "disabled" | закомментировано = не передается
+response_chain_depth = 1      # Глубина цепочки (1-N) | закомментировано = без ограничений | 0 = независимые запросы
+
+# Основная модель
+model 				= "gpt-5-mini-2025-08-07" # Новый ризонер: 400,000 / 128,000
+# model               = "gpt-4.1-2025-04-14" # Не ризонер: 1,047,576 / 32,768
+max_context_tokens  = 400000
+tpm_limit           = 450000
+max_completion      = 100000
+
+# Тестовая модель (только эти 4 параметра уникальные)
+# Тестовая модель по типу должна быть такой же, как и основная (или обе ризонеры или нет)
+model_test              = "gpt-5-mini-2025-08-07"  # Новый ризонер: 400,000 / 128,000
+# model_test              = "gpt-4.1-mini-2025-04-14" # Не ризонер: 1,047,576 / 32,768
+max_context_tokens_test = 400000
+tpm_limit_test          = 450000
+max_completion_test     = 100000
+
+# Общие параметры настройки для ОБЕИХ моделей
+# temperature         = 0.6
+reasoning_effort    = "medium"
+reasoning_summary   = "auto"
+# verbosity         = "medium"      # Закомментирован = null
+
+# Model for TPM probe requests (optional, defaults to cheapest available)
+probe_model = "gpt-4.1-nano-2025-04-14"
+
+# Weight for automatic MENTIONS edges (only for itext2kg_graph)
 auto_mentions_weight = 0.35  # Weak connection, can be strengthened by refiner
 
 # Остальные параметры утилиты (НЕ УДАЛЯТЬ! Копировать текущие значения)
@@ -53,7 +92,7 @@ poll_interval       = 10
 [dedup]
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
-embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
+embedding_tpm_limit = 5000000                   # Реальный лимит для embedding моделей (Tier 3)
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
 truncate_tokens     = 8000                      # Обрезка текстов (API лимит 8192)
@@ -96,7 +135,7 @@ reasoning_summary   = "auto"
 run                 = true
 embedding_model     = "text-embedding-3-small"
 embedding_api_key   = ""  # Optional, uses OPENAI_API_KEY if not set
-embedding_tpm_limit = 1000000                   # Реальный лимит для embedding моделей
+embedding_tpm_limit = 5000000                   # Реальный лимит для embedding моделей (Tier 3)
 max_batch_tokens    = 100000                    # Мягкий лимит токенов на батч
 max_texts_per_batch = 2048                      # Максимум текстов в одном запросе
 truncate_tokens     = 8000                      # Обрезка текстов (API лимит 8192)

@@ -45,7 +45,7 @@ def config(api_key):
     return {
         "embedding_api_key": api_key,
         "embedding_model": "text-embedding-3-small",
-        "embedding_tpm_limit": 1000000,
+        "embedding_tpm_limit": 5000000,
         "max_retries": 3,
         "max_batch_tokens": 100000,
         "max_texts_per_batch": 2048,
@@ -517,7 +517,7 @@ class TestHeadersTracking:
         config = {
             "embedding_api_key": api_key,
             "embedding_model": "text-embedding-3-small",
-            "embedding_tpm_limit": 1000000,
+            "embedding_tpm_limit": 5000000,
             "max_retries": 3,
             "max_batch_tokens": 50000,  # Уменьшенный лимит для теста
             "max_texts_per_batch": 100,  # Уменьшенный лимит для теста

@@ -1,6 +1,6 @@
 # viz_graph_split.md
 
-## Status: READY
+## Status: IN_PROGRESS
 
 Utility for splitting enriched knowledge graph into separate files by clusters. Extracts each cluster as independent subgraph with proper node/edge filtering, statistics, and metadata.
 
@@ -12,12 +12,15 @@ python -m viz.graph_split
 ```
 
 ### Input Files
-- **Source**: `/viz/data/out/LearningChunkGraph_wow.json`
-- **Format**: Enriched graph with cluster_id on all nodes (from graph2metrics)
+- **Graph**: `/viz/data/out/LearningChunkGraph_wow.json` - Enriched graph with cluster_id on all nodes (from graph2metrics)
+- **Dictionary**: `/viz/data/out/ConceptDictionary_wow.json` - Concept dictionary for extracting cluster-specific concepts
 
 ### Output Files
-- **Target**: `/viz/data/out/LearningChunkGraph_cluster_{ID}.json` (one per cluster)
-- **Naming**: Cluster ID in filename (e.g., `LearningChunkGraph_cluster_0.json`)
+- **Cluster graph**: `/viz/data/out/LearningChunkGraph_cluster_{ID}.json` (one per cluster)
+- **Cluster dictionary**: `/viz/data/out/LearningChunkGraph_cluster_{ID}_dict.json` (one per cluster)
+- **Naming**: Cluster ID with zero-padding based on max cluster count:
+  - 16 clusters (0-15) → 2 digits: `LearningChunkGraph_cluster_00.json`, `LearningChunkGraph_cluster_00_dict.json`
+  - 101 clusters (0-100) → 3 digits: `LearningChunkGraph_cluster_000.json`, `LearningChunkGraph_cluster_000_dict.json`
 
 ### Log Files
 - `/viz/logs/graph_split.log` - Execution log with timestamps and statistics
@@ -47,23 +50,25 @@ python -m viz.graph_split
 ```
 [12:34:56] START    | Graph Split by Clusters
 [12:34:56] INFO     | Loading: LearningChunkGraph_wow.json
+[12:34:56] INFO     | Loading: ConceptDictionary_wow.json
 [12:34:56] INFO     | Graph: 255 nodes, 847 edges
-[12:34:56] INFO     | Found 16 clusters
+[12:34:56] INFO     | Dictionary: 115 concepts
+[12:34:56] INFO     | Found 16 clusters (zero-padding: 2 digits)
 [12:34:56] INFO     | Finding inter-cluster links (PREREQUISITE, ELABORATES)...
 [12:34:56] INFO     | Found inter-cluster links for 14 clusters
 
 Processing clusters:
-[12:34:56] INFO     | Cluster 0: 45 nodes, 123 edges kept, 34 inter-cluster edges removed
+[12:34:56] INFO     | Cluster 00: 45 nodes, 123 edges, 23 concepts
 [12:34:56] INFO     |   └─ Inter-cluster links: 0 incoming, 3 outgoing
-[12:34:56] INFO     | Cluster 1: 32 nodes, 87 edges kept, 21 inter-cluster edges removed
+[12:34:56] INFO     | Cluster 01: 32 nodes, 87 edges, 18 concepts
 [12:34:56] INFO     |   └─ Inter-cluster links: 2 incoming, 1 outgoing
-[12:34:56] WARNING  | Skipping cluster 3: only 1 node
-[12:34:56] INFO     | Cluster 2: 28 nodes, 76 edges kept, 18 inter-cluster edges removed
+[12:34:56] WARNING  | Skipping cluster 03: only 1 node
+[12:34:56] INFO     | Cluster 02: 28 nodes, 76 edges, 15 concepts
 ...
 
 [12:34:57] SUCCESS  | ✅ Split completed successfully
 [12:34:57] INFO     | Output files saved to: /viz/data/out/
-[12:34:57] INFO     | Created 15 cluster files (1 skipped)
+[12:34:57] INFO     | Created 15 cluster graphs + 15 cluster dictionaries (1 skipped)
 ```
 
 ## Core Algorithm
@@ -129,9 +134,37 @@ For each cluster, calculate and display:
 
 See detailed algorithm in "Inter-Cluster Links Metadata" section below.
 
-#### 8. Boundary Cases
+#### 8. Extract Cluster Dictionary
+For each cluster, create a dictionary file with concepts used by nodes in that cluster:
+1. Collect all unique concept IDs from `concepts: []` field of all nodes in cluster
+2. Look up each concept ID in source `ConceptDictionary_wow.json`
+3. Create cluster dictionary with format:
+   ```json
+   {
+     "_meta": {
+       "title": "<original title from graph>",
+       "cluster_id": 12,
+       "concepts_used": 23
+     },
+     "concepts": [
+       { ... full concept object from dictionary ... },
+       { ... }
+     ]
+   }
+   ```
+4. Save to `LearningChunkGraph_cluster_{ID}_dict.json`
+
+**Edge cases:**
+- Concept ID not found in dictionary → log WARNING, skip concept
+- No concepts in cluster → create file with empty `concepts: []`
+
+#### 9. Zero-Padding for Filenames
+- Calculate padding width: `len(str(max_cluster_id))`
+- Apply to all output filenames: `f"LearningChunkGraph_cluster_{cluster_id:0{width}d}.json"`
+
+#### 10. Boundary Cases
 - **Cluster with 1 node, 0 edges:**
-  - Skip file creation
+  - Skip file creation (both graph and dictionary)
   - Print WARNING to console: "Skipping cluster {id}: only 1 node"
 - **Processing order:** Sort clusters by ID ascending (0, 1, 2, ...)
 
@@ -225,6 +258,24 @@ Load and validate graph against LearningChunkGraph schema.
   - SystemExit(EXIT_IO_ERROR) - If file read fails
 - **Validation**: Uses `validate_json(data, "LearningChunkGraph")`
 
+### load_dictionary(input_file: Path, logger: Logger) -> Dict
+Load and validate concept dictionary against ConceptDictionary schema.
+- **Input**:
+  - input_file (Path) - Path to dictionary JSON file
+  - logger (Logger) - Logger instance
+- **Returns**: Dictionary data with concepts list
+- **Raises**:
+  - SystemExit(EXIT_INPUT_ERROR) - If file not found or validation fails
+  - SystemExit(EXIT_IO_ERROR) - If file read fails
+- **Validation**: Uses `validate_json(data, "ConceptDictionary")`
+
+### get_filename_padding(cluster_ids: List[int]) -> int
+Calculate zero-padding width for cluster filenames.
+- **Input**:
+  - cluster_ids (List[int]) - List of all cluster IDs
+- **Returns**: Padding width (number of digits)
+- **Algorithm**: `len(str(max(cluster_ids)))` or 1 if empty
+
 ### identify_clusters(graph_data: Dict, logger: Logger) -> List[int]
 Find all unique cluster_id values, sorted ascending.
 - **Input**:
@@ -299,18 +350,67 @@ Create new _meta section with subtitle and optional inter-cluster links.
   }
   ```
 
-### save_cluster_graph(cluster_graph: Dict, cluster_id: int, output_dir: Path, logger: Logger) -> None
-Validate and save cluster graph to file.
+### extract_cluster_concepts(cluster_nodes: List[Dict], concepts_data: Dict, logger: Logger) -> Tuple[List[Dict], int]
+Extract concepts used by nodes in a cluster.
+- **Input**:
+  - cluster_nodes (List[Dict]) - Nodes belonging to cluster
+  - concepts_data (Dict) - Full concept dictionary
+  - logger (Logger) - Logger instance
+- **Returns**: Tuple of (concepts_list, concepts_count)
+  - concepts_list (List[Dict]) - Full concept objects from dictionary
+  - concepts_count (int) - Number of unique concepts found
+- **Algorithm**:
+  1. Collect all unique concept IDs from `concepts: []` field of all nodes
+  2. Build lookup map from concepts_data by concept_id
+  3. For each ID, find concept in dictionary
+  4. Log WARNING for missing concepts
+  5. Return list of found concept objects
+
+### create_cluster_dictionary(cluster_id: int, concepts_list: List[Dict], original_title: str) -> Dict
+Create cluster dictionary structure with metadata.
+- **Input**:
+  - cluster_id (int) - Cluster ID
+  - concepts_list (List[Dict]) - List of concept objects
+  - original_title (str) - Title from source graph
+- **Returns**: Cluster dictionary with _meta and concepts
+- **Format**:
+  ```json
+  {
+    "_meta": {
+      "title": "<original_title>",
+      "cluster_id": 12,
+      "concepts_used": 23
+    },
+    "concepts": [...]
+  }
+  ```
+
+### save_cluster_graph(cluster_graph: Dict, cluster_id: int, output_dir: Path, padding: int, logger: Logger) -> None
+Validate and save cluster graph to file with zero-padded filename.
 - **Input**:
   - cluster_graph (Dict) - Cluster subgraph to save
   - cluster_id (int) - Cluster ID for filename
   - output_dir (Path) - Output directory path
+  - padding (int) - Zero-padding width for filename
   - logger (Logger) - Logger instance
 - **Side effects**:
   - Validates graph against LearningChunkGraph schema
-  - Writes file to `{output_dir}/LearningChunkGraph_cluster_{cluster_id}.json`
+  - Writes file to `{output_dir}/LearningChunkGraph_cluster_{cluster_id:0{padding}d}.json`
 - **Raises**:
   - SystemExit(EXIT_RUNTIME_ERROR) - If validation fails
+  - SystemExit(EXIT_IO_ERROR) - If save fails
+
+### save_cluster_dictionary(cluster_dict: Dict, cluster_id: int, output_dir: Path, padding: int, logger: Logger) -> None
+Save cluster dictionary to file with zero-padded filename.
+- **Input**:
+  - cluster_dict (Dict) - Cluster dictionary to save
+  - cluster_id (int) - Cluster ID for filename
+  - output_dir (Path) - Output directory path
+  - padding (int) - Zero-padding width for filename
+  - logger (Logger) - Logger instance
+- **Side effects**:
+  - Writes file to `{output_dir}/LearningChunkGraph_cluster_{cluster_id:0{padding}d}_dict.json`
+- **Raises**:
   - SystemExit(EXIT_IO_ERROR) - If save fails
 
 ### main() -> int
@@ -320,16 +420,22 @@ Main entry point for the utility.
   1. Setup console encoding
   2. Setup logging
   3. Load and validate input graph
-  4. Identify all clusters (sorted)
-  5. For each cluster:
+  4. Load and validate concept dictionary
+  5. Identify all clusters (sorted)
+  6. Calculate filename padding width
+  7. Find inter-cluster links for all clusters
+  8. For each cluster:
      - Extract cluster subgraph
      - Check if single node → skip with WARNING
      - Sort nodes (Concepts first)
-     - Create metadata
-     - Save cluster graph
-     - Log statistics
-  6. Print success summary
-  7. Return EXIT_SUCCESS
+     - Create graph metadata
+     - Extract cluster concepts from dictionary
+     - Create cluster dictionary
+     - Save cluster graph (with padding)
+     - Save cluster dictionary (with padding)
+     - Log statistics (nodes, edges, concepts)
+  9. Print success summary
+  10. Return EXIT_SUCCESS
 
 ## Error Handling & Exit Codes
 
@@ -357,7 +463,7 @@ Main entry point for the utility.
 
 Module has comprehensive test coverage in `/tests/viz/test_graph_split.py`:
 
-### Unit Tests (8 tests)
+### Unit Tests (12 tests)
 - `test_identify_clusters` - Finding unique cluster IDs, sorted
 - `test_identify_clusters_empty_graph` - Empty graph handling
 - `test_sort_nodes` - Concepts first, others preserve order
@@ -366,16 +472,23 @@ Module has comprehensive test coverage in `/tests/viz/test_graph_split.py`:
 - `test_extract_cluster_statistics` - Correct counts
 - `test_inter_cluster_edges_calculation` - XOR logic for inter-cluster edges
 - `test_create_cluster_metadata` - Metadata format and subtitle
+- `test_get_filename_padding` - Zero-padding calculation (1, 2, 3 digits)
+- `test_extract_cluster_concepts` - Concept extraction from nodes
+- `test_extract_cluster_concepts_missing` - Missing concept handling with warning
+- `test_create_cluster_dictionary` - Dictionary format and metadata
 
-### Integration Tests (3 tests)
+### Integration Tests (5 tests)
 - `test_full_split_flow` - Load → split → save → validate complete flow
 - `test_full_split_validation` - Schema validation of output files
 - `test_metadata_in_output` - Verify metadata format in saved files
+- `test_dictionary_files_created` - Verify dictionary files created alongside graphs
+- `test_zero_padding_in_filenames` - Verify consistent padding in output filenames
 
-### Boundary Cases (3 tests)
-- `test_single_node_cluster_skipped` - Single node cluster skip with warning
+### Boundary Cases (4 tests)
+- `test_single_node_cluster_skipped` - Single node cluster skip with warning (both files)
 - `test_isolated_cluster` - Cluster with no inter-cluster edges (inter_cluster_count=0)
 - `test_all_nodes_one_cluster` - Edge case with single cluster containing all nodes
+- `test_cluster_with_no_concepts` - Cluster where nodes have empty concepts field
 
 ### Coverage
 - Line coverage: >90% (all critical paths covered)
@@ -409,24 +522,31 @@ source .venv/bin/activate
 # Run split on production data
 python -m viz.graph_split
 
-# Check output files
+# Check output files (graphs and dictionaries)
 ls -la viz/data/out/LearningChunkGraph_cluster_*.json
 ```
 
 ### Verify Output
 ```bash
-# Count output files
+# Count output files (should be 2x clusters: graph + dict)
 ls viz/data/out/LearningChunkGraph_cluster_*.json | wc -l
 
-# Validate one cluster file
+# Validate one cluster graph
 python -c "
 from src.utils.validation import validate_json
 import json
 
-g = json.load(open('viz/data/out/LearningChunkGraph_cluster_0.json'))
+g = json.load(open('viz/data/out/LearningChunkGraph_cluster_00.json'))
 validate_json(g, 'LearningChunkGraph')
-print(f\"Cluster 0: {len(g['nodes'])} nodes, {len(g['edges'])} edges\")
+print(f\"Cluster 00: {len(g['nodes'])} nodes, {len(g['edges'])} edges\")
 print(f\"Subtitle: {g['_meta']['subtitle']}\")
+"
+
+# Check cluster dictionary
+python -c "
+import json
+d = json.load(open('viz/data/out/LearningChunkGraph_cluster_00_dict.json'))
+print(f\"Cluster {d['_meta']['cluster_id']}: {d['_meta']['concepts_used']} concepts\")
 "
 ```
 
@@ -472,11 +592,16 @@ print(f'Match: {orig_nodes == total_cluster_nodes}')
 ## Notes
 
 - Requires input graph to have `cluster_id` on all nodes (populated by graph2metrics)
-- Single-node clusters are skipped with WARNING (not an error)
+- Requires input graph to have `concepts: []` on nodes (populated by graph2metrics via link_nodes_to_concepts)
+- Requires ConceptDictionary_wow.json in same directory as input graph
+- Single-node clusters are skipped with WARNING (not an error), no files created
 - Metadata is completely replaced, not merged with original
 - All file I/O uses UTF-8 encoding
 - Cluster IDs processed in ascending order (0, 1, 2, ...)
+- Filenames use zero-padding based on max cluster ID (e.g., 00, 01, ... or 000, 001, ...)
 - Inter-cluster edges use XOR logic: exactly one endpoint in cluster
-- Validation occurs both before processing (input) and after extraction (output)
+- Validation occurs both before processing (input) and after extraction (output graph only)
+- Cluster dictionaries are NOT validated against schema (simple structure)
 - Colorama is optional - gracefully falls back to plain text if not available
-- Each output file is a valid standalone LearningChunkGraph
+- Each cluster graph file is a valid standalone LearningChunkGraph
+- Each cluster dictionary file contains subset of concepts from source dictionary

@@ -227,11 +227,11 @@ For each cluster, find top-3 inter-cluster links in each direction:
 ### Fields
 - `from_cluster`/`to_cluster` (int) - ID of the other cluster
 - `source` (str) - Source node ID
-- `source_text` (str) - Source node text (for readability)
+- `source_text` (str) - Source node text, truncated to 500 chars (for readability)
 - `source_type` (str) - Source node type ("Concept", "Chunk", or "Assessment")
 - `source_importance` (float) - Source educational_importance (used for sorting)
 - `target` (str) - Target node ID
-- `target_text` (str) - Target node text (for readability)
+- `target_text` (str) - Target node text, truncated to 500 chars (for readability)
 - `target_type` (str) - Target node type ("Concept", "Chunk", or "Assessment")
 - `target_importance` (float) - Target educational_importance (full context)
 - `type` (str) - Edge type ("PREREQUISITE", "ELABORATES", "EXAMPLE_OF", or "TESTS")

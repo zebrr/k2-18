@@ -591,15 +591,22 @@ def find_inter_cluster_links(
             continue
 
         # Get node attributes with fallbacks and warnings
+        # Truncate text to 500 chars to avoid bloating metadata
+        max_text_len = 500
+
         source_text = source_node.get("text")
         if not source_text:
             logger.warning(f"Node {source_id} missing text field, using node_id")
             source_text = source_id
+        elif len(source_text) > max_text_len:
+            source_text = source_text[:max_text_len] + "..."
 
         target_text = target_node.get("text")
         if not target_text:
             logger.warning(f"Node {target_id} missing text field, using node_id")
             target_text = target_id
+        elif len(target_text) > max_text_len:
+            target_text = target_text[:max_text_len] + "..."
 
         source_importance = source_node.get("educational_importance")
         if source_importance is None:

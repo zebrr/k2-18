@@ -100,6 +100,26 @@ def _log(level: str, message: str, error: bool = False) -> None:
         print(formatted)
 
 
+def get_filename_padding(cluster_ids: List[int]) -> int:
+    """Calculate zero-padding width based on max cluster ID.
+
+    Args:
+        cluster_ids: List of cluster IDs
+
+    Returns:
+        Number of digits needed for consistent filename padding.
+        Returns 1 for empty list.
+
+    Example:
+        [0, 1, 2, ..., 15] -> 2 (for cluster_00, cluster_01, ..., cluster_15)
+        [0, 1, ..., 99] -> 2
+        [0, 1, ..., 100] -> 3
+    """
+    if not cluster_ids:
+        return 1
+    return len(str(max(cluster_ids)))
+
+
 def load_graph(input_file: Path, logger: logging.Logger) -> Dict:
     """Load and validate graph against schema.
 
@@ -150,6 +170,57 @@ def load_graph(input_file: Path, logger: logging.Logger) -> Dict:
     logger.info(f"Loaded graph: {nodes_count} nodes, {edges_count} edges")
 
     return graph_data
+
+
+def load_dictionary(input_file: Path, logger: logging.Logger) -> Dict:
+    """Load and validate concept dictionary against schema.
+
+    Args:
+        input_file: Path to dictionary JSON file
+        logger: Logger instance
+
+    Returns:
+        Dictionary data dictionary
+
+    Raises:
+        SystemExit: If file not found or validation fails
+    """
+    _log("INFO", f"Loading: {input_file.name}")
+
+    if not input_file.exists():
+        logger.error(f"Dictionary file not found: {input_file}")
+        _log("ERROR", f"Dictionary file not found: {input_file}", error=True)
+        log_exit(logger, EXIT_IO_ERROR, f"Dictionary file not found: {input_file}")
+        sys.exit(EXIT_IO_ERROR)
+
+    try:
+        with open(input_file, encoding="utf-8") as f:
+            dictionary_data = json.load(f)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in dictionary: {e}")
+        _log("ERROR", f"Invalid JSON in dictionary: {e}", error=True)
+        log_exit(logger, EXIT_INPUT_ERROR, f"Dictionary JSON parse error: {e}")
+        sys.exit(EXIT_INPUT_ERROR)
+    except Exception as e:
+        logger.error(f"Failed to load dictionary file: {e}")
+        _log("ERROR", f"Failed to load dictionary file: {e}", error=True)
+        log_exit(logger, EXIT_IO_ERROR, f"Dictionary file read error: {e}")
+        sys.exit(EXIT_IO_ERROR)
+
+    # Validate against schema
+    try:
+        validate_json(dictionary_data, "ConceptDictionary")
+    except ValidationError as e:
+        logger.error(f"Dictionary validation failed: {e}")
+        _log("ERROR", f"Dictionary validation failed: {e}", error=True)
+        log_exit(logger, EXIT_INPUT_ERROR, f"Dictionary schema validation error: {e}")
+        sys.exit(EXIT_INPUT_ERROR)
+
+    concepts_count = len(dictionary_data.get("concepts", []))
+    _log("INFO", f"Dictionary: {concepts_count} concepts")
+    logger.info(f"Loaded dictionary: {concepts_count} concepts")
+
+    return dictionary_data
 
 
 def identify_clusters(graph_data: Dict, logger: logging.Logger) -> List[int]:
@@ -233,6 +304,40 @@ def extract_cluster(
     return cluster_graph, node_count, edge_count, inter_cluster_count
 
 
+def extract_cluster_concepts(
+    cluster_nodes: List[Dict], concepts_data: Dict, logger: logging.Logger
+) -> Tuple[List[Dict], int]:
+    """Extract concepts referenced by cluster nodes.
+
+    Args:
+        cluster_nodes: List of nodes in the cluster
+        concepts_data: Full dictionary data with concepts array
+        logger: Logger instance
+
+    Returns:
+        Tuple of (concepts_list, count) where concepts_list contains
+        concept objects from the dictionary that are referenced by
+        the cluster nodes.
+    """
+    # 1. Collect unique concept IDs from all nodes' concepts: [] field
+    concept_ids = set()
+    for node in cluster_nodes:
+        concept_ids.update(node.get("concepts", []))
+
+    # 2. Build lookup map from concepts_data
+    concept_map = {c["concept_id"]: c for c in concepts_data.get("concepts", [])}
+
+    # 3. Extract matching concepts (sorted for deterministic output)
+    concepts_list = []
+    for cid in sorted(concept_ids):
+        if cid in concept_map:
+            concepts_list.append(concept_map[cid])
+        else:
+            logger.warning(f"Concept {cid} not found in dictionary")
+
+    return concepts_list, len(concepts_list)
+
+
 def sort_nodes(nodes: List[Dict]) -> List[Dict]:
     """Sort nodes: Concepts first (by id), then others (preserve order).
 
@@ -286,8 +391,35 @@ def create_cluster_metadata(
     return meta
 
 
+def create_cluster_dictionary(
+    cluster_id: int, concepts_list: List[Dict], original_title: str
+) -> Dict:
+    """Create cluster dictionary structure with metadata.
+
+    Args:
+        cluster_id: Cluster ID
+        concepts_list: List of concept objects for this cluster
+        original_title: Title from source graph
+
+    Returns:
+        Dictionary structure with _meta and concepts array
+    """
+    return {
+        "_meta": {
+            "title": original_title,
+            "cluster_id": cluster_id,
+            "concepts_used": len(concepts_list),
+        },
+        "concepts": concepts_list,
+    }
+
+
 def save_cluster_graph(
-    cluster_graph: Dict, cluster_id: int, output_dir: Path, logger: logging.Logger
+    cluster_graph: Dict,
+    cluster_id: int,
+    output_dir: Path,
+    padding: int,
+    logger: logging.Logger,
 ) -> None:
     """Validate and save cluster graph to file.
 
@@ -295,6 +427,7 @@ def save_cluster_graph(
         cluster_graph: Cluster subgraph to save
         cluster_id: Cluster ID for filename
         output_dir: Output directory path
+        padding: Zero-padding width for filename (e.g., 2 for cluster_00.json)
         logger: Logger instance
 
     Raises:
@@ -316,8 +449,8 @@ def save_cluster_graph(
         "edges": cluster_graph["edges"],
     }
 
-    # Save to file
-    output_file = output_dir / f"LearningChunkGraph_cluster_{cluster_id}.json"
+    # Save to file with zero-padded filename
+    output_file = output_dir / f"LearningChunkGraph_cluster_{cluster_id:0{padding}d}.json"
 
     try:
         with open(output_file, "w", encoding="utf-8") as f:
@@ -328,6 +461,55 @@ def save_cluster_graph(
         logger.error(f"Failed to save cluster {cluster_id}: {e}")
         _log("ERROR", f"Failed to save cluster {cluster_id}: {e}", error=True)
         log_exit(logger, EXIT_IO_ERROR, f"Save error: {e}")
+        sys.exit(EXIT_IO_ERROR)
+
+
+def save_cluster_dictionary(
+    cluster_dict: Dict,
+    cluster_id: int,
+    output_dir: Path,
+    padding: int,
+    logger: logging.Logger,
+) -> None:
+    """Validate and save cluster dictionary to file.
+
+    Args:
+        cluster_dict: Cluster dictionary to save
+        cluster_id: Cluster ID for filename
+        output_dir: Output directory path
+        padding: Zero-padding width for filename (e.g., 2 for cluster_00_dict.json)
+        logger: Logger instance
+
+    Raises:
+        SystemExit: If validation or save fails
+    """
+    # Validate before saving
+    try:
+        validate_json(cluster_dict, "ConceptDictionary")
+    except ValidationError as e:
+        logger.error(f"Cluster {cluster_id} dictionary validation failed: {e}")
+        _log("ERROR", f"Cluster {cluster_id} dictionary validation failed: {e}", error=True)
+        log_exit(logger, EXIT_INPUT_ERROR, f"Cluster dictionary validation error: {e}")
+        sys.exit(EXIT_INPUT_ERROR)
+
+    # Reorder: _meta first, then concepts
+    ordered_dict = {
+        "_meta": cluster_dict["_meta"],
+        "concepts": cluster_dict["concepts"],
+    }
+
+    # Save to file with zero-padded filename
+    output_file = output_dir / f"LearningChunkGraph_cluster_{cluster_id:0{padding}d}_dict.json"
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(ordered_dict, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Saved cluster {cluster_id} dictionary to: {output_file.name}")
+    except Exception as e:
+        logger.error(f"Failed to save cluster {cluster_id} dictionary: {e}")
+        _log("ERROR", f"Failed to save cluster {cluster_id} dictionary: {e}", error=True)
+        log_exit(logger, EXIT_IO_ERROR, f"Dictionary save error: {e}")
         sys.exit(EXIT_IO_ERROR)
 
 
@@ -485,6 +667,7 @@ def main() -> int:
     viz_dir = Path(__file__).parent
     log_file = viz_dir / "logs" / "graph_split.log"
     input_file = viz_dir / "data" / "out" / "LearningChunkGraph_wow.json"
+    dictionary_file = viz_dir / "data" / "out" / "ConceptDictionary_wow.json"
     output_dir = viz_dir / "data" / "out"
 
     # Setup logging
@@ -495,7 +678,10 @@ def main() -> int:
     # Load and validate input graph
     graph_data = load_graph(input_file, logger)
 
-    # Get original title for metadata
+    # Load and validate concept dictionary
+    dictionary_data = load_dictionary(dictionary_file, logger)
+
+    # Get original title for metadata (from graph)
     original_title = graph_data.get("_meta", {}).get("title", "Knowledge Graph")
 
     # Identify all clusters (sorted)
@@ -508,7 +694,9 @@ def main() -> int:
         log_exit(logger, EXIT_SUCCESS)
         return EXIT_SUCCESS
 
-    _log("INFO", f"Found {len(cluster_ids)} clusters")
+    # Calculate zero-padding for filenames
+    padding = get_filename_padding(cluster_ids)
+    _log("INFO", f"Found {len(cluster_ids)} clusters (zero-padding: {padding} digits)")
 
     # Find all inter-cluster links (PREREQUISITE and ELABORATES)
     logger.info("Finding inter-cluster links (PREREQUISITE, ELABORATES)...")
@@ -536,12 +724,24 @@ def main() -> int:
             graph_data, cluster_id, logger
         )
 
-        # Check if single node → skip with WARNING
+        # Check if single node → skip with WARNING (skip BOTH graph and dictionary)
         if node_count == 1:
             logger.warning(f"Skipping cluster {cluster_id}: only 1 node")
-            _log("WARNING", f"Skipping cluster {cluster_id}: only 1 node")
+            _log("WARNING", f"Skipping cluster {cluster_id:0{padding}d}: only 1 node")
             files_skipped += 1
             continue
+
+        # Extract concepts for this cluster
+        concepts_list, concepts_count = extract_cluster_concepts(
+            cluster_graph["nodes"], dictionary_data, logger
+        )
+
+        # Create cluster dictionary
+        cluster_dict = create_cluster_dictionary(
+            cluster_id=cluster_id,
+            concepts_list=concepts_list,
+            original_title=original_title,
+        )
 
         # Sort nodes (Concepts first)
         cluster_graph["nodes"] = sort_nodes(cluster_graph["nodes"])
@@ -558,14 +758,17 @@ def main() -> int:
             inter_cluster_links=inter_links,
         )
 
-        # Save cluster graph
-        save_cluster_graph(cluster_graph, cluster_id, output_dir, logger)
+        # Save cluster graph with zero-padded filename
+        save_cluster_graph(cluster_graph, cluster_id, output_dir, padding, logger)
+
+        # Save cluster dictionary with zero-padded filename
+        save_cluster_dictionary(cluster_dict, cluster_id, output_dir, padding, logger)
 
         # Log statistics
         _log(
             "INFO",
-            f"Cluster {cluster_id}: {node_count} nodes, {edge_count} edges kept, "
-            f"{inter_cluster_count} inter-cluster edges removed",
+            f"Cluster {cluster_id:0{padding}d}: {node_count} nodes, "
+            f"{edge_count} edges, {concepts_count} concepts",
         )
 
         # Log inter-cluster links statistics
@@ -583,9 +786,16 @@ def main() -> int:
     _log("", "")  # Blank line
     _log("SUCCESS", "✅ Split completed successfully")
     _log("INFO", f"Output files saved to: {output_dir}/")
-    _log("INFO", f"Created {files_created} cluster files ({files_skipped} skipped)")
+    _log(
+        "INFO",
+        f"Created {files_created} cluster graphs + "
+        f"{files_created} cluster dictionaries ({files_skipped} skipped)",
+    )
 
-    logger.info(f"Split completed: {files_created} files created, {files_skipped} skipped")
+    logger.info(
+        f"Split completed: {files_created} graphs, "
+        f"{files_created} dictionaries, {files_skipped} skipped"
+    )
     log_exit(logger, EXIT_SUCCESS)
 
     return EXIT_SUCCESS

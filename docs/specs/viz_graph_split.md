@@ -1,6 +1,6 @@
 # viz_graph_split.md
 
-## Status: IN_PROGRESS
+## Status: READY
 
 Utility for splitting enriched knowledge graph into separate files by clusters. Extracts each cluster as independent subgraph with proper node/edge filtering, statistics, and metadata.
 
@@ -401,7 +401,7 @@ Validate and save cluster graph to file with zero-padded filename.
   - SystemExit(EXIT_IO_ERROR) - If save fails
 
 ### save_cluster_dictionary(cluster_dict: Dict, cluster_id: int, output_dir: Path, padding: int, logger: Logger) -> None
-Save cluster dictionary to file with zero-padded filename.
+Validate and save cluster dictionary to file with zero-padded filename.
 - **Input**:
   - cluster_dict (Dict) - Cluster dictionary to save
   - cluster_id (int) - Cluster ID for filename
@@ -409,8 +409,10 @@ Save cluster dictionary to file with zero-padded filename.
   - padding (int) - Zero-padding width for filename
   - logger (Logger) - Logger instance
 - **Side effects**:
+  - Validates dictionary against ConceptDictionary schema
   - Writes file to `{output_dir}/LearningChunkGraph_cluster_{cluster_id:0{padding}d}_dict.json`
 - **Raises**:
+  - SystemExit(EXIT_INPUT_ERROR) - If validation fails
   - SystemExit(EXIT_IO_ERROR) - If save fails
 
 ### main() -> int
@@ -461,38 +463,49 @@ Main entry point for the utility.
 
 ## Test Coverage
 
-Module has comprehensive test coverage in `/tests/viz/test_graph_split.py`:
+Module has comprehensive test coverage in `/tests/viz/test_graph_split.py` (30 tests total):
 
-### Unit Tests (12 tests)
+### Unit Tests (15 tests)
 - `test_identify_clusters` - Finding unique cluster IDs, sorted
 - `test_identify_clusters_empty_graph` - Empty graph handling
+- `test_identify_clusters_no_cluster_id` - Graph without cluster_id fields
 - `test_sort_nodes` - Concepts first, others preserve order
 - `test_sort_nodes_all_concepts` - Only Concept nodes
+- `test_sort_nodes_no_concepts` - No Concept nodes
 - `test_extract_cluster` - Node and edge filtering
 - `test_extract_cluster_statistics` - Correct counts
 - `test_inter_cluster_edges_calculation` - XOR logic for inter-cluster edges
 - `test_create_cluster_metadata` - Metadata format and subtitle
 - `test_get_filename_padding` - Zero-padding calculation (1, 2, 3 digits)
+- `test_get_filename_padding_empty` - Empty list returns 1
 - `test_extract_cluster_concepts` - Concept extraction from nodes
 - `test_extract_cluster_concepts_missing` - Missing concept handling with warning
 - `test_create_cluster_dictionary` - Dictionary format and metadata
 
-### Integration Tests (5 tests)
+### Integration Tests (7 tests)
 - `test_full_split_flow` - Load → split → save → validate complete flow
 - `test_full_split_validation` - Schema validation of output files
 - `test_metadata_in_output` - Verify metadata format in saved files
+- `test_inter_cluster_links_in_metadata` - Inter-cluster links in saved metadata
 - `test_dictionary_files_created` - Verify dictionary files created alongside graphs
 - `test_zero_padding_in_filenames` - Verify consistent padding in output filenames
+- `test_cluster_with_no_concepts` - Empty concepts array handling
 
 ### Boundary Cases (4 tests)
 - `test_single_node_cluster_skipped` - Single node cluster skip with warning (both files)
 - `test_isolated_cluster` - Cluster with no inter-cluster edges (inter_cluster_count=0)
 - `test_all_nodes_one_cluster` - Edge case with single cluster containing all nodes
-- `test_cluster_with_no_concepts` - Cluster where nodes have empty concepts field
+- `test_inter_cluster_links_four_types` - All 4 edge types with proper node filtering
+
+### Inter-Cluster Links Tests (4 tests)
+- `test_inter_cluster_links_top3_selection` - Top-3 by source importance
+- `test_inter_cluster_links_importance_fields` - Both importance fields included
+- `test_inter_cluster_links_node_type_filtering` - Node type requirements enforced
+- `test_inter_cluster_links_type_fields` - source_type and target_type populated
 
 ### Coverage
 - Line coverage: >90% (all critical paths covered)
-- All functions tested
+- All public functions tested
 - Edge cases and error handling covered
 
 ## Dependencies
@@ -600,8 +613,8 @@ print(f'Match: {orig_nodes == total_cluster_nodes}')
 - Cluster IDs processed in ascending order (0, 1, 2, ...)
 - Filenames use zero-padding based on max cluster ID (e.g., 00, 01, ... or 000, 001, ...)
 - Inter-cluster edges use XOR logic: exactly one endpoint in cluster
-- Validation occurs both before processing (input) and after extraction (output graph only)
-- Cluster dictionaries are NOT validated against schema (simple structure)
+- Validation occurs both before processing (input) and after extraction (output)
+- Both cluster graphs and dictionaries are validated against their respective schemas
 - Colorama is optional - gracefully falls back to plain text if not available
 - Each cluster graph file is a valid standalone LearningChunkGraph
 - Each cluster dictionary file contains subset of concepts from source dictionary

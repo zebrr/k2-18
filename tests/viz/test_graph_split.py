@@ -5,8 +5,11 @@ import json
 import pytest
 
 from viz.graph_split import (
+    create_cluster_dictionary,
     create_cluster_metadata,
     extract_cluster,
+    extract_cluster_concepts,
+    get_filename_padding,
     identify_clusters,
     sort_nodes,
 )
@@ -357,8 +360,8 @@ def test_full_split_flow(tmp_path, sample_graph):
             cluster_id, node_count, edge_count, sample_graph["_meta"]["title"]
         )
 
-        # Save
-        save_cluster_graph(cluster_graph, cluster_id, tmp_path, logger)
+        # Save (padding=1 for single-digit cluster IDs)
+        save_cluster_graph(cluster_graph, cluster_id, tmp_path, 1, logger)
 
     # Verify files exist
     cluster_files = list(tmp_path.glob("LearningChunkGraph_cluster_*.json"))
@@ -396,9 +399,9 @@ def test_full_split_validation(tmp_path, sample_graph):
     # Add metadata
     cluster_graph["_meta"] = create_cluster_metadata(0, node_count, edge_count, "Test Graph")
 
-    # Save
+    # Save (padding=1 for single-digit cluster ID)
     output_file = tmp_path / "LearningChunkGraph_cluster_0.json"
-    save_cluster_graph(cluster_graph, 0, tmp_path, logger)
+    save_cluster_graph(cluster_graph, 0, tmp_path, 1, logger)
 
     # Load and validate
     with open(output_file, encoding="utf-8") as f:
@@ -430,7 +433,7 @@ def test_metadata_in_output(tmp_path, sample_graph):
         original_title="My Graph",
     )
 
-    save_cluster_graph(cluster_graph, 0, tmp_path, logger)
+    save_cluster_graph(cluster_graph, 0, tmp_path, 1, logger)
 
     # Load and check metadata
     output_file = tmp_path / "LearningChunkGraph_cluster_0.json"
@@ -920,9 +923,9 @@ def test_inter_cluster_links_node_type_filtering():
     ), "TESTS with Assessment source should be included"
 
     # Test case 2: TESTS with Chunk source -> EXCLUDED
-    assert not any(
-        link["source"] == "chunk_1" and link["type"] == "TESTS" for link in all_links
-    ), "TESTS with Chunk source should be excluded"
+    assert not any(link["source"] == "chunk_1" and link["type"] == "TESTS" for link in all_links), (
+        "TESTS with Chunk source should be excluded"
+    )
 
     # Test case 3: PREREQUISITE with Concept->Chunk -> INCLUDED
     assert any(
@@ -1115,8 +1118,8 @@ def test_inter_cluster_links_in_metadata(tmp_path):
         inter_cluster_links=inter_links,
     )
 
-    # Save
-    save_cluster_graph(cluster_graph, 0, tmp_path, logger)
+    # Save (padding=1 for single-digit cluster ID)
+    save_cluster_graph(cluster_graph, 0, tmp_path, 1, logger)
 
     # Load and verify
     output_file = tmp_path / "LearningChunkGraph_cluster_0.json"
@@ -1142,3 +1145,246 @@ def test_inter_cluster_links_in_metadata(tmp_path):
     assert links["outgoing"][0]["source_importance"] == 0.05
     assert "target_importance" in links["outgoing"][0]
     assert links["outgoing"][0]["target_importance"] == 0.03
+
+
+# New Tests for Cluster Dictionary and Zero-Padding
+
+
+def test_get_filename_padding():
+    """Test padding calculation for various cluster ID ranges."""
+    # Single digit (0-9) -> padding 1
+    assert get_filename_padding([0, 1, 2, 3]) == 1
+    assert get_filename_padding([9]) == 1
+
+    # Two digits (10-99) -> padding 2
+    assert get_filename_padding([0, 1, 10]) == 2
+    assert get_filename_padding(list(range(16))) == 2  # 0-15
+    assert get_filename_padding([0, 99]) == 2
+
+    # Three digits (100-999) -> padding 3
+    assert get_filename_padding([0, 100]) == 3
+    assert get_filename_padding(list(range(101))) == 3  # 0-100
+
+
+def test_get_filename_padding_empty():
+    """Test padding returns 1 for empty list."""
+    assert get_filename_padding([]) == 1
+
+
+def test_extract_cluster_concepts():
+    """Test extraction of concepts referenced by cluster nodes."""
+    import logging
+
+    logger = logging.getLogger("test")
+
+    # Sample cluster nodes with concepts field
+    cluster_nodes = [
+        {"id": "chunk_1", "type": "Chunk", "concepts": ["concept_a", "concept_b"]},
+        {"id": "chunk_2", "type": "Chunk", "concepts": ["concept_b", "concept_c"]},
+        {"id": "chunk_3", "type": "Chunk", "concepts": []},  # No concepts
+    ]
+
+    # Sample dictionary data
+    concepts_data = {
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+            {"concept_id": "concept_b", "term": {"primary": "B"}, "definition": "Def B"},
+            {"concept_id": "concept_c", "term": {"primary": "C"}, "definition": "Def C"},
+            {"concept_id": "concept_d", "term": {"primary": "D"}, "definition": "Def D"},
+        ]
+    }
+
+    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+
+    # Should extract 3 unique concepts: a, b, c (sorted)
+    assert count == 3
+    assert len(concepts_list) == 3
+
+    # Verify sorted order by concept_id
+    assert concepts_list[0]["concept_id"] == "concept_a"
+    assert concepts_list[1]["concept_id"] == "concept_b"
+    assert concepts_list[2]["concept_id"] == "concept_c"
+
+    # concept_d should NOT be included (not referenced)
+    concept_ids = [c["concept_id"] for c in concepts_list]
+    assert "concept_d" not in concept_ids
+
+
+def test_extract_cluster_concepts_missing(caplog):
+    """Test warning when concept referenced but not found in dictionary."""
+    import logging
+
+    logger = logging.getLogger("test")
+    logger.setLevel(logging.WARNING)
+
+    cluster_nodes = [
+        {"id": "chunk_1", "type": "Chunk", "concepts": ["concept_missing", "concept_a"]},
+    ]
+
+    concepts_data = {
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+        ]
+    }
+
+    with caplog.at_level(logging.WARNING):
+        concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+
+    # Should still return the found concept
+    assert count == 1
+    assert concepts_list[0]["concept_id"] == "concept_a"
+
+    # Should have logged a warning for missing concept
+    assert "concept_missing not found in dictionary" in caplog.text
+
+
+def test_create_cluster_dictionary():
+    """Test cluster dictionary structure and metadata."""
+    concepts_list = [
+        {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+        {"concept_id": "concept_b", "term": {"primary": "B"}, "definition": "Def B"},
+    ]
+
+    result = create_cluster_dictionary(
+        cluster_id=5,
+        concepts_list=concepts_list,
+        original_title="Test Knowledge Graph",
+    )
+
+    # Verify structure
+    assert "_meta" in result
+    assert "concepts" in result
+
+    # Verify metadata
+    assert result["_meta"]["title"] == "Test Knowledge Graph"
+    assert result["_meta"]["cluster_id"] == 5
+    assert result["_meta"]["concepts_used"] == 2
+
+    # Verify concepts
+    assert len(result["concepts"]) == 2
+    assert result["concepts"][0]["concept_id"] == "concept_a"
+
+
+def test_dictionary_files_created(tmp_path):
+    """Test that _dict.json files are created alongside cluster graphs."""
+    import logging
+
+    from viz.graph_split import save_cluster_dictionary
+
+    logger = logging.getLogger("test")
+
+    cluster_dict = {
+        "_meta": {
+            "title": "Test Graph",
+            "cluster_id": 0,
+            "concepts_used": 2,
+        },
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+            {"concept_id": "concept_b", "term": {"primary": "B"}, "definition": "Def B"},
+        ],
+    }
+
+    # Save with padding=2
+    save_cluster_dictionary(cluster_dict, 0, tmp_path, 2, logger)
+
+    # Verify file exists with correct zero-padded name
+    output_file = tmp_path / "LearningChunkGraph_cluster_00_dict.json"
+    assert output_file.exists()
+
+    # Verify content
+    with open(output_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["_meta"]["cluster_id"] == 0
+    assert data["_meta"]["concepts_used"] == 2
+    assert len(data["concepts"]) == 2
+
+
+def test_zero_padding_in_filenames(tmp_path):
+    """Test that filenames use consistent zero-padding."""
+    import logging
+
+    from viz.graph_split import save_cluster_dictionary, save_cluster_graph
+
+    logger = logging.getLogger("test")
+
+    # Create minimal cluster graph
+    cluster_graph = {
+        "_meta": {"title": "Test", "subtitle": "Cluster 3"},
+        "nodes": [
+            {"id": "n1", "type": "Chunk", "text": "A", "node_offset": 0},
+            {"id": "n2", "type": "Chunk", "text": "B", "node_offset": 10},
+        ],
+        "edges": [{"source": "n1", "target": "n2", "type": "ELABORATES"}],
+    }
+
+    # Create minimal cluster dictionary
+    cluster_dict = {
+        "_meta": {"title": "Test", "cluster_id": 3, "concepts_used": 0},
+        "concepts": [],
+    }
+
+    # Save with padding=2 (for clusters 0-99)
+    save_cluster_graph(cluster_graph, 3, tmp_path, 2, logger)
+    save_cluster_dictionary(cluster_dict, 3, tmp_path, 2, logger)
+
+    # Verify zero-padded filenames
+    graph_file = tmp_path / "LearningChunkGraph_cluster_03.json"
+    dict_file = tmp_path / "LearningChunkGraph_cluster_03_dict.json"
+
+    assert graph_file.exists(), "Graph file should have zero-padded name"
+    assert dict_file.exists(), "Dictionary file should have zero-padded name"
+
+    # Verify non-padded files don't exist
+    wrong_graph = tmp_path / "LearningChunkGraph_cluster_3.json"
+    wrong_dict = tmp_path / "LearningChunkGraph_cluster_3_dict.json"
+
+    assert not wrong_graph.exists(), "Non-padded graph filename should not exist"
+    assert not wrong_dict.exists(), "Non-padded dictionary filename should not exist"
+
+
+def test_cluster_with_no_concepts(tmp_path):
+    """Test cluster dictionary creation when nodes have no concepts."""
+    import logging
+
+    from viz.graph_split import save_cluster_dictionary
+
+    logger = logging.getLogger("test")
+
+    # Cluster nodes with empty concepts field
+    cluster_nodes = [
+        {"id": "chunk_1", "type": "Chunk", "concepts": []},
+        {"id": "chunk_2", "type": "Chunk", "concepts": []},
+    ]
+
+    concepts_data = {
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+        ]
+    }
+
+    # Extract (should return empty list)
+    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+
+    assert count == 0
+    assert concepts_list == []
+
+    # Create and save dictionary with empty concepts
+    cluster_dict = create_cluster_dictionary(
+        cluster_id=7,
+        concepts_list=concepts_list,
+        original_title="Empty Concepts Test",
+    )
+
+    save_cluster_dictionary(cluster_dict, 7, tmp_path, 1, logger)
+
+    # Verify file exists and has empty concepts array
+    output_file = tmp_path / "LearningChunkGraph_cluster_7_dict.json"
+    assert output_file.exists()
+
+    with open(output_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["_meta"]["concepts_used"] == 0
+    assert data["concepts"] == []

@@ -305,19 +305,23 @@ def extract_cluster(
 
 
 def extract_cluster_concepts(
-    cluster_nodes: List[Dict], concepts_data: Dict, logger: logging.Logger
+    cluster_nodes: List[Dict],
+    concepts_data: Dict,
+    concept_cluster_map: Dict[str, int],
+    logger: logging.Logger,
 ) -> Tuple[List[Dict], int]:
-    """Extract concepts referenced by cluster nodes.
+    """Extract concepts referenced by cluster nodes, enriched with cluster_id.
 
     Args:
         cluster_nodes: List of nodes in the cluster
         concepts_data: Full dictionary data with concepts array
+        concept_cluster_map: Mapping {concept_id: cluster_id} from graph
         logger: Logger instance
 
     Returns:
         Tuple of (concepts_list, count) where concepts_list contains
         concept objects from the dictionary that are referenced by
-        the cluster nodes.
+        the cluster nodes, enriched with cluster_id field.
     """
     # 1. Collect unique concept IDs from all nodes' concepts: [] field
     concept_ids = set()
@@ -325,17 +329,42 @@ def extract_cluster_concepts(
         concept_ids.update(node.get("concepts", []))
 
     # 2. Build lookup map from concepts_data
-    concept_map = {c["concept_id"]: c for c in concepts_data.get("concepts", [])}
+    concept_lookup = {c["concept_id"]: c for c in concepts_data.get("concepts", [])}
 
-    # 3. Extract matching concepts (sorted for deterministic output)
+    # 3. Extract matching concepts with cluster_id (sorted for deterministic output)
     concepts_list = []
     for cid in sorted(concept_ids):
-        if cid in concept_map:
-            concepts_list.append(concept_map[cid])
+        if cid in concept_lookup:
+            # Make a copy to avoid modifying original
+            concept_copy = concept_lookup[cid].copy()
+
+            # Add cluster_id only if not already present (forward-compatible)
+            if "cluster_id" not in concept_copy:
+                # Use None if not found in graph (will become null in JSON)
+                concept_copy["cluster_id"] = concept_cluster_map.get(cid)
+
+            concepts_list.append(concept_copy)
         else:
             logger.warning(f"Concept {cid} not found in dictionary")
 
     return concepts_list, len(concepts_list)
+
+
+def build_concept_cluster_map(graph_data: Dict) -> Dict[str, int]:
+    """Build mapping from concept_id to cluster_id.
+
+    Args:
+        graph_data: Full graph with nodes
+
+    Returns:
+        Dictionary mapping concept node id to its cluster_id.
+        Only includes nodes with type="Concept" that have cluster_id.
+    """
+    concept_map: Dict[str, int] = {}
+    for node in graph_data.get("nodes", []):
+        if node.get("type") == "Concept" and "cluster_id" in node:
+            concept_map[node["id"]] = node["cluster_id"]
+    return concept_map
 
 
 def sort_nodes(nodes: List[Dict]) -> List[Dict]:
@@ -714,6 +743,10 @@ def main() -> int:
 
     all_inter_links = find_inter_cluster_links(graph_data, cluster_map, logger)
 
+    # Build concept_id -> cluster_id mapping for dictionary enrichment
+    concept_cluster_map = build_concept_cluster_map(graph_data)
+    logger.info(f"Built concept cluster map: {len(concept_cluster_map)} concepts")
+
     logger.info(f"Found inter-cluster links for {len(all_inter_links)} clusters")
     _log("INFO", f"Found inter-cluster links for {len(all_inter_links)} clusters")
 
@@ -740,7 +773,7 @@ def main() -> int:
 
         # Extract concepts for this cluster
         concepts_list, concepts_count = extract_cluster_concepts(
-            cluster_graph["nodes"], dictionary_data, logger
+            cluster_graph["nodes"], dictionary_data, concept_cluster_map, logger
         )
 
         # Create cluster dictionary

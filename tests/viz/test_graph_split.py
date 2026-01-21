@@ -5,6 +5,7 @@ import json
 import pytest
 
 from viz.graph_split import (
+    build_concept_cluster_map,
     create_cluster_dictionary,
     create_cluster_metadata,
     extract_cluster,
@@ -1194,7 +1195,7 @@ def test_extract_cluster_concepts():
         ]
     }
 
-    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, {}, logger)
 
     # Should extract 3 unique concepts: a, b, c (sorted)
     assert count == 3
@@ -1228,7 +1229,7 @@ def test_extract_cluster_concepts_missing(caplog):
     }
 
     with caplog.at_level(logging.WARNING):
-        concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+        concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, {}, logger)
 
     # Should still return the found concept
     assert count == 1
@@ -1263,6 +1264,100 @@ def test_create_cluster_dictionary():
     # Verify concepts
     assert len(result["concepts"]) == 2
     assert result["concepts"][0]["concept_id"] == "concept_a"
+
+
+def test_build_concept_cluster_map():
+    """Test building concept_id -> cluster_id mapping."""
+    graph_data = {
+        "nodes": [
+            {"id": "concept_1", "type": "Concept", "cluster_id": 0},
+            {"id": "concept_2", "type": "Concept", "cluster_id": 1},
+            {"id": "chunk_1", "type": "Chunk", "cluster_id": 0},  # Should be excluded
+            {"id": "concept_3", "type": "Concept"},  # No cluster_id - should be excluded
+        ]
+    }
+
+    result = build_concept_cluster_map(graph_data)
+
+    assert result == {"concept_1": 0, "concept_2": 1}
+    assert "chunk_1" not in result
+    assert "concept_3" not in result
+
+
+def test_extract_cluster_concepts_with_cluster_id():
+    """Test that cluster_id is added to concepts from graph."""
+    import logging
+
+    logger = logging.getLogger("test")
+
+    cluster_nodes = [{"id": "chunk_1", "concepts": ["concept_a", "concept_b"]}]
+    concepts_data = {
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+            {"concept_id": "concept_b", "term": {"primary": "B"}, "definition": "Def B"},
+        ]
+    }
+    concept_cluster_map = {"concept_a": 5, "concept_b": 3}
+
+    result, count = extract_cluster_concepts(
+        cluster_nodes, concepts_data, concept_cluster_map, logger
+    )
+
+    assert count == 2
+    assert result[0]["cluster_id"] == 5  # concept_a -> cluster 5
+    assert result[1]["cluster_id"] == 3  # concept_b -> cluster 3
+
+
+def test_extract_cluster_concepts_missing_in_graph():
+    """Test that cluster_id is null when concept not found in graph."""
+    import logging
+
+    logger = logging.getLogger("test")
+
+    cluster_nodes = [{"id": "chunk_1", "concepts": ["concept_a", "concept_b"]}]
+    concepts_data = {
+        "concepts": [
+            {"concept_id": "concept_a", "term": {"primary": "A"}, "definition": "Def A"},
+            {"concept_id": "concept_b", "term": {"primary": "B"}, "definition": "Def B"},
+        ]
+    }
+    # concept_b not in map
+    concept_cluster_map = {"concept_a": 5}
+
+    result, count = extract_cluster_concepts(
+        cluster_nodes, concepts_data, concept_cluster_map, logger
+    )
+
+    assert count == 2
+    assert result[0]["cluster_id"] == 5
+    assert result[1]["cluster_id"] is None  # concept_b not in graph
+
+
+def test_extract_cluster_concepts_preserves_existing_cluster_id():
+    """Test that existing cluster_id is not overwritten (forward-compatible)."""
+    import logging
+
+    logger = logging.getLogger("test")
+
+    cluster_nodes = [{"id": "chunk_1", "concepts": ["concept_a"]}]
+    concepts_data = {
+        "concepts": [
+            {
+                "concept_id": "concept_a",
+                "cluster_id": 99,  # Already has cluster_id
+                "term": {"primary": "A"},
+                "definition": "Def A",
+            },
+        ]
+    }
+    concept_cluster_map = {"concept_a": 5}  # Different value
+
+    result, count = extract_cluster_concepts(
+        cluster_nodes, concepts_data, concept_cluster_map, logger
+    )
+
+    assert count == 1
+    assert result[0]["cluster_id"] == 99  # Preserved original, not 5
 
 
 def test_dictionary_files_created(tmp_path):
@@ -1365,7 +1460,7 @@ def test_cluster_with_no_concepts(tmp_path):
     }
 
     # Extract (should return empty list)
-    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, logger)
+    concepts_list, count = extract_cluster_concepts(cluster_nodes, concepts_data, {}, logger)
 
     assert count == 0
     assert concepts_list == []

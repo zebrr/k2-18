@@ -137,8 +137,13 @@ See detailed algorithm in "Inter-Cluster Links Metadata" section below.
 #### 8. Extract Cluster Dictionary
 For each cluster, create a dictionary file with concepts used by nodes in that cluster:
 1. Collect all unique concept IDs from `concepts: []` field of all nodes in cluster
-2. Look up each concept ID in source `ConceptDictionary_wow.json`
-3. Create cluster dictionary with format:
+2. Build concept_cluster_map from graph nodes (type=Concept) for cluster_id lookup
+3. Look up each concept ID in source `ConceptDictionary_wow.json`
+4. For each concept, add `cluster_id` field:
+   - If concept_id matches a Concept node in graph → use node's cluster_id
+   - If not found in graph → set to `null`
+   - If concept already has cluster_id → preserve existing value (forward-compatible)
+5. Create cluster dictionary with format:
    ```json
    {
      "_meta": {
@@ -147,15 +152,21 @@ For each cluster, create a dictionary file with concepts used by nodes in that c
        "concepts_used": 23
      },
      "concepts": [
-       { ... full concept object from dictionary ... },
+       {
+         "concept_id": "handbook_osnovy_algoritmov:p:algoritm",
+         "cluster_id": 3,
+         "term": {"primary": "Алгоритм", "aliases": [...]},
+         "definition": "..."
+       },
        { ... }
      ]
    }
    ```
-4. Save to `LearningChunkGraph_cluster_{ID}_dict.json`
+6. Save to `LearningChunkGraph_cluster_{ID}_dict.json`
 
 **Edge cases:**
 - Concept ID not found in dictionary → log WARNING, skip concept
+- Concept ID not found in graph (no matching Concept node) → cluster_id = null
 - No concepts in cluster → create file with empty `concepts: []`
 
 #### 9. Zero-Padding for Filenames
@@ -350,21 +361,30 @@ Create new _meta section with subtitle and optional inter-cluster links.
   }
   ```
 
-### extract_cluster_concepts(cluster_nodes: List[Dict], concepts_data: Dict, logger: Logger) -> Tuple[List[Dict], int]
-Extract concepts used by nodes in a cluster.
+### build_concept_cluster_map(graph_data: Dict) -> Dict[str, int]
+Build mapping from concept node IDs to their cluster_id values.
+- **Input**:
+  - graph_data (Dict) - Full graph with nodes
+- **Returns**: Dictionary {concept_id: cluster_id} for all Concept nodes that have cluster_id
+- **Algorithm**: Filter nodes by type=="Concept" and presence of cluster_id, extract id → cluster_id pairs
+
+### extract_cluster_concepts(cluster_nodes: List[Dict], concepts_data: Dict, concept_cluster_map: Dict[str, int], logger: Logger) -> Tuple[List[Dict], int]
+Extract concepts used by nodes in a cluster, enriched with cluster_id.
 - **Input**:
   - cluster_nodes (List[Dict]) - Nodes belonging to cluster
   - concepts_data (Dict) - Full concept dictionary
+  - concept_cluster_map (Dict[str, int]) - Mapping {concept_id: cluster_id} from graph
   - logger (Logger) - Logger instance
 - **Returns**: Tuple of (concepts_list, concepts_count)
-  - concepts_list (List[Dict]) - Full concept objects from dictionary
+  - concepts_list (List[Dict]) - Concept objects enriched with cluster_id
   - concepts_count (int) - Number of unique concepts found
 - **Algorithm**:
   1. Collect all unique concept IDs from `concepts: []` field of all nodes
   2. Build lookup map from concepts_data by concept_id
   3. For each ID, find concept in dictionary
-  4. Log WARNING for missing concepts
-  5. Return list of found concept objects
+  4. Add cluster_id from concept_cluster_map (null if not found, skip if already present)
+  5. Log WARNING for missing concepts
+  6. Return list of enriched concept objects
 
 ### create_cluster_dictionary(cluster_id: int, concepts_list: List[Dict], original_title: str) -> Dict
 Create cluster dictionary structure with metadata.
@@ -463,9 +483,9 @@ Main entry point for the utility.
 
 ## Test Coverage
 
-Module has comprehensive test coverage in `/tests/viz/test_graph_split.py` (30 tests total):
+Module has comprehensive test coverage in `/tests/viz/test_graph_split.py` (34 tests total):
 
-### Unit Tests (15 tests)
+### Unit Tests (19 tests)
 - `test_identify_clusters` - Finding unique cluster IDs, sorted
 - `test_identify_clusters_empty_graph` - Empty graph handling
 - `test_identify_clusters_no_cluster_id` - Graph without cluster_id fields
@@ -481,6 +501,10 @@ Module has comprehensive test coverage in `/tests/viz/test_graph_split.py` (30 t
 - `test_extract_cluster_concepts` - Concept extraction from nodes
 - `test_extract_cluster_concepts_missing` - Missing concept handling with warning
 - `test_create_cluster_dictionary` - Dictionary format and metadata
+- `test_build_concept_cluster_map` - Building concept_id → cluster_id mapping
+- `test_extract_cluster_concepts_with_cluster_id` - cluster_id added to concepts
+- `test_extract_cluster_concepts_missing_in_graph` - cluster_id = null when not in graph
+- `test_extract_cluster_concepts_preserves_existing_cluster_id` - Forward-compatible preservation
 
 ### Integration Tests (7 tests)
 - `test_full_split_flow` - Load → split → save → validate complete flow

@@ -1,8 +1,8 @@
-# Graph Extraction v4.3-gpt-5 @ Computer Science
+# Graph Extraction v4.3-gpt-5 @ Communications and Media
 
 ## Role and Objective
 
-You are an LLM agent tasked with constructing an educational knowledge graph from computer science textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
+You are an LLM agent tasked with constructing an educational knowledge graph from communications and media textbook slices. For each provided **Slice**, generate nodes (Chunks, Concepts, and Assessments) and corresponding edges to accurately represent the knowledge structure, using the provided `ConceptDictionary` for reference.
 
 ## Instructions
 
@@ -21,9 +21,9 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
 {
   "concepts": [
     {
-      "concept_id": "algo101:p:stack",
-      "term": { "primary": "Стек", "aliases": ["stack", "LIFO"] },
-      "definition": "LIFO‑структура данных ..."
+      "concept_id": "comm101:p:celevaya-auditoriya",
+      "term": { "primary": "Целевая аудитория", "aliases": ["target audience", "ЦА"] },
+      "definition": "Группа людей, объединенных общими характеристиками и потребностями, на которую направлены коммуникационные усилия..."
     }
     // ...complete list of all concepts...
   ]
@@ -36,7 +36,7 @@ You are an LLM agent tasked with constructing an educational knowledge graph fro
   "id": "slice_042",
   "order": 42,
   "source_file": "chapter03.md",
-  "slug": "algo101",
+  "slug": "comm101",
   "text": "<plain text of the slice>",    // Relevant field `text`
   "slice_token_start": <int>,
   "slice_token_end": <int>
@@ -87,15 +87,15 @@ Extract nodes first using **exactly** these types and criteria:
 
 1. **Chunk Nodes**: Create `Chunk` nodes by splitting the Slice text into coherent contextual units of explanation or instructional content:
   * Aim for approximately 150-400 words per Chunk, preserving paragraph and semantic integrity.
-  * If a fragment contains code or formulas, retain them unchanged within the `text` field and do not split them across multiple Chunks.
+  * If a fragment contains metrics formulas or campaign examples, retain them unchanged within the `text` field and do not split them across multiple Chunks.
   * Preserve hyperlinks exactly as they appear. Inline URLs, `<a>...</a>` tags, or Markdown links **must not** be truncated, altered, or split across Chunk nodes.
   * Always output **at least one** `Chunk` node representing the current slice.
   * Every `Chunk` **must contain** the `difficulty` field ∈ [1-5]:
-    1: Short definition, ≤2 concepts, no formulas/code
-    2: Simple example, ≤1 formula, tiny code
-    3: Algorithm description, 3-5 concepts
-    4: Formal proof, heavy code
-    5: Research-level discussion
+    1: Basic definitions, ≤2 concepts, no metrics/campaigns
+    2: Simple tools/examples, ≤1 metric, basic channel description
+    3: Integrated approaches, 3-5 concepts, multichannel campaigns
+    4: Strategic planning, complex campaigns, crisis management
+    5: Research-level, neuromarketing, big data analytics
 
 2. **Concept Nodes**: Create `Concept` nodes for concepts from `ConceptDictionary` that are relevant to this slice:
   * Only for concepts explicitly mentioned or discussed in the slice text.
@@ -104,7 +104,7 @@ Extract nodes first using **exactly** these types and criteria:
   * Copy `definition` from `ConceptDictionary` as is (do not modify).
   * Create each Concept node only once per slice, even if mentioned multiple times.
 
-3. **Assessment Nodes**: Create `Assessment` nodes for questions, exercises, or self-check materials found in the text; if there are none, omit assessment nodes.
+3. **Assessment Nodes**: Create `Assessment` nodes for exercises, case studies, campaign briefs, or self-check materials found in the text; if there are none, omit assessment nodes.
 
 4. **`node_offset`**: EVERY node (Chunk, Concept, Assessment) MUST have a `node_offset` field:
   * Token offset where the node content begins or is first mentioned in the slice.
@@ -126,16 +126,16 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 1. First, check for `PREREQUISITE` ("{source} is a prerequisite for {target}"):
   * **Key Question (Answer YES/NO):** Is understanding {target} **completely blocked** without first understanding {source}? If YES, the edge type is **`PREREQUISITE`**
-  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines a "Graph," and {target} describes an algorithm that operates on a graph)
+  * Use this when {source} introduces a fundamental concept that {target} is built upon (e.g., {source} defines "целевая аудитория," and {target} describes "сегментация аудитории")
 
 2. If not a `PREREQUISITE`, check for `ELABORATES` ("{source} elaborates {target}"):
-  * **Key Question:** Is {source} a **deep dive** (e.g., a formal proof, detailed breakdown, complex example) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
-  * Use this when {source} expands on {target} (e.g., {target} describes an algorithm briefly, and {source} provides a proof of its correctness)
+  * **Key Question:** Is {source} a **deep dive** (e.g., detailed campaign plan, metrics analysis, strategic framework) into a topic that was only **introduced or briefly mentioned** in {target}? If YES, the edge type is **`ELABORATES`**
+  * Use this when {source} expands on {target} (e.g., {target} mentions PR-стратегия briefly, and {source} provides detailed implementation plan)
   * Rule of thumb for `ELABORATES`: the arrow goes from the deeper/more detailed node to the base/introduced topic (deep → base)
 
 3. If neither `PREREQUISITE` nor `ELABORATES` applies, check these semantic relationships in order:
   * **`EXAMPLE_OF`**: {source} is a specific, concrete example of a general principle from {target}
-  * **`PARALLEL`**: {source} and {target} present alternative approaches or explanations for the same problem (use **canonical direction:** earlier `node_offset` → later `node_offset`)
+  * **`PARALLEL`**: {source} and {target} present alternative approaches or channels for the same communication goal (use **canonical direction:** earlier `node_offset` → later `node_offset`)
   * **`TESTS`**: An Assessment {source} evaluates knowledge from a {target}
   * **`REVISION_OF`**: {source} is an updated/corrected version of {target} (rare within one slice)
 
@@ -160,7 +160,7 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 - Do not create cycles of `PREREQUISITE`.
 - Do not generate nodes for concepts unless they are explicitly present in the slice text. Reference Concept nodes with their exact `concept_id`.
 - Fields must strictly match the LearningChunkGraph.schema.json with no additions or omissions; self-correct and regenerate if any validation fails.
-- Maintain exact code snippets and hyperlinks from input in nodes.
+- Maintain exact metrics formulas and hyperlinks from input in nodes.
 - Use ONLY the 9 allowed edge types. No other edge types exist.
 - Reject malformed, incomplete, or improperly formatted output.
 
@@ -175,16 +175,16 @@ You **MUST** evaluate edge types in this exact order and follow this strict **pr
 
 Concrete examples to guide edge type selection:
 
-- **PREREQUISITE**: Graph definition (`source`) → BFS algorithm (`target`) - must understand graphs before BFS
-- **ELABORATES**: Formal proof (`source`) → Algorithm description (`target`) - proof details the algorithm 
-- **ELABORATES**: Line-by-line code explanation (`source`) → General algorithm overview (`target`) - deep → base
-- **EXAMPLE_OF**: Bubble sort implementation (`source`) → Sorting concept (`target`) - concrete instance
-- **PARALLEL**: Bubble sort (`source`) → Quick sort (`target`) - alternative sorting approaches
-- **TESTS**: Quiz about BFS (`source`) → BFS algorithm chunk (`target`) - assessment evaluates knowledge
-- **REVISION_OF**: Updated algorithm v2 (`source`) → Original algorithm v1 (`target`) - newer version
-- **HINT_FORWARD**: "We'll discuss recursion later" (`source`) → Full recursion explanation (`target`)
-- **REFER_BACK**: "As we saw with graphs earlier" (`source`) → Graph definition (`target`) - target occurs earlier
-- **MENTIONS**: Описание алгоритма BFS (`source`) → Граф (`target`) - фрагмент явно упоминает концепт
+- **PREREQUISITE**: Модель коммуникации (`source`) → Коммуникационные барьеры (`target`) - must understand basic model before barriers
+- **ELABORATES**: Детальный медиаплан (`source`) → Основы медиапланирования (`target`) - detailed plan elaborates basic concept
+- **ELABORATES**: Пошаговый анализ кампании (`source`) → Общее описание IMC (`target`) - deep → base
+- **EXAMPLE_OF**: Кампания Dove Real Beauty (`source`) → Социально-ответственный маркетинг (`target`) - concrete instance
+- **PARALLEL**: PR-стратегия (`source`) → Маркетинговая стратегия (`target`) - alternative communication approaches
+- **TESTS**: Задание разработать антикризисный план (`source`) → Кризисные коммуникации (`target`) - assessment evaluates knowledge
+- **REVISION_OF**: Digital-first подход (`source`) → Традиционные медиа стратегии (`target`) - newer approach
+- **HINT_FORWARD**: "Позже обсудим метрики" (`source`) → Детальный разбор KPI (`target`)
+- **REFER_BACK**: "Как мы видели при анализе ЦА" (`source`) → Определение целевой аудитории (`target`) - target occurs earlier
+- **MENTIONS**: Планирование PR-кампании (`source`) → Целевая аудитория (`target`) - фрагмент явно упоминает концепт
 
 ## Example: Output
 ```json
@@ -194,70 +194,70 @@ Concrete examples to guide edge type selection:
       {
         "id": "chunk_1",
         "type": "Chunk",
-        "text": "Сортировка - это процесс упорядочивания элементов в определенной последовательности ...",
+        "text": "Коммуникационная стратегия - это долгосрочный план достижения коммуникационных целей организации через координацию всех доступных каналов и инструментов...",
         "node_offset": 45,
-        "definition": "Введение в концепцию сортировки",
+        "definition": "Введение в концепцию коммуникационной стратегии",
         "difficulty": 1
       },
       {
         "id": "chunk_2",
         "type": "Chunk",
-        "text": "Пузырьковая сортировка работает путем многократного прохода по списку, сравнивая соседние элементы и меняя их местами, если они стоят в неправильном порядке. Сложность O(n²) ...",
+        "text": "Интегрированные маркетинговые коммуникации (IMC) предполагают координацию рекламы, PR, прямого маркетинга, стимулирования сбыта и digital-маркетинга для доставки единого сообщения. Эффективность измеряется через охват (reach) и вовлеченность (engagement)...",
         "node_offset": 287,
-        "definition": "Описание алгоритма пузырьковой сортировки",
+        "definition": "Описание подхода IMC с метриками эффективности",
         "difficulty": 2
       },
       {
         "id": "chunk_3",
         "type": "Chunk",
-        "text": "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
+        "text": "Планирование PR-кампании включает: 1) Анализ ситуации и SWOT 2) Определение целевых аудиторий 3) Формулировка ключевых сообщений 4) Выбор каналов коммуникации 5) Разработка контент-плана 6) Определение KPI: охват, тональность, share of voice...",
         "node_offset": 512,
-        "definition": "Реализация пузырьковой сортировки на Python",
+        "definition": "Пошаговый процесс планирования PR-кампании",
         "difficulty": 3
       },
       {
         "id": "chunk_4",
         "type": "Chunk",
-        "text": "Доказательство корректности: На каждой итерации наибольший элемент из неотсортированной части 'всплывает' в конец ...",
+        "text": "Антикризисные коммуникации требуют оперативного реагирования и четкой координации. Алгоритм действий: мониторинг → оценка угрозы → формирование кризисного штаба → разработка позиции → коммуникация со стейкхолдерами → постоянный мониторинг ситуации...",
         "node_offset": 823,
-        "definition": "Формальное доказательство корректности алгоритма",
+        "definition": "Стратегический подход к управлению кризисными коммуникациями",
         "difficulty": 4
       },
       {
         "id": "chunk_5",
         "type": "Chunk",
-        "text": "Быстрая сортировка использует стратегию 'разделяй и властвуй': ...",
+        "text": "Digital-коммуникации используют data-driven подход: сбор данных о поведении аудитории, A/B тестирование, персонализация контента на основе алгоритмов машинного обучения...",
         "node_offset": 1156,
-        "definition": "Описание алгоритма быстрой сортировки",
+        "definition": "Описание современных digital-подходов",
         "difficulty": 3
       },
       {
         "id": "assessment_1",
         "type": "Assessment",
-        "text": "Реализуйте функцию сортировки выбором и сравните её производительность с пузырьковой сортировкой на массиве из 1000 элементов.",
+        "text": "Разработайте интегрированную коммуникационную кампанию для запуска нового продукта, включая медиаплан, бюджет и KPI эффективности.",
         "node_offset": 1489,
         "difficulty": 3
       },
       {
-        "id": "algo101:p:sortirovka",
+        "id": "comm101:p:kommunikacionnaya-strategiya",
         "type": "Concept",
-        "text": "Сортировка",
+        "text": "Коммуникационная стратегия",
         "node_offset": 45,
-        "definition": "Процесс упорядочивания элементов коллекции согласно определенному критерию сравнения"
+        "definition": "Долгосрочный план достижения коммуникационных целей организации через координацию всех доступных каналов и инструментов"
       },
       {
-        "id": "algo101:p:slozhnost-algoritmov",
+        "id": "comm101:p:integrirovannye-marketingovye-kommunikacii",
         "type": "Concept",
-        "text": "Сложность алгоритмов",
-        "node_offset": 476,
-        "definition": "Мера количества вычислительных ресурсов, необходимых для выполнения алгоритма"
+        "text": "Интегрированные маркетинговые коммуникации",
+        "node_offset": 287,
+        "definition": "Координация всех коммуникационных инструментов компании для доставки единого, согласованного сообщения целевым аудиториям"
       },
       {
-        "id": "algo101:p:razdelyay-i-vlastvuy",
+        "id": "comm101:p:antikrizisnye-kommunikacii",
         "type": "Concept",
-        "text": "Разделяй и властвуй",
-        "node_offset": 1203,
-        "definition": "Парадигма разработки алгоритмов, основанная на рекурсивном разбиении задачи на подзадачи"
+        "text": "Антикризисные коммуникации",
+        "node_offset": 823,
+        "definition": "Система мер по управлению информационным полем организации в условиях кризисной ситуации"
       }
     ],
     "edges": [
@@ -266,70 +266,70 @@ Concrete examples to guide edge type selection:
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.9,
-        "conditions": "Must understand what sorting is before learning specific algorithm"
+        "conditions": "Must understand general communication strategy before specific IMC approach"
       },
       {
         "source": "chunk_3",
         "target": "chunk_2",
         "type": "EXAMPLE_OF",
-        "weight": 0.95,
-        "conditions": "Code implementation is concrete example of the algorithm"
+        "weight": 0.75,
+        "conditions": "PR campaign planning is specific implementation of IMC principles"
       },
       {
         "source": "chunk_4",
         "target": "chunk_2",
         "type": "ELABORATES",
-        "weight": 0.7,
-        "conditions": "Formal proof elaborates on algorithm correctness"
+        "weight": 0.8,
+        "conditions": "Crisis communications elaborates on strategic communication planning"
       },
       {
         "source": "chunk_1",
         "target": "chunk_5",
         "type": "PREREQUISITE",
         "weight": 0.85,
-        "conditions": "General sorting concept needed before quicksort"
+        "conditions": "General strategy understanding needed before digital approaches"
       },
       {
-        "source": "chunk_2",
+        "source": "chunk_3",
         "target": "chunk_5",
         "type": "PARALLEL",
         "weight": 0.65,
-        "conditions": "Both are sorting algorithms with different approaches"
+        "conditions": "Both are communication planning approaches with different focus"
       },
       {
         "source": "assessment_1",
         "target": "chunk_2",
         "type": "TESTS",
         "weight": 0.9,
-        "conditions": "Exercise tests understanding of sorting algorithms"
+        "conditions": "Exercise tests understanding of integrated communications"
       },
       {
-        "source": "algo101:p:sortirovka",
+        "source": "comm101:p:kommunikacionnaya-strategiya",
         "target": "chunk_2",
         "type": "PREREQUISITE",
         "weight": 0.95,
-        "conditions": "Sorting concept is prerequisite for bubble sort"
+        "conditions": "Communication strategy concept is prerequisite for IMC"
+      },
+      {
+        "source": "chunk_2",
+        "target": "comm101:p:integrirovannye-marketingovye-kommunikacii",
+        "type": "EXAMPLE_OF",
+        "weight": 0.85,
+        "conditions": "Chunk provides detailed explanation of IMC concept"
       },
       {
         "source": "chunk_4",
-        "target": "algo101:p:slozhnost-algoritmov",
+        "target": "comm101:p:antikrizisnye-kommunikacii",
         "type": "EXAMPLE_OF",
-        "weight": 0.6,
-        "conditions": "Complexity proof demonstrates the concept"
-      },
-      {
-        "source": "chunk_5",
-        "target": "algo101:p:razdelyay-i-vlastvuy",
-        "type": "EXAMPLE_OF",
-        "weight": 0.75,
-        "conditions": "Quicksort is example of divide-and-conquer strategy"
+        "weight": 0.9,
+        "conditions": "Chunk demonstrates crisis communication implementation"
       },
       {
         "source": "chunk_1",
         "target": "assessment_1",
         "type": "HINT_FORWARD",
         "weight": 0.4,
-        "conditions": "Introduction hints at upcoming exercise"
+        "conditions": "Introduction hints at upcoming practical exercise"
       }
     ]
   }

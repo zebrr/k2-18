@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.3-gpt-5 @ Computer Science
+# Graph Refiner Longrange BACKWARD PASS v4.3-gpt-5 @ Communications and Media
 
 ## Role and Objective
 
@@ -75,15 +75,15 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `ELABORATES` ("`Node A` elaborates on `Node B`"):
-  * **Key Question:** Is `Node A` a **deep dive** (e.g., a formal proof, detailed breakdown, complex example) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
-  * Use this when `Node A` expands on `Node B` (e.g., `Node B` describes an algorithm, and `Node A` provides a proof of its correctness).
+  * **Key Question:** Is `Node A` a **deep dive** (e.g., detailed campaign analysis, comprehensive metrics framework, strategic case study) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
+  * Use this when `Node A` expands on `Node B` (e.g., `Node B` mentions PR-стратегия briefly, and `Node A` provides detailed implementation with metrics and examples).
   * Rule of thumb for `ELABORATES`: the direction goes from the deeper/more detailed node to the base/introduced topic (deep → base).
 
 2. Next, check for other semantic relationships:
-  * `REVISION_OF`: `Node A` is updated version of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better approach.
+  * `REVISION_OF`: `Node A` is updated approach/strategy of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better methodology.
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or explanations for the same problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or channels for the same communication goal.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -114,38 +114,38 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: ELABORATES  
-- **Node A**: "Proof: On each bubble sort iteration, the largest unsorted element moves to its final position at the end"
-- **Node B**: "Bubble sort repeatedly compares adjacent elements and swaps them if they're in wrong order"
-- **Relationship**: A→B, ELABORATES, weight=0.75 (proof details the algorithm)
+- **Node A**: "Детальный анализ кампании Dove Real Beauty: таргетинг на женщин 25-45, использование UGC контента, партнерство с блогерами, результаты: рост engagement на 340%, увеличение продаж на 25%"
+- **Node B**: "Социально-ответственный маркетинг использует социальные ценности для построения бренда"
+- **Relationship**: A→B, ELABORATES, weight=0.75 (detailed campaign analysis elaborates on the concept)
 
 Example 2: REVISION_OF
-- **Node A**: "Quick sort with median-of-three pivot selection avoids worst-case on sorted arrays"
-- **Node B**: "Quick sort picks the first element as pivot"
-- **Relationship**: A→B, REVISION_OF, weight=0.85 (improved version of the algorithm)
+- **Node A**: "Digital-first стратегия предполагает приоритет цифровых каналов с последующей адаптацией для традиционных медиа"
+- **Node B**: "Традиционная медиастратегия начинается с ТВ и радио, затем адаптируется для digital"
+- **Relationship**: A→B, REVISION_OF, weight=0.85 (modern approach supersedes traditional)
 
 Example 3: EXAMPLE_OF
-- **Node A**: "def bubble_sort(arr): for i in range(n): for j in range(0, n-i-1): ..."
-- **Node B**: "Sorting algorithms arrange elements in a specific order"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete implementation of sorting concept)
+- **Node A**: "Антикризисная коммуникация KFC при дефиците курицы: юмористическое признание ошибки через рекламу 'FCK' превратило кризис в PR-успех"
+- **Node B**: "Кризисные коммуникации требуют быстрой реакции и прозрачности"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete crisis management example)
 
 Example 4: PARALLEL
-- **Node A**: "Bubble sort has O(n²) complexity and is stable"
-- **Node B**: "Selection sort also has O(n²) complexity but is not stable"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative sorting approaches)
+- **Node A**: "Influencer-маркетинг использует лидеров мнений для продвижения через их личные каналы"
+- **Node B**: "Амбассадорские программы привлекают лояльных клиентов как адвокатов бренда"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative advocacy strategies)
 
 Example 5: REFER_BACK
-- **Node A**: "As we saw with graphs earlier, BFS explores neighbors level by level"
-- **Node B**: "A graph is a collection of vertices connected by edges"
+- **Node A**: "Как мы обсуждали при анализе целевой аудитории, понимание медиапотребления критично для выбора каналов"
+- **Node B**: "Анализ медиапотребления выявляет предпочитаемые каналы и время активности аудитории"
 - **Relationship**: A→B, REFER_BACK, weight=0.4 (A references earlier explanation in B)
 
 Example 6: MENTIONS
-- **Node A**: "We'll use techniques similar to binary search optimization later"
-- **Node B**: "Binary search divides the sorted array in half at each step"
+- **Node A**: "При планировании используем стандартные KPI эффективности: охват, частота, вовлеченность"
+- **Node B**: "KPI коммуникаций включают количественные и качественные метрики оценки эффективности"
 - **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
 
 Example 7: `"type": null` - No relationship
-- **Node A**: "Python uses indentation for code blocks"
-- **Node B**: "HTTP status codes: 200=OK, 404=Not Found, 500=Server Error"
+- **Node A**: "Нейромаркетинг использует ЭЭГ и eye-tracking для анализа реакций"
+- **Node B**: "Пресс-конференция требует подготовки спикеров и пресс-кита"
 - **Relationship**: `"type": null` (unrelated topics)
 
 ## Example: Input/Output
@@ -154,28 +154,28 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "algo:c:2200",
-    "text": "Proof of bubble sort correctness: After k iterations, the last k elements are in their final sorted positions. This guarantees O(n²) worst-case complexity."
+    "id": "comm:c:2200",
+    "text": "Комплексный анализ эффективности PR-кампании: медиаметрики (AVE, Share of Voice), качественный анализ тональности, мониторинг социальных медиа через Brandwatch, ROI = (доход от PR - затраты) / затраты × 100%. Кейс: кампания повысила узнаваемость на 45%, конверсия выросла на 12%."
   },
   "candidates": [
     {
-      "node_id": "algo:c:1500",
-      "text": "Bubble sort implementation: def bubble_sort(arr): for i in range(len(arr)): for j in range(0, len(arr)-i-1): if arr[j] > arr[j+1]: arr[j], arr[j+1] = arr[j+1], arr[j]",
+      "node_id": "comm:c:1500",
+      "text": "PR-кампания включает: определение целей, анализ аудитории, разработку ключевых сообщений, выбор каналов, реализацию и оценку эффективности",
       "similarity": 0.92,
       "existing_edges": []
     },
     {
-      "node_id": "algo:c:800",
-      "text": "Sorting is the process of arranging elements in a specific order, either ascending or descending",
+      "node_id": "comm:c:800",
+      "text": "Метрики эффективности коммуникаций делятся на количественные и качественные показатели",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "algo:c:1200",
-      "text": "Simple sorting algorithms like bubble sort and selection sort have quadratic complexity but are easy to understand",
+      "node_id": "comm:c:1200",
+      "text": "Digital PR использует онлайн-каналы для управления репутацией: SEO-оптимизированные пресс-релизы, работа с блогерами, SERM",
       "similarity": 0.78,
       "existing_edges": [
-        {"source": "algo:c:1200", "target": "algo:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "comm:c:1200", "target": "comm:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     }
   ]
@@ -186,19 +186,19 @@ Output:
 ```jsonc
 [
   {
-    "source": "algo:c:2200",
-    "target": "algo:c:1500",
+    "source": "comm:c:2200",
+    "target": "comm:c:1500",
     "type": "ELABORATES",
     "weight": 0.75
   },
   {
-    "source": "algo:c:2200",
-    "target": "algo:c:800",
+    "source": "comm:c:2200",
+    "target": "comm:c:800",
     "type": null
   },
   {
-    "source": "algo:c:2200",
-    "target": "algo:c:1200",
+    "source": "comm:c:2200",
+    "target": "comm:c:1200",
     "type": "EXAMPLE_OF",
     "weight": 0.6
   }

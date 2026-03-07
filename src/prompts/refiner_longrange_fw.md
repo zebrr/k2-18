@@ -1,4 +1,4 @@
-# Graph Refiner Longrange FORWARD PASS v4.3-gpt-5 @ Computer Science
+# Graph Refiner Longrange FORWARD PASS v4.3-gpt-5 @ Communications and Media
 
 ## Role and Objective
 
@@ -76,12 +76,12 @@ You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `PREREQUISITE` ("`Node A` is a prerequisite for `Node B`"):
   * **Key Question (Answer YES/NO):** Is understanding `Node B` **completely blocked** without first understanding `Node A`? If YES, the edge type is `PREREQUISITE`.
-  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines a "Graph," and `Node B` describes an algorithm that operates on a graph).
+  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "целевая аудитория," and `Node B` describes "сегментация целевой аудитории").
 
 2. Next, check for other semantic relationships:
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or explanations for the same problem.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or channels for the same communication goal.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
 3. Only if NO other semantic link applies, check for navigational edges:
@@ -113,28 +113,28 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: PREREQUISITE
-- **Node A**: "A variable is a named storage location for data. In Python: x = 5"
-- **Node B**: "Functions can accept parameters. def greet(name): return f'Hello {name}'"  
-- **Relationship**: A→B, PREREQUISITE, weight=0.85 (variables needed to understand parameters)
+- **Node A**: "Целевая аудитория — это группа людей, объединенных общими характеристиками и потребностями, на которую направлены коммуникационные усилия"
+- **Node B**: "Сегментация аудитории позволяет разделить целевую аудиторию на подгруппы по демографическим, психографическим и поведенческим признакам"  
+- **Relationship**: A→B, PREREQUISITE, weight=0.85 (must understand target audience before segmentation)
 
 Example 2: EXAMPLE_OF
-- **Node A**: "def bubble_sort(arr): for i in range(n): for j in range(0, n-i-1): ..."
-- **Node B**: "Sorting algorithms arrange elements in a specific order"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete implementation of sorting concept)
+- **Node A**: "Кампания 'Share a Coke' от Coca-Cola персонализировала упаковку с именами покупателей, интегрируя офлайн и онлайн каналы"
+- **Node B**: "Интегрированные маркетинговые коммуникации (IMC) координируют все каналы для единого сообщения"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete campaign example of IMC concept)
 
 Example 3: PARALLEL
-- **Node A**: "Bubble sort has O(n²) complexity and is stable"
-- **Node B**: "Selection sort also has O(n²) complexity but is not stable"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative sorting approaches)
+- **Node A**: "PR-стратегия фокусируется на построении отношений со СМИ и управлении репутацией"
+- **Node B**: "Контент-маркетинг создает ценный контент для привлечения и удержания аудитории"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative communication strategies)
 
 Example 4: MENTIONS
-- **Node A**: "We'll use techniques similar to binary search optimization later"
-- **Node B**: "Binary search divides the sorted array in half at each step"
+- **Node A**: "Позже мы подробно рассмотрим метрики эффективности digital-коммуникаций"
+- **Node B**: "KPI digital-коммуникаций включают CTR, CPC, CPM, конверсию и вовлеченность"
 - **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
 
 Example 5: `"type": null` - No relationship
-- **Node A**: "Python uses indentation for code blocks"
-- **Node B**: "HTTP status codes: 200=OK, 404=Not Found, 500=Server Error"
+- **Node A**: "Пресс-релиз должен содержать заголовок, лид и основной текст"
+- **Node B**: "Нейромаркетинг изучает реакции мозга на маркетинговые стимулы"
 - **Relationship**: `"type": null` (unrelated topics)
 
 ## Example: Input/Output
@@ -143,27 +143,27 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "algo:c:800",
-    "text": "Bubble sort repeatedly steps through the list, compares adjacent elements and swaps them if they're in wrong order. The pass through the list is repeated until the list is sorted."
+    "id": "comm:c:800",
+    "text": "Коммуникационная кампания начинается с анализа целевой аудитории, определения её потребностей, медиапредпочтений и паттернов потребления контента."
   },
   "candidates": [
     {
-      "node_id": "algo:c:1500",
-      "text": "def bubble_sort(arr): for i in range(len(arr)): for j in range(0, len(arr)-i-1): if arr[j] > arr[j+1]: arr[j], arr[j+1] = arr[j+1], arr[j]",
+      "node_id": "comm:c:1500",
+      "text": "Медиаплан детализирует выбор каналов, форматов, частоты и охвата для каждого сегмента аудитории: молодежь 18-24 через Instagram и TikTok, профессионалы 25-45 через LinkedIn и email.",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "algo:c:2200", 
-      "text": "Selection sort divides the list into sorted and unsorted regions, repeatedly selecting the smallest element from unsorted and moving it to sorted region.",
+      "node_id": "comm:c:2200", 
+      "text": "Контент-стратегия определяет темы, форматы и тональность сообщений для разных платформ, учитывая особенности каждого канала коммуникации.",
       "similarity": 0.82,
       "existing_edges": [
-        {"source": "algo:c:800", "target": "algo:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
+        {"source": "comm:c:800", "target": "comm:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
       ]
     },
     {
-      "node_id": "algo:q:2800:1",
-      "text": "Quiz: What is the time complexity of bubble sort? Why does it perform poorly on large datasets? Implement an optimized version that stops early if no swaps occur.",
+      "node_id": "comm:q:2800:1",
+      "text": "Задание: Проанализируйте целевую аудиторию бренда и разработайте персонализированную коммуникационную стратегию с указанием каналов и ключевых сообщений.",
       "similarity": 0.75,
       "existing_edges": []
     }
@@ -175,20 +175,20 @@ Output:
 ```jsonc
 [
   {
-    "source": "algo:c:800",
-    "target": "algo:c:1500",
-    "type": "EXAMPLE_OF", // Bubble sort implementation is example of sorting concept
+    "source": "comm:c:800",
+    "target": "comm:c:1500",
+    "type": "EXAMPLE_OF", // Media plan is example of audience analysis application
     "weight": 0.75
   },
   {
-    "source": "algo:c:800",
-    "target": "algo:c:2200",
-    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are sorting algorithms)
+    "source": "comm:c:800",
+    "target": "comm:c:2200",
+    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are strategic planning approaches)
     "weight": 0.7
   },
   {
-    "source": "algo:c:800",
-    "target": "algo:q:2800:1",
+    "source": "comm:c:800",
+    "target": "comm:q:2800:1",
     "type": null // Could not TEST forward!
   }
 ]

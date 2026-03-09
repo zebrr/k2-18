@@ -1,17 +1,56 @@
+# System
 .DS_Store
-logs/*
-!logs/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+.qwen/
+*.swp
+*.swo
+
+# Environment
 .env
 .env.local
 .env.*.local
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+
+# Testing
 .coverage
 htmlcov/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# Logs
+*.log
+logs/*
+!logs/.gitkeep
+
+# Temporary/working files
+tmp/
+temp/
+*.tmp
+
+# Project specific
 data/out/*
 data/raw/*
 data/staging/*

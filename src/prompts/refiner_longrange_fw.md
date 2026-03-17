@@ -1,4 +1,4 @@
-# Graph Refiner Longrange FORWARD PASS v4.3-gpt-5 @ Communications and Media
+# Graph Refiner Longrange FORWARD PASS @ Management (v2 less-edges)
 
 ## Role and Objective
 
@@ -76,25 +76,22 @@ You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `PREREQUISITE` ("`Node A` is a prerequisite for `Node B`"):
   * **Key Question (Answer YES/NO):** Is understanding `Node B` **completely blocked** without first understanding `Node A`? If YES, the edge type is `PREREQUISITE`.
-  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "целевая аудитория," and `Node B` describes "сегментация целевой аудитории").
+  * Use this when `Node A` introduces a fundamental concept that `Node B` is built upon (e.g., `Node A` defines "организационная структура," and `Node B` describes "делегирование полномочий").
 
 2. Next, check for other semantic relationships:
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or channels for the same communication goal.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or methodologies for the same management challenge.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
-3. Only if NO other semantic link applies, check for navigational edges:
-  * `HINT_FORWARD`: `Node A` briefly mentions a topic that a later `Node B` will fully develop. **Use this edge type cautiously!** It is not for simply linking consecutive chunks.
-
-4. **BE SELECTIVE**: Return `"type": null` for weak or unclear connections (est. `weight < 0.3`)
+3. **BE SELECTIVE**: Return `"type": null` for weak or unclear connections (est. `weight < 0.3`)
 
 ### Weights: Confidence Levels
 
 Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 - weight ≥ 0.8: Strong, essential connection (default for PREREQUISITE, TESTS)
 - weight 0.5-0.75: Clear relationship (default for EXAMPLE_OF, PARALLEL)
-- weight 0.3-0.45: Weak but valid connection (default for HINT_FORWARD, MENTIONS)
+- weight 0.3-0.45: Weak but valid connection (default for MENTIONS)
 - **weight < 0.3: Return `"type": null`** (too weak/unclear)
 
 ## Planning and Verification
@@ -102,7 +99,7 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 - Always choose the appropriate relationship `type` for the `A→Bi` direction.
 - **No PREREQUISITE cycles**: If Bi→A exists with `PREREQUISITE`, don't create A→Bi with `PREREQUISITE`.
 - Return `"type": null` for weak/unclear connections.
-- Valid relationship types: `["PREREQUISITE", "EXAMPLE_OF", "HINT_FORWARD", "PARALLEL", "TESTS", "MENTIONS"]`.
+- Valid relationship types: `["PREREQUISITE", "EXAMPLE_OF", "PARALLEL", "TESTS", "MENTIONS"]`.
 - Weight range must be between `[0.0, 1.0]`.
 
 ## Stop Conditions
@@ -113,29 +110,29 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: PREREQUISITE
-- **Node A**: "Целевая аудитория — это группа людей, объединенных общими характеристиками и потребностями, на которую направлены коммуникационные усилия"
-- **Node B**: "Сегментация аудитории позволяет разделить целевую аудиторию на подгруппы по демографическим, психографическим и поведенческим признакам"  
-- **Relationship**: A→B, PREREQUISITE, weight=0.85 (must understand target audience before segmentation)
+- **Node A**: "Планирование — это процесс определения целей организации и путей их достижения. Включает постановку целей, анализ ресурсов, разработку стратегии."
+- **Node B**: "Стратегическое планирование фокусируется на долгосрочных целях организации (3-5 лет) и требует анализа внешней среды через SWOT-анализ"  
+- **Relationship**: A→B, PREREQUISITE, weight=0.85 (базовое планирование необходимо для понимания стратегического)
 
 Example 2: EXAMPLE_OF
-- **Node A**: "Кампания 'Share a Coke' от Coca-Cola персонализировала упаковку с именами покупателей, интегрируя офлайн и онлайн каналы"
-- **Node B**: "Интегрированные маркетинговые коммуникации (IMC) координируют все каналы для единого сообщения"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete campaign example of IMC concept)
+- **Node A**: "Toyota Production System внедрила принципы кайдзен, канбан и just-in-time для минимизации потерь и повышения эффективности"
+- **Node B**: "Lean-методология направлена на устранение всех видов потерь (muda) и непрерывное совершенствование процессов"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (конкретная реализация Lean принципов)
 
 Example 3: PARALLEL
-- **Node A**: "PR-стратегия фокусируется на построении отношений со СМИ и управлении репутацией"
-- **Node B**: "Контент-маркетинг создает ценный контент для привлечения и удержания аудитории"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative communication strategies)
+- **Node A**: "Теория X предполагает, что сотрудники избегают работы и нуждаются в постоянном контроле"
+- **Node B**: "Теория Y утверждает, что люди внутренне мотивированы и способны к самоуправлению при правильных условиях"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (альтернативные подходы к мотивации)
 
 Example 4: MENTIONS
-- **Node A**: "Позже мы подробно рассмотрим метрики эффективности digital-коммуникаций"
-- **Node B**: "KPI digital-коммуникаций включают CTR, CPC, CPM, конверсию и вовлеченность"
-- **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
+- **Node A**: "При внедрении изменений используем подходы change management и учитываем сопротивление персонала"
+- **Node B**: "Модель Коттера включает 8 шагов управления изменениями: создание срочности, формирование коалиции..."
+- **Relationship**: A→B, MENTIONS, weight=0.35 (краткое упоминание без детализации)
 
 Example 5: `"type": null` - No relationship
-- **Node A**: "Пресс-релиз должен содержать заголовок, лид и основной текст"
-- **Node B**: "Нейромаркетинг изучает реакции мозга на маркетинговые стимулы"
-- **Relationship**: `"type": null` (unrelated topics)
+- **Node A**: "SWOT-анализ помогает оценить сильные и слабые стороны организации"
+- **Node B**: "Финансовая отчетность включает баланс, отчет о прибылях и убытках, движение денежных средств"
+- **Relationship**: `"type": null` (несвязанные темы из разных областей)
 
 ## Example: Input/Output
 
@@ -143,27 +140,25 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "comm:c:800",
-    "text": "Коммуникационная кампания начинается с анализа целевой аудитории, определения её потребностей, медиапредпочтений и паттернов потребления контента."
+    "id": "mgmt:c:800",
+    "text": "Организационная структура определяет систему формального распределения задач, полномочий и ответственности. Основные типы включают функциональную, дивизиональную и матричную структуры."
   },
   "candidates": [
     {
-      "node_id": "comm:c:1500",
-      "text": "Медиаплан детализирует выбор каналов, форматов, частоты и охвата для каждого сегмента аудитории: молодежь 18-24 через Instagram и TikTok, профессионалы 25-45 через LinkedIn и email.",
+      "node_id": "mgmt:c:1500",
+      "text": "Делегирование полномочий — процесс передачи части функций и ответственности от руководителя подчиненным. Эффективное делегирование требует четкой организационной структуры с определенными уровнями ответственности.",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "comm:c:2200", 
-      "text": "Контент-стратегия определяет темы, форматы и тональность сообщений для разных платформ, учитывая особенности каждого канала коммуникации.",
+      "node_id": "mgmt:c:2200", 
+      "text": "Проектная структура организации создается для выполнения конкретного проекта, где команда формируется из специалистов разных подразделений на временной основе.",
       "similarity": 0.82,
-      "existing_edges": [
-        {"source": "comm:c:800", "target": "comm:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
-      ]
+      "existing_edges": []
     },
     {
-      "node_id": "comm:q:2800:1",
-      "text": "Задание: Проанализируйте целевую аудиторию бренда и разработайте персонализированную коммуникационную стратегию с указанием каналов и ключевых сообщений.",
+      "node_id": "mgmt:q:2800:1",
+      "text": "Кейс: Разработайте рекомендации по переходу компании от функциональной к матричной структуре. Какие риски и преимущества следует учесть?",
       "similarity": 0.75,
       "existing_edges": []
     }
@@ -175,20 +170,20 @@ Output:
 ```jsonc
 [
   {
-    "source": "comm:c:800",
-    "target": "comm:c:1500",
-    "type": "EXAMPLE_OF", // Media plan is example of audience analysis application
-    "weight": 0.75
+    "source": "mgmt:c:800",
+    "target": "mgmt:c:1500",
+    "type": "PREREQUISITE", // Organizational structure is prerequisite for delegation
+    "weight": 0.9
   },
   {
-    "source": "comm:c:800",
-    "target": "comm:c:2200",
-    "type": "PARALLEL", // Existing HINT_FORWARD replaced with stronger PARALLEL (both are strategic planning approaches)
+    "source": "mgmt:c:800",
+    "target": "mgmt:c:2200",
+    "type": "PARALLEL", // Both are organizational structure types
     "weight": 0.7
   },
   {
-    "source": "comm:c:800",
-    "target": "comm:q:2800:1",
+    "source": "mgmt:c:800",
+    "target": "mgmt:q:2800:1",
     "type": null // Could not TEST forward!
   }
 ]

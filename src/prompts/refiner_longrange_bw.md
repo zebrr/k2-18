@@ -1,4 +1,4 @@
-# Graph Refiner Longrange BACKWARD PASS v4.3-gpt-5 @ Communications and Media
+# Graph Refiner Longrange BACKWARD PASS @ Management (v2 less-edges)
 
 ## Role and Objective
 
@@ -75,35 +75,31 @@ You are an LLM agent tasked with identifying missing long-range semantic connect
 You **MUST** evaluate edge types in this exact order:
 
 1. First, check for `ELABORATES` ("`Node A` elaborates on `Node B`"):
-  * **Key Question:** Is `Node A` a **deep dive** (e.g., detailed campaign analysis, comprehensive metrics framework, strategic case study) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
-  * Use this when `Node A` expands on `Node B` (e.g., `Node B` mentions PR-стратегия briefly, and `Node A` provides detailed implementation with metrics and examples).
+  * **Key Question:** Is `Node A` a **deep dive** (e.g., detailed case study, implementation guide, comprehensive framework) into a topic that was only **introduced or briefly mentioned** in `Node B`? If YES, the edge type is `ELABORATES`.
+  * Use this when `Node A` expands on `Node B` (e.g., `Node B` introduces KPI concept, and `Node A` provides detailed BSC implementation).
   * Rule of thumb for `ELABORATES`: the direction goes from the deeper/more detailed node to the base/introduced topic (deep → base).
 
 2. Next, check for other semantic relationships:
-  * `REVISION_OF`: `Node A` is updated approach/strategy of `Node B`; `Node A` corrects errors in `Node B`; `Node A` supersedes `Node B` with better methodology.
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`.
-  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or channels for the same communication goal.
+  * `PARALLEL`: `Node A` and `Node B` present alternative approaches or methodologies for the same management challenge.
   * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere.
 
-3. Only if NO other semantic link applies, check for navigational edges:
-  * `REFER_BACK`: `Node A` explicitly refers back to a concept that was fully explained in an earlier `Node B`.
-
-4. **BE SELECTIVE**: Return `"type": null` for weak or unclear connections (est. `weight < 0.3`)
+3. **BE SELECTIVE**: Return `"type": null` for weak or unclear connections (est. `weight < 0.3`)
 
 ### Weights: Confidence Levels
 
 Assign a `weight` in [0.0, 1.0] in steps of 0.05:
-- weight ≥ 0.8: Strong, essential connection (default for REVISION_OF, TESTS)
+- weight ≥ 0.8: Strong, essential connection (default for TESTS)
 - weight 0.5-0.75: Clear relationship (default for ELABORATES, EXAMPLE_OF, PARALLEL)
-- weight 0.3-0.45: Weak but valid connection (default for REFER_BACK, MENTIONS)
+- weight 0.3-0.45: Weak but valid connection (default for MENTIONS)
 - **weight < 0.3: Return `"type": null`** (too weak/unclear)
 
 ## Planning and Verification
 
 - Always choose the appropriate relationship `type` for the `A→Bi` direction.
 - Return `"type": null` for weak/unclear connections.
-- Valid relationship types: `["ELABORATES", "EXAMPLE_OF", "REFER_BACK", "PARALLEL", "TESTS", "REVISION_OF", "MENTIONS"]`.
+- Valid relationship types: `["ELABORATES", "EXAMPLE_OF", "PARALLEL", "TESTS", "MENTIONS"]`.
 - Weight range must be between `[0.0, 1.0]`.
 
 ## Stop Conditions
@@ -114,39 +110,29 @@ Assign a `weight` in [0.0, 1.0] in steps of 0.05:
 ## Examples: Edge Types Heuristics Guide
 
 Example 1: ELABORATES  
-- **Node A**: "Детальный анализ кампании Dove Real Beauty: таргетинг на женщин 25-45, использование UGC контента, партнерство с блогерами, результаты: рост engagement на 340%, увеличение продаж на 25%"
-- **Node B**: "Социально-ответственный маркетинг использует социальные ценности для построения бренда"
-- **Relationship**: A→B, ELABORATES, weight=0.75 (detailed campaign analysis elaborates on the concept)
+- **Node A**: "Детальная реализация Scrum: роли (Product Owner, Scrum Master, Development Team), события (спринты, daily standup, ретроспективы), артефакты (product backlog, sprint backlog). Практические рекомендации по масштабированию для команд 50+ человек."
+- **Node B**: "Agile-методология — гибкий подход к управлению проектами с итеративной разработкой"
+- **Relationship**: A→B, ELABORATES, weight=0.75 (детальная реализация развивает базовую концепцию)
 
-Example 2: REVISION_OF
-- **Node A**: "Digital-first стратегия предполагает приоритет цифровых каналов с последующей адаптацией для традиционных медиа"
-- **Node B**: "Традиционная медиастратегия начинается с ТВ и радио, затем адаптируется для digital"
-- **Relationship**: A→B, REVISION_OF, weight=0.85 (modern approach supersedes traditional)
+Example 2: EXAMPLE_OF
+- **Node A**: "Внедрение KPI в Сбербанке: каскадирование от стратегических целей до операционных метрик каждого сотрудника. Использование системы 'светофоров' для визуализации выполнения показателей."
+- **Node B**: "KPI — ключевые показатели эффективности для оценки достижения целей"
+- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (конкретный кейс внедрения KPI)
 
-Example 3: EXAMPLE_OF
-- **Node A**: "Антикризисная коммуникация KFC при дефиците курицы: юмористическое признание ошибки через рекламу 'FCK' превратило кризис в PR-успех"
-- **Node B**: "Кризисные коммуникации требуют быстрой реакции и прозрачности"
-- **Relationship**: A→B, EXAMPLE_OF, weight=0.75 (concrete crisis management example)
+Example 3: PARALLEL
+- **Node A**: "Холократия — система самоуправления без менеджеров, где власть распределена по кругам (circles) с четкими ролями"
+- **Node B**: "Бирюзовые организации основаны на самоуправлении, целостности и эволюционной цели"
+- **Relationship**: A→B, PARALLEL, weight=0.6 (альтернативные подходы к самоуправлению)
 
-Example 4: PARALLEL
-- **Node A**: "Influencer-маркетинг использует лидеров мнений для продвижения через их личные каналы"
-- **Node B**: "Амбассадорские программы привлекают лояльных клиентов как адвокатов бренда"
-- **Relationship**: A→B, PARALLEL, weight=0.6 (alternative advocacy strategies)
+Example 4: MENTIONS
+- **Node A**: "При трансформации организации учитываем модель Коттера, сопротивление изменениям и корпоративную культуру"
+- **Node B**: "Корпоративная культура — совокупность ценностей, норм и моделей поведения в организации"
+- **Relationship**: A→B, MENTIONS, weight=0.35 (краткое упоминание без развития)
 
-Example 5: REFER_BACK
-- **Node A**: "Как мы обсуждали при анализе целевой аудитории, понимание медиапотребления критично для выбора каналов"
-- **Node B**: "Анализ медиапотребления выявляет предпочитаемые каналы и время активности аудитории"
-- **Relationship**: A→B, REFER_BACK, weight=0.4 (A references earlier explanation in B)
-
-Example 6: MENTIONS
-- **Node A**: "При планировании используем стандартные KPI эффективности: охват, частота, вовлеченность"
-- **Node B**: "KPI коммуникаций включают количественные и качественные метрики оценки эффективности"
-- **Relationship**: A→B, MENTIONS, weight=0.35 (brief reference without elaboration)
-
-Example 7: `"type": null` - No relationship
-- **Node A**: "Нейромаркетинг использует ЭЭГ и eye-tracking для анализа реакций"
-- **Node B**: "Пресс-конференция требует подготовки спикеров и пресс-кита"
-- **Relationship**: `"type": null` (unrelated topics)
+Example 5: `"type": null` - No relationship
+- **Node A**: "Методы оценки инвестиционных проектов: NPV, IRR, срок окупаемости"
+- **Node B**: "Стили лидерства: авторитарный, демократический, либеральный"
+- **Relationship**: `"type": null` (несвязанные темы)
 
 ## Example: Input/Output
 
@@ -154,29 +140,27 @@ Given source node and 3 candidates input:
 ```jsonc
 {
   "source_node": {
-    "id": "comm:c:2200",
-    "text": "Комплексный анализ эффективности PR-кампании: медиаметрики (AVE, Share of Voice), качественный анализ тональности, мониторинг социальных медиа через Brandwatch, ROI = (доход от PR - затраты) / затраты × 100%. Кейс: кампания повысила узнаваемость на 45%, конверсия выросла на 12%."
+    "id": "mgmt:c:2200",
+    "text": "Детальная реализация BSC (Balanced Scorecard): каскадирование стратегии через 4 перспективы (финансы, клиенты, процессы, развитие). Пример: в компании X финансовая цель ROI 20% транслируется в клиентскую метрику NPS>70, что требует оптимизации процесса обслуживания (время ответа <2ч) и обучения персонала (100% сертификация)."
   },
   "candidates": [
     {
-      "node_id": "comm:c:1500",
-      "text": "PR-кампания включает: определение целей, анализ аудитории, разработку ключевых сообщений, выбор каналов, реализацию и оценку эффективности",
+      "node_id": "mgmt:c:1500",
+      "text": "Система сбалансированных показателей (BSC) — стратегическая система управления эффективностью, переводящая миссию в измеримые показатели",
       "similarity": 0.92,
       "existing_edges": []
     },
     {
-      "node_id": "comm:c:800",
-      "text": "Метрики эффективности коммуникаций делятся на количественные и качественные показатели",
+      "node_id": "mgmt:c:800",
+      "text": "KPI — ключевые показатели эффективности для оценки успешности организации или сотрудника",
       "similarity": 0.87,
       "existing_edges": []
     },
     {
-      "node_id": "comm:c:1200",
-      "text": "Digital PR использует онлайн-каналы для управления репутацией: SEO-оптимизированные пресс-релизы, работа с блогерами, SERM",
+      "node_id": "mgmt:c:1200",
+      "text": "Стратегическое планирование определяет долгосрочные цели организации и пути их достижения",
       "similarity": 0.78,
-      "existing_edges": [
-        {"source": "comm:c:1200", "target": "comm:c:2200", "type": "HINT_FORWARD", "weight": 0.4}
-      ]
+      "existing_edges": []
     }
   ]
 }
@@ -186,19 +170,19 @@ Output:
 ```jsonc
 [
   {
-    "source": "comm:c:2200",
-    "target": "comm:c:1500",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:1500",
     "type": "ELABORATES",
     "weight": 0.75
   },
   {
-    "source": "comm:c:2200",
-    "target": "comm:c:800",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:800",
     "type": null
   },
   {
-    "source": "comm:c:2200",
-    "target": "comm:c:1200",
+    "source": "mgmt:c:2200",
+    "target": "mgmt:c:1200",
     "type": "EXAMPLE_OF",
     "weight": 0.6
   }

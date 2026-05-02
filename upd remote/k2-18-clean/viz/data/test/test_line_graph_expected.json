@@ -1,0 +1,102 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_a",
+      "type": "Chunk",
+      "text": "Node A: Starting point of the linear chain",
+      "node_offset": 0,
+      "definition": "First node in linear test graph",
+      "difficulty": 1,
+      "degree_in": 0,
+      "degree_out": 1,
+      "degree_centrality": 0.3333333333333333,
+      "pagerank": 0.1161558230,
+      "betweenness_centrality": 0.0,
+      "closeness_centrality": 0.5,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1.0,
+      "educational_importance": 0.1161558230
+    },
+    {
+      "id": "chunk_b",
+      "type": "Chunk",
+      "text": "Node B: Second step in the chain",
+      "node_offset": 100,
+      "definition": "Second node in linear test graph",
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.6666666666666666,
+      "pagerank": 0.2148882726,
+      "betweenness_centrality": 0.3333333333333333,
+      "closeness_centrality": 0.4444444444444444,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 3.0,
+      "educational_importance": 0.2148882726
+    },
+    {
+      "id": "chunk_c",
+      "type": "Chunk",
+      "text": "Node C: Third step in the chain",
+      "node_offset": 200,
+      "definition": "Third node in linear test graph",
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.6666666666666666,
+      "pagerank": 0.2988108548,
+      "betweenness_centrality": 0.3333333333333333,
+      "closeness_centrality": 0.3333333333333333,
+      "component_id": 0,
+      "prerequisite_depth": 2,
+      "learning_effort": 6.0,
+      "educational_importance": 0.2988108548
+    },
+    {
+      "id": "chunk_d",
+      "type": "Chunk",
+      "text": "Node D: Final destination",
+      "node_offset": 300,
+      "definition": "Fourth and final node in linear test graph",
+      "difficulty": 4,
+      "degree_in": 1,
+      "degree_out": 0,
+      "degree_centrality": 0.3333333333333333,
+      "pagerank": 0.3701450496,
+      "betweenness_centrality": 0.0,
+      "closeness_centrality": 0.0,
+      "component_id": 0,
+      "prerequisite_depth": 3,
+      "learning_effort": 10.0,
+      "educational_importance": 0.3701450496
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_a",
+      "target": "chunk_b",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "A must be understood before B",
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "chunk_b",
+      "target": "chunk_c",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "B must be understood before C",
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "chunk_c",
+      "target": "chunk_d",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "C must be understood before D",
+      "inverse_weight": 1.0
+    }
+  ]
+}

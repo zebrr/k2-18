@@ -268,6 +268,12 @@ def _validate_itext2kg_concepts_section(section: Dict[str, Any]) -> None:
         if truncation not in ["auto", "disabled"]:
             raise ConfigValidationError("itext2kg_concepts.truncation must be 'auto' or 'disabled'")
 
+    # Validate optional prompt file
+    if "prompt_file" in section:
+        prompt_file = section["prompt_file"]
+        if not isinstance(prompt_file, str) or not prompt_file.strip():
+            raise ConfigValidationError("itext2kg_concepts.prompt_file must be a non-empty string")
+
 
 def _validate_itext2kg_graph_section(section: Dict[str, Any]) -> None:
     """Валидирует секцию [itext2kg_graph]."""
@@ -337,6 +343,56 @@ def _validate_itext2kg_graph_section(section: Dict[str, Any]) -> None:
             raise ConfigValidationError(
                 "itext2kg_graph.auto_mentions_weight must be between 0.0 and 1.0"
             )
+
+    # Validate optional checkpoint resume flag
+    if "resume_from_latest" in section:
+        resume_from_latest = section["resume_from_latest"]
+        if not isinstance(resume_from_latest, bool) and resume_from_latest != "auto":
+            raise ConfigValidationError(
+                "itext2kg_graph.resume_from_latest must be a boolean or 'auto'"
+            )
+
+    # Validate optional prompt file
+    if "prompt_file" in section:
+        prompt_file = section["prompt_file"]
+        if not isinstance(prompt_file, str) or not prompt_file.strip():
+            raise ConfigValidationError("itext2kg_graph.prompt_file must be a non-empty string")
+
+    # Validate optional graph quality and artifact controls
+    string_fields = [
+        "concept_alias_patch_file",
+        "mentions_blacklist_file",
+        "graph_patch_archive_dir",
+    ]
+    for field_name in string_fields:
+        if field_name in section:
+            field_value = section[field_name]
+            if not isinstance(field_value, str) or not field_value.strip():
+                raise ConfigValidationError(f"itext2kg_graph.{field_name} must be a non-empty string")
+
+    if "archive_graph_patches" in section and not isinstance(
+        section["archive_graph_patches"], bool
+    ):
+        raise ConfigValidationError("itext2kg_graph.archive_graph_patches must be a boolean")
+
+    integer_fields = [
+        "quality_min_chunk_nodes",
+        "quality_max_edges_per_chunk",
+        "quality_max_unknown_edge_endpoints",
+        "quality_max_missing_conditions",
+    ]
+    for field_name in integer_fields:
+        if field_name in section:
+            field_value = section[field_name]
+            if not isinstance(field_value, int) or field_value < 0:
+                raise ConfigValidationError(
+                    f"itext2kg_graph.{field_name} must be a non-negative integer"
+                )
+
+    if "quality_warn_no_concepts" in section and not isinstance(
+        section["quality_warn_no_concepts"], bool
+    ):
+        raise ConfigValidationError("itext2kg_graph.quality_warn_no_concepts must be a boolean")
 
 
 def _validate_dedup_section(section: Dict[str, Any]) -> None:

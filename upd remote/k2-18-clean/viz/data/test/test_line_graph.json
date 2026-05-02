@@ -1,0 +1,59 @@
+{
+  "nodes": [
+    {
+      "id": "chunk_a",
+      "type": "Chunk",
+      "text": "Node A: Starting point of the linear chain",
+      "node_offset": 0,
+      "definition": "First node in linear test graph",
+      "difficulty": 1
+    },
+    {
+      "id": "chunk_b",
+      "type": "Chunk",
+      "text": "Node B: Second step in the chain",
+      "node_offset": 100,
+      "definition": "Second node in linear test graph",
+      "difficulty": 2
+    },
+    {
+      "id": "chunk_c",
+      "type": "Chunk",
+      "text": "Node C: Third step in the chain",
+      "node_offset": 200,
+      "definition": "Third node in linear test graph",
+      "difficulty": 3
+    },
+    {
+      "id": "chunk_d",
+      "type": "Chunk",
+      "text": "Node D: Final destination",
+      "node_offset": 300,
+      "definition": "Fourth and final node in linear test graph",
+      "difficulty": 4
+    }
+  ],
+  "edges": [
+    {
+      "source": "chunk_a",
+      "target": "chunk_b",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "A must be understood before B"
+    },
+    {
+      "source": "chunk_b",
+      "target": "chunk_c",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "B must be understood before C"
+    },
+    {
+      "source": "chunk_c",
+      "target": "chunk_d",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "conditions": "C must be understood before D"
+    }
+  ]
+}

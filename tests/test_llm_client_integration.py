@@ -22,6 +22,11 @@ import pytest
 
 from src.utils.llm_client import IncompleteResponseError, OpenAIClient
 
+
+def has_real_api_key() -> bool:
+    key = os.environ.get("OPENAI_API_KEY", "")
+    return key.startswith("sk-") and not key.startswith("sk-test")
+
 # Установим глобальный timeout для всех тестов
 pytest_timeout = 60
 
@@ -33,7 +38,7 @@ pytestmark = pytest.mark.integration
 def api_key():
     """Получение API ключа из окружения"""
     key = os.environ.get("OPENAI_API_KEY")
-    if not key:
+    if not has_real_api_key():
         pytest.skip("OPENAI_API_KEY not set")
     return key
 

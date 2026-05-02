@@ -30,11 +30,16 @@ from utils.llm_embeddings import EmbeddingsClient, cosine_similarity_batch
 pytestmark = pytest.mark.integration
 
 
+def has_real_api_key() -> bool:
+    key = os.environ.get("OPENAI_API_KEY", "")
+    return key.startswith("sk-") and not key.startswith("sk-test")
+
+
 @pytest.fixture
 def api_key():
     """Получение API ключа из окружения."""
     key = os.environ.get("OPENAI_API_KEY")
-    if not key:
+    if not has_real_api_key():
         pytest.skip("OPENAI_API_KEY not set")
     return key
 
@@ -372,6 +377,9 @@ class TestErrorHandling:
 
     def test_invalid_api_key(self):
         """Тест с неверным API ключом."""
+        if not has_real_api_key():
+            pytest.skip("OPENAI_API_KEY not set")
+
         bad_config = {
             "embedding_api_key": "sk-invalid-key-12345",
             "embedding_model": "text-embedding-3-small",

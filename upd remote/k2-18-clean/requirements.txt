@@ -1,0 +1,22 @@
+# Core dependencies
+openai>=1.58.0
+tiktoken>=0.8.0
+jsonschema>=4.23.0
+numpy>=1.24.0
+faiss-cpu>=1.8.0
+unidecode>=1.3.8
+
+# File processing
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# Optional but recommended
+python-dotenv>=1.0.0
+tomli>=2.0.0; python_version<"3.11"
+
+# Visualization dependencies
+networkx>=3.0
+scipy>=1.10.0  # Required by NetworkX for PageRank and other algorithms
+python-louvain>=0.16
+Jinja2>=3.1.0
+minify-html>=0.16.0  # HTML minification for smaller output files

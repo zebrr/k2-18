@@ -1,0 +1,913 @@
+"""Tests for itext2kg_concepts module."""
+
+import json
+from unittest.mock import patch
+
+import pytest
+
+from src.itext2kg_concepts import ProcessingStats, SliceData, SliceProcessor
+from src.utils.exit_codes import EXIT_INPUT_ERROR, EXIT_SUCCESS
+from src.utils.llm_client import ResponseUsage
+
+
+class TestSliceProcessor:
+    """Test SliceProcessor class."""
+
+    @pytest.fixture
+    def mock_config(self):
+        """Create mock configuration."""
+        return {
+            "itext2kg_concepts": {
+                "model": "test-model",
+                "tpm_limit": 100000,
+                "log_level": "info",
+                "max_context_tokens": 128000,
+                "max_context_tokens_test": 128000,
+            }
+        }
+
+    @pytest.fixture
+    def processor(self, mock_config, tmp_path):
+        """Create processor instance with mocked dependencies."""
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path / "logs"):
+            with patch("src.itext2kg_concepts.PROMPTS_DIR", tmp_path / "prompts"):
+                with patch("src.itext2kg_concepts.SCHEMAS_DIR", tmp_path / "schemas"):
+                    # Create necessary directories
+                    (tmp_path / "logs").mkdir()
+                    (tmp_path / "prompts").mkdir()
+                    (tmp_path / "schemas").mkdir()
+
+                    # Create prompt file
+                    prompt_file = tmp_path / "prompts" / "itext2kg_concepts_extraction.md"
+                    prompt_file.write_text(
+                        "Test prompt\n{concept_dictionary_schema}", encoding="utf-8"
+                    )
+
+                    # Create schema file
+                    schema_file = tmp_path / "schemas" / "ConceptDictionary.schema.json"
+                    schema_file.write_text(json.dumps({"$schema": "test-schema"}), encoding="utf-8")
+
+                    # Mock LLM client
+                    with patch("src.itext2kg_concepts.OpenAIClient"):
+                        processor = SliceProcessor(mock_config)
+                        return processor
+
+    def test_initialization(self, processor):
+        """Test processor initialization."""
+        assert processor.concept_dictionary == {"concepts": []}
+        assert processor.concept_id_map == {}
+        assert isinstance(processor.stats, ProcessingStats)
+        assert processor.stats.total_slices == 0
+        assert processor.stats.total_concepts == 0
+
+    def test_loads_configured_prompt_file(self, mock_config, tmp_path):
+        """Test loading extraction prompt selected by config."""
+        mock_config["itext2kg_concepts"]["prompt_file"] = "itext2kg_concepts_extraction_general.md"
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path / "logs"):
+            with patch("src.itext2kg_concepts.PROMPTS_DIR", tmp_path / "prompts"):
+                with patch("src.itext2kg_concepts.SCHEMAS_DIR", tmp_path / "schemas"):
+                    (tmp_path / "logs").mkdir()
+                    (tmp_path / "prompts").mkdir()
+                    (tmp_path / "schemas").mkdir()
+
+                    (tmp_path / "prompts" / "itext2kg_concepts_extraction.md").write_text(
+                        "Default prompt {concept_dictionary_schema}", encoding="utf-8"
+                    )
+                    (tmp_path / "prompts" / "itext2kg_concepts_extraction_general.md").write_text(
+                        "General prompt {concept_dictionary_schema}", encoding="utf-8"
+                    )
+                    (tmp_path / "schemas" / "ConceptDictionary.schema.json").write_text(
+                        json.dumps({"$schema": "test-schema"}), encoding="utf-8"
+                    )
+
+                    with patch("src.itext2kg_concepts.OpenAIClient"):
+                        processor = SliceProcessor(mock_config)
+
+        assert "General prompt" in processor.extraction_prompt
+        assert "Default prompt" not in processor.extraction_prompt
+
+    def test_format_tokens(self, processor):
+        """Test token formatting."""
+        assert processor._format_tokens(123) == "123"
+        assert processor._format_tokens(1234) == "1.23k"
+        assert processor._format_tokens(45678) == "45.68k"
+        assert processor._format_tokens(1234567) == "1.23M"
+
+    def test_load_slice(self, processor, tmp_path):
+        """Test slice loading."""
+        slice_file = tmp_path / "test.slice.json"
+        slice_data = {
+            "id": "slice_001",
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        loaded = processor._load_slice(slice_file)
+        assert loaded.id == "slice_001"
+        assert loaded.order == 1
+        assert loaded.text == "Test content"
+
+    def test_format_slice_input(self, processor):
+        """Test input formatting for LLM."""
+        slice_data = SliceData(
+            id="slice_001",
+            order=1,
+            source_file="test.md",
+            slug="test",
+            text="Test content",
+            slice_token_start=0,
+            slice_token_end=100,
+        )
+
+        input_json = processor._format_slice_input(slice_data)
+        input_data = json.loads(input_json)
+
+        assert "ConceptDictionary" in input_data
+        assert "Slice" in input_data
+        assert input_data["Slice"]["id"] == "slice_001"
+        assert input_data["Slice"]["text"] == "Test content"
+
+    def test_update_concept_dictionary_new_concept(self, processor):
+        """Test adding new concept to dictionary."""
+        concepts_added = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO", "стек"]},
+                "definition": "LIFO data structure",
+            }
+        ]
+
+        processor._update_concept_dictionary(concepts_added)
+
+        assert len(processor.concept_dictionary["concepts"]) == 1
+        assert processor.concept_dictionary["concepts"][0]["concept_id"] == "test:p:stack"
+        assert processor.stats.total_concepts == 1
+        assert "test:p:stack" in processor.concept_id_map
+
+    def test_update_concept_dictionary_case_insensitive_dedup(self, processor):
+        """Test case-insensitive alias deduplication."""
+        concepts_added = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO", "lifo", "Lifo"]},
+                "definition": "LIFO data structure",
+            }
+        ]
+
+        processor._update_concept_dictionary(concepts_added)
+
+        concept = processor.concept_dictionary["concepts"][0]
+        # Should keep only first occurrence of each unique alias
+        assert len(concept["term"]["aliases"]) == 1
+        assert concept["term"]["aliases"][0] == "LIFO"
+
+    def test_update_concept_dictionary_existing_concept(self, processor):
+        """Test updating existing concept with new aliases."""
+        # Add initial concept
+        initial_concept = {
+            "concept_id": "test:p:stack",
+            "term": {"primary": "Stack", "aliases": ["LIFO"]},
+            "definition": "LIFO data structure",
+        }
+        processor.concept_dictionary["concepts"].append(initial_concept)
+        processor.concept_id_map["test:p:stack"] = 0
+        processor.stats.total_concepts = 1
+
+        # Update with new aliases
+        concepts_added = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO", "стек", "stack structure"]},
+                "definition": "LIFO data structure",
+            }
+        ]
+
+        processor._update_concept_dictionary(concepts_added)
+
+        # Should have same number of concepts
+        assert len(processor.concept_dictionary["concepts"]) == 1
+        assert processor.stats.total_concepts == 1
+
+        # Should have all unique aliases (sorted)
+        concept = processor.concept_dictionary["concepts"][0]
+        assert sorted(concept["term"]["aliases"]) == ["LIFO", "stack structure", "стек"]
+
+    def test_process_llm_response_valid(self, processor):
+        """Test processing valid LLM response."""
+        response_text = json.dumps(
+            {
+                "concepts_added": {
+                    "concepts": [
+                        {
+                            "concept_id": "test:p:stack",
+                            "term": {"primary": "Stack", "aliases": ["LIFO"]},
+                            "definition": "LIFO data structure",
+                        }
+                    ]
+                }
+            }
+        )
+
+        success, parsed_data = processor._process_llm_response(response_text, "slice_001")
+
+        assert success is True
+        assert parsed_data is not None
+        assert "concepts_added" in parsed_data
+
+    def test_process_llm_response_invalid(self, processor):
+        """Test processing invalid LLM response."""
+        # Missing required field
+        response_text = json.dumps({"wrong_field": {}})
+
+        success, parsed_data = processor._process_llm_response(response_text, "slice_001")
+
+        assert success is False
+        assert parsed_data is None
+
+    def test_process_llm_response_empty_concepts(self, processor):
+        """Test processing response with empty concepts list."""
+        response_text = json.dumps({"concepts_added": {"concepts": []}})
+
+        success, parsed_data = processor._process_llm_response(response_text, "slice_001")
+
+        assert success is True
+        assert parsed_data is not None
+        assert parsed_data["concepts_added"]["concepts"] == []
+
+    def test_apply_concepts(self, processor):
+        """Test applying concepts from LLM response."""
+        response_data = {
+            "concepts_added": {
+                "concepts": [
+                    {
+                        "concept_id": "test:p:stack",
+                        "term": {"primary": "Stack", "aliases": ["LIFO"]},
+                        "definition": "LIFO data structure",
+                    }
+                ]
+            }
+        }
+
+        processor._apply_concepts(response_data)
+
+        assert len(processor.concept_dictionary["concepts"]) == 1
+        assert processor.stats.total_concepts == 1
+
+    def test_save_bad_response(self, processor, tmp_path):
+        """Test saving bad LLM responses."""
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            processor._save_bad_response(
+                "slice_001", "invalid json", "JSON parse error", "still invalid"
+            )
+
+            bad_file = tmp_path / "slice_001_bad.json"
+            assert bad_file.exists()
+
+            bad_data = json.loads(bad_file.read_text())
+            assert bad_data["slice_id"] == "slice_001"
+            assert bad_data["original_response"] == "invalid json"
+            assert bad_data["validation_error"] == "JSON parse error"
+            assert bad_data["repair_response"] == "still invalid"
+
+    def test_save_temp_dumps(self, processor, tmp_path):
+        """Test saving temporary dumps."""
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            # Add some concepts
+            processor.concept_dictionary["concepts"].append(
+                {
+                    "concept_id": "test:p:stack",
+                    "term": {"primary": "Stack"},
+                    "definition": "Test",
+                }
+            )
+            processor.stats.total_concepts = 1
+
+            processor._save_temp_dumps("test_reason")
+
+            # Check files were created
+            concept_files = list(tmp_path.glob("ConceptDictionary_temp_test_reason_*.json"))
+            stats_files = list(tmp_path.glob("processing_stats_test_reason_*.json"))
+
+            assert len(concept_files) == 1
+            assert len(stats_files) == 1
+
+    @patch("src.itext2kg_concepts.SliceProcessor._process_single_slice")
+    def test_run_no_slices(self, mock_process, processor, tmp_path):
+        """Test run with no slices."""
+        with patch("src.itext2kg_concepts.STAGING_DIR", tmp_path):
+            result = processor.run()
+            assert result == EXIT_INPUT_ERROR
+            mock_process.assert_not_called()
+
+    @patch("src.itext2kg_concepts.SliceProcessor._finalize_and_save")
+    @patch("src.itext2kg_concepts.SliceProcessor._process_single_slice")
+    def test_run_successful(self, mock_process, mock_finalize, processor, tmp_path):
+        """Test successful run."""
+        # Create slice files
+        staging_dir = tmp_path / "staging"
+        staging_dir.mkdir()
+        (staging_dir / "slice_001.slice.json").write_text("{}")
+        (staging_dir / "slice_002.slice.json").write_text("{}")
+
+        with patch("src.itext2kg_concepts.STAGING_DIR", staging_dir):
+            mock_process.return_value = True
+            mock_finalize.return_value = EXIT_SUCCESS
+
+            result = processor.run()
+
+            assert result == EXIT_SUCCESS
+            assert mock_process.call_count == 2
+            assert processor.stats.processed_slices == 2
+
+    def test_process_single_slice_with_repair(self, processor, tmp_path):
+        """Test processing slice with repair mechanism."""
+        slice_file = tmp_path / "test.slice.json"
+        slice_data = {
+            "id": "slice_001",
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Set previous successful response ID before the test
+        processor.previous_response_id = "previous_success_id"
+
+        # Mock LLM client to return invalid then valid response
+        mock_client = processor.llm_client
+        mock_client.create_response.return_value = (
+            "invalid json",
+            "response_id_1",
+            ResponseUsage(input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0),
+        )
+        mock_client.repair_response.return_value = (
+            json.dumps({"concepts_added": {"concepts": []}}),
+            "response_id_2",
+            ResponseUsage(input_tokens=120, output_tokens=60, total_tokens=180, reasoning_tokens=0),
+        )
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            result = processor._process_single_slice(slice_file)
+
+        assert result is True
+        assert mock_client.repair_response.called
+        # Check that repair was called with rollback to previous successful ID
+        repair_call_args = mock_client.repair_response.call_args
+        assert repair_call_args[1]["previous_response_id"] == "previous_success_id"
+        assert processor.stats.total_tokens_used == 180  # Uses repair usage
+
+    def test_repair_uses_previous_successful_response_id(self, processor, tmp_path):
+        """Test that repair uses rollback to last successful response ID."""
+        slice_file = tmp_path / "test.slice.json"
+        slice_data = {
+            "id": "slice_001",
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Simulate successful previous slice
+        processor.previous_response_id = "last_good_response_id"
+
+        # Mock LLM client
+        mock_client = processor.llm_client
+
+        # First attempt returns invalid JSON (failed response)
+        mock_client.create_response.return_value = (
+            "not valid json at all",
+            "failed_response_id",
+            ResponseUsage(input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0),
+        )
+
+        # Repair attempt returns valid JSON
+        mock_client.repair_response.return_value = (
+            json.dumps(
+                {
+                    "concepts_added": {
+                        "concepts": [
+                            {
+                                "concept_id": "test:p:concept",
+                                "term": {"primary": "Concept", "aliases": []},
+                                "definition": "Test concept",
+                            }
+                        ]
+                    }
+                }
+            ),
+            "repair_response_id",
+            ResponseUsage(input_tokens=120, output_tokens=60, total_tokens=180, reasoning_tokens=0),
+        )
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            result = processor._process_single_slice(slice_file)
+
+        # Verify successful processing
+        assert result is True
+
+        # Verify repair was called
+        assert mock_client.repair_response.called
+
+        # CRITICAL: Verify repair used rollback to last successful ID, not the failed one
+        repair_call = mock_client.repair_response.call_args
+        assert repair_call[1]["previous_response_id"] == "last_good_response_id"
+        assert repair_call[1]["previous_response_id"] != "failed_response_id"
+
+        # Verify previous_response_id was updated after successful repair
+        assert processor.previous_response_id == "repair_response_id"
+
+    def test_context_preservation(self, processor, tmp_path):
+        """Test that previous_response_id is preserved through processing."""
+        slice_file = tmp_path / "test.slice.json"
+        slice_data = {
+            "id": "slice_001",
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock LLM client
+        mock_client = processor.llm_client
+        mock_client.create_response.return_value = (
+            json.dumps({"concepts_added": {"concepts": []}}),
+            "response_id_1",
+            ResponseUsage(input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0),
+        )
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            # Process first slice
+            processor._process_single_slice(slice_file)
+
+            # Process second slice - should use previous response context
+            processor._process_single_slice(slice_file)
+
+        # LLM client should maintain context automatically
+        assert mock_client.create_response.call_count == 2
+
+    def test_finalize_and_save_success(self, processor, tmp_path):
+        """Test successful finalization and save."""
+        output_dir = tmp_path / "out"
+        output_dir.mkdir()
+
+        # Add concept
+        processor.concept_dictionary["concepts"].append(
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO"]},
+                "definition": "LIFO data structure",
+            }
+        )
+        processor.stats.processed_slices = 5
+        processor.stats.total_slices = 10
+        processor.total_source_tokens = 50000
+        processor.source_slug = "test"
+
+        with patch("src.itext2kg_concepts.OUTPUT_DIR", output_dir):
+            result = processor._finalize_and_save()
+
+        assert result == EXIT_SUCCESS
+        assert (output_dir / "ConceptDictionary.json").exists()
+
+        # Check saved content
+        saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
+
+        # Check metadata exists
+        assert "_meta" in saved_data
+        assert "itext2kg_concepts" in saved_data["_meta"]
+        assert "api_usage" in saved_data["_meta"]["itext2kg_concepts"]
+        assert "concepts_stats" in saved_data["_meta"]["itext2kg_concepts"]
+        assert "processing_time" in saved_data["_meta"]["itext2kg_concepts"]
+
+        # Check data is still there
+        assert len(saved_data["concepts"]) == 1
+        assert saved_data["concepts"][0]["concept_id"] == "test:p:stack"
+
+    def test_metadata_generation(self, processor, tmp_path):
+        """Test that metadata is correctly generated."""
+        output_dir = tmp_path / "out"
+        output_dir.mkdir()
+
+        # Setup processor state
+        processor.concept_dictionary["concepts"] = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Stack", "aliases": ["LIFO", "стек"]},
+                "definition": "LIFO data structure",
+            },
+            {
+                "concept_id": "test:p:queue",
+                "term": {"primary": "Queue", "aliases": []},
+                "definition": "FIFO data structure",
+            },
+        ]
+        processor.stats.processed_slices = 5
+        processor.stats.total_slices = 10
+        processor.total_source_tokens = 50000
+        processor.source_slug = "test"
+        processor.api_usage = {
+            "total_requests": 5,
+            "total_input_tokens": 10000,
+            "total_output_tokens": 5000,
+        }
+
+        with patch("src.itext2kg_concepts.OUTPUT_DIR", output_dir):
+            result = processor._finalize_and_save()
+
+        assert result == EXIT_SUCCESS
+
+        # Check saved metadata
+        saved_data = json.loads((output_dir / "ConceptDictionary.json").read_text())
+        meta = saved_data["_meta"]["itext2kg_concepts"]
+
+        # Check config
+        assert meta["config"]["model"] == "test-model"
+        assert isinstance(meta["config"]["slice_size"], int)
+        assert isinstance(meta["config"]["overlap"], int)
+
+        # Check source stats
+        assert meta["source"]["total_slices"] == 10
+        assert meta["source"]["processed_slices"] == 5
+        assert meta["source"]["total_tokens"] == 50000
+        assert meta["source"]["slug"] == "test"
+
+        # Check API usage
+        assert meta["api_usage"]["total_requests"] == 5
+        assert meta["api_usage"]["total_input_tokens"] == 10000
+        assert meta["api_usage"]["total_output_tokens"] == 5000
+        assert meta["api_usage"]["total_tokens"] == 15000
+
+        # Check concepts stats
+        assert meta["concepts_stats"]["total_concepts"] == 2
+        assert meta["concepts_stats"]["concepts_with_aliases"] == 1
+        assert meta["concepts_stats"]["total_aliases"] == 2
+        assert meta["concepts_stats"]["avg_aliases_per_concept"] == 1.0
+
+        # Check processing time
+        assert "start" in meta["processing_time"]
+        assert "end" in meta["processing_time"]
+        assert isinstance(meta["processing_time"]["duration_minutes"], float)
+
+    def test_previous_response_id_preserved(self, processor, tmp_path):
+        """Test that previous_response_id is used across slices."""
+        # Create multiple slice files
+        slice_data_template = {
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+
+        slice_files = []
+        for i in range(3):
+            slice_file = tmp_path / f"slice_{i:03d}.slice.json"
+            slice_data = slice_data_template.copy()
+            slice_data["id"] = f"slice_{i:03d}"
+            slice_data["order"] = i + 1
+            slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+            slice_files.append(slice_file)
+
+        # Mock LLM client
+        mock_client = processor.llm_client
+        response_ids = ["response_id_1", "response_id_2", "response_id_3"]
+
+        # Track calls to create_response
+        call_count = 0
+
+        def mock_create_response(**kwargs):
+            nonlocal call_count
+            result = (
+                json.dumps({"concepts_added": {"concepts": []}}),
+                response_ids[call_count],
+                ResponseUsage(
+                    input_tokens=100, output_tokens=50, total_tokens=150, reasoning_tokens=0
+                ),
+            )
+            call_count += 1
+            return result
+
+        mock_client.create_response.side_effect = mock_create_response
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path):
+            # Process first slice - should have None as previous_response_id
+            processor._process_single_slice(slice_files[0])
+            assert mock_client.create_response.call_args[1]["previous_response_id"] is None
+            assert processor.previous_response_id == "response_id_1"
+
+            # Process second slice - should use first response_id
+            processor._process_single_slice(slice_files[1])
+            assert (
+                mock_client.create_response.call_args[1]["previous_response_id"] == "response_id_1"
+            )
+            assert processor.previous_response_id == "response_id_2"
+
+            # Process third slice - should use second response_id
+            processor._process_single_slice(slice_files[2])
+            assert (
+                mock_client.create_response.call_args[1]["previous_response_id"] == "response_id_2"
+            )
+            assert processor.previous_response_id == "response_id_3"
+
+    def test_primary_not_duplicated_in_aliases_new_concept(self, processor):
+        """Test that primary term is not included in aliases for new concepts."""
+        # Simulate LLM returning concept with primary in aliases
+        response_data = {
+            "concepts_added": {
+                "concepts": [
+                    {
+                        "concept_id": "test:p:multislovar",
+                        "term": {
+                            "primary": "Мультисловарь",
+                            "aliases": [
+                                "multimap",
+                                "мультисловарь",
+                                "Мультисловарь",
+                                "МУЛЬТИСЛОВАРЬ",
+                            ],
+                        },
+                        "definition": "Test definition",
+                    }
+                ]
+            }
+        }
+
+        processor._apply_concepts(response_data)
+
+        # Check that primary variants are filtered out
+        concept = processor.concept_dictionary["concepts"][0]
+        aliases_lower = [a.lower() for a in concept["term"]["aliases"]]
+
+        # Primary should NOT be in aliases (case-insensitive)
+        assert "мультисловарь" not in aliases_lower
+        # But other aliases should remain
+        assert "multimap" in concept["term"]["aliases"]
+
+    def test_primary_not_duplicated_when_updating_existing(self, processor):
+        """Test that primary is filtered when updating existing concept."""
+        # Add initial concept
+        processor.concept_dictionary["concepts"] = [
+            {
+                "concept_id": "test:p:stack",
+                "term": {"primary": "Стек", "aliases": ["stack"]},
+                "definition": "LIFO structure",
+            }
+        ]
+        processor.concept_id_map["test:p:stack"] = 0
+
+        # Simulate LLM adding aliases including primary
+        response_data = {
+            "concepts_added": {
+                "concepts": [
+                    {
+                        "concept_id": "test:p:stack",
+                        "term": {
+                            "primary": "Стек",
+                            "aliases": ["stack", "стек", "LIFO", "Стек"],
+                        },
+                        "definition": "LIFO structure",
+                    }
+                ]
+            }
+        }
+
+        processor._apply_concepts(response_data)
+
+        # Check result
+        concept = processor.concept_dictionary["concepts"][0]
+        aliases_lower = [a.lower() for a in concept["term"]["aliases"]]
+
+        # Primary should NOT be in aliases
+        assert "стек" not in aliases_lower
+        # Other aliases should be there
+        assert "lifo" in aliases_lower
+        assert "stack" in aliases_lower
+
+
+class TestTimeoutRetryMechanism:
+    """Test TimeoutError retry mechanism."""
+
+    @pytest.fixture
+    def mock_config(self):
+        """Create mock configuration with max_retries."""
+        return {
+            "itext2kg_concepts": {
+                "model": "test-model",
+                "tpm_limit": 100000,
+                "log_level": "info",
+                "max_context_tokens": 128000,
+                "max_context_tokens_test": 128000,
+            },
+            "max_retries": 3
+        }
+
+    @pytest.fixture
+    def processor(self, mock_config, tmp_path):
+        """Create processor instance with mocked dependencies."""
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path / "logs"):
+            with patch("src.itext2kg_concepts.PROMPTS_DIR", tmp_path / "prompts"):
+                with patch("src.itext2kg_concepts.SCHEMAS_DIR", tmp_path / "schemas"):
+                    with patch("src.itext2kg_concepts.STAGING_DIR", tmp_path / "staging"):
+                        # Create necessary directories
+                        (tmp_path / "logs").mkdir()
+                        (tmp_path / "prompts").mkdir()
+                        (tmp_path / "schemas").mkdir()
+                        (tmp_path / "staging").mkdir()
+
+                        # Create prompt file
+                        prompt_file = tmp_path / "prompts" / "itext2kg_concepts_extraction.md"
+                        prompt_file.write_text(
+                            "Test prompt\n{concept_dictionary_schema}", encoding="utf-8"
+                        )
+
+                        # Create schema file
+                        schema_file = tmp_path / "schemas" / "ConceptDictionary.schema.json"
+                        schema_file.write_text(json.dumps({"$schema": "test-schema"}), encoding="utf-8")
+
+                        # Mock LLM client
+                        with patch("src.itext2kg_concepts.OpenAIClient") as mock_client_class:
+                            mock_client = mock_client_class.return_value
+                            processor = SliceProcessor(mock_config)
+                            processor.llm_client = mock_client
+                            yield processor
+
+    def test_timeout_retry_mechanism(self, processor, tmp_path):
+        """Test that TimeoutError triggers repair attempts up to max_retries."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to raise TimeoutError on first 2 attempts, then succeed
+        attempt_count = [0]
+        
+        def side_effect(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] <= 2:
+                raise TimeoutError("Request timeout")
+            else:
+                # Return valid response on 3rd attempt
+                return (
+                    json.dumps({"concepts_added": {"concepts": []}}),
+                    "response_id_3",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+        
+        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
+            side_effect() if attempt_count[0] == 0 else None
+        )
+        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.confirm_response.return_value = None
+
+        # Process the slice with mocked sleep
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify repair_response was called twice (for 2 retry attempts)
+        assert processor.llm_client.repair_response.call_count == 2
+        # Verify success on 3rd attempt
+        assert result is True
+        # Verify confirm_response was called
+        assert processor.llm_client.confirm_response.called
+
+    def test_timeout_causes_full_stop(self, processor, tmp_path):
+        """Test that concept extraction stops after max_retries TimeoutErrors."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to always raise TimeoutError
+        processor.llm_client.create_response.side_effect = TimeoutError("Request timeout")
+        processor.llm_client.repair_response.side_effect = TimeoutError("Request timeout")
+
+        # Process the slice with mocked sleep
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify processing stops with False
+        assert result is False
+        # Verify repair_response was called max_retries times
+        assert processor.llm_client.repair_response.call_count == 3
+        # Verify temporary dumps were created
+        assert (tmp_path / "logs").exists()
+
+    def test_json_error_causes_full_stop(self, processor, tmp_path):
+        """Test that persistent JSON errors stop concept extraction."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock llm_client to return invalid JSON
+        processor.llm_client.create_response.return_value = (
+            "Invalid JSON response",
+            "response_id",
+            ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+        )
+        processor.llm_client.repair_response.return_value = (
+            "Still invalid JSON",
+            "repair_id",
+            ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+        )
+
+        # Process the slice
+        result = processor._process_single_slice(slice_file)
+
+        # Verify processing stops after max_retries
+        assert result is False
+        # Verify repair_response was called max_retries times
+        assert processor.llm_client.repair_response.call_count == 3
+
+    def test_mixed_errors_retry(self, processor, tmp_path):
+        """Test handling of different error types in sequence."""
+        # Create a test slice file
+        slice_file = tmp_path / "staging" / "test.slice.json"
+        slice_data = {
+            "id": "test_slice",
+            "order": 1,
+            "source_file": "test.txt",
+            "slug": "test",
+            "text": "Test content",
+            "slice_token_start": 0,
+            "slice_token_end": 100,
+        }
+        slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
+
+        # Mock different errors in sequence
+        attempt_count = [0]
+        
+        def side_effect(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] == 1:
+                # First attempt: TimeoutError
+                raise TimeoutError("Request timeout")
+            elif attempt_count[0] == 2:
+                # Second attempt: Invalid JSON
+                return (
+                    "Invalid JSON",
+                    "response_id_2",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+            else:
+                # Third attempt: Success
+                return (
+                    json.dumps({"concepts_added": {"concepts": []}}),
+                    "response_id_3",
+                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
+                )
+
+        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
+            side_effect() if attempt_count[0] == 0 else None
+        )
+        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.confirm_response.return_value = None
+
+        # Process the slice
+        with patch("time.sleep"):  # Mock sleep to speed up test
+            result = processor._process_single_slice(slice_file)
+
+        # Verify success after mixed errors
+        assert result is True
+        # Verify repair_response was called twice
+        assert processor.llm_client.repair_response.call_count == 2

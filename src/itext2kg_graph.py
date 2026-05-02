@@ -39,6 +39,7 @@ from src.utils.exit_codes import (
     EXIT_SUCCESS,
 )
 from src.utils.llm_client import OpenAIClient
+from src.utils.validation import validate_graph_invariants_intermediate
 
 setup_console_encoding()
 
@@ -49,10 +50,24 @@ SCHEMAS_DIR = Path(__file__).parent / "schemas"
 STAGING_DIR = Path(__file__).parent.parent / "data" / "staging"
 OUTPUT_DIR = Path(__file__).parent.parent / "data" / "out"
 LOGS_DIR = Path(__file__).parent.parent / "logs"
+CHECKPOINTS_DIR_NAME = "checkpoints"
+LATEST_CHECKPOINT_FILENAME = "LearningChunkGraph_raw_latest.json"
+GRAPH_PATCHES_DIR_NAME = "graph_patches"
 
 GRAPH_EXTRACTION_PROMPT_FILE = "itext2kg_graph_extraction.md"
 MAX_REPAIR_ATTEMPTS = 1
 DEFAULT_DIFFICULTY = 3  # Default difficulty for Chunk nodes if not provided
+ALLOWED_EDGE_TYPES = {
+    "PREREQUISITE",
+    "ELABORATES",
+    "EXAMPLE_OF",
+    "HINT_FORWARD",
+    "REFER_BACK",
+    "PARALLEL",
+    "TESTS",
+    "REVISION_OF",
+    "MENTIONS",
+}
 
 
 @dataclass
@@ -98,10 +113,21 @@ class SliceProcessor:
         self.stats = ProcessingStats()
 
         # Initialize quality issues tracking for deduplication
-        self.quality_issues = {"duplicate_concepts_removed": 0, "anomalous_duplicates": []}
+        self.quality_issues = {
+            "duplicate_concepts_removed": 0,
+            "anomalous_duplicates": [],
+            "invalid_edge_types_removed": 0,
+            "unknown_edge_endpoints_removed": 0,
+            "auto_concept_nodes_added": 0,
+            "quality_repair_requests": 0,
+        }
 
         # Load ConceptDictionary
         self.concept_dict = self._load_concept_dictionary()
+        self.concept_by_id = {
+            concept["concept_id"]: concept for concept in self.concept_dict.get("concepts", [])
+        }
+        self.mentions_blacklist = self._load_mentions_blacklist()
 
         # Initialize graph structures
         self.graph_nodes: List[Dict] = []  # All nodes
@@ -110,6 +136,7 @@ class SliceProcessor:
 
         # Context tracking for incremental processing
         self.previous_response_id: Optional[str] = None
+        self.last_completed_slice: Optional[SliceData] = None
 
         # API usage tracking
         self.api_usage = {
@@ -117,6 +144,10 @@ class SliceProcessor:
             "total_input_tokens": 0,
             "total_output_tokens": 0,
         }
+
+        # Source metadata is populated in run(), but defaults are needed for unit-level calls.
+        self.total_source_tokens = 0
+        self.source_slug = "unknown"
 
         # Load prompt and schema
         self.extraction_prompt = self._load_extraction_prompt()
@@ -181,6 +212,8 @@ class SliceProcessor:
                 self.logger.error("Invalid ConceptDictionary structure: missing 'concepts' field")
                 sys.exit(EXIT_INPUT_ERROR)
 
+            self._apply_concept_alias_patch(concept_dict)
+
             self.logger.info(
                 f"Loaded {len(concept_dict['concepts'])} concepts from ConceptDictionary"
             )
@@ -195,9 +228,125 @@ class SliceProcessor:
             self.logger.error(f"Failed to load ConceptDictionary: {e}")
             sys.exit(EXIT_IO_ERROR)
 
+    def _resolve_config_path(self, path_value: str) -> Path:
+        """Resolve a configured path relative to src/config/ by default."""
+        path = Path(path_value)
+        if path.is_absolute():
+            return path
+        config_dir_path = Path(__file__).parent / "config"
+        return config_dir_path / path
+
+    @staticmethod
+    def _normalize_match_term(term: str) -> str:
+        """Normalize terms for alias matching and blacklist checks."""
+        return " ".join(term.casefold().replace("ё", "е").split())
+
+    def _apply_concept_alias_patch(self, concept_dict: Dict[str, Any]) -> None:
+        """Apply optional in-memory alias patch to ConceptDictionary."""
+        patch_file = self.config.get("concept_alias_patch_file")
+        self.alias_patch_report = {
+            "patch_file": patch_file,
+            "concepts_matched": 0,
+            "aliases_added": 0,
+            "missing_concept_ids": [],
+        }
+        if not patch_file:
+            return
+
+        patch_path = self._resolve_config_path(patch_file)
+        if not patch_path.exists():
+            self.logger.warning(f"Concept alias patch not found: {patch_path}")
+            self.alias_patch_report["missing_patch_file"] = str(patch_path)
+            return
+
+        try:
+            patch_data = json.loads(patch_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            self.logger.warning(f"Failed to read concept alias patch {patch_path}: {e}")
+            self.alias_patch_report["error"] = str(e)
+            return
+
+        concepts_by_id = {
+            concept.get("concept_id"): concept for concept in concept_dict.get("concepts", [])
+        }
+        aliases_by_concept_id = patch_data.get("aliases_by_concept_id", {})
+        if not isinstance(aliases_by_concept_id, dict):
+            self.logger.warning(f"Invalid concept alias patch format: {patch_path}")
+            self.alias_patch_report["error"] = "aliases_by_concept_id must be an object"
+            return
+
+        for concept_id, aliases in aliases_by_concept_id.items():
+            concept = concepts_by_id.get(concept_id)
+            if concept is None:
+                self.alias_patch_report["missing_concept_ids"].append(concept_id)
+                continue
+            if not isinstance(aliases, list):
+                continue
+
+            term = concept.setdefault("term", {})
+            primary = term.get("primary", "")
+            current_aliases = term.setdefault("aliases", [])
+            existing = {
+                self._normalize_match_term(alias) for alias in current_aliases if isinstance(alias, str)
+            }
+            primary_normalized = self._normalize_match_term(primary)
+            added_for_concept = 0
+
+            for alias in aliases:
+                if not isinstance(alias, str) or not alias.strip():
+                    continue
+                normalized = self._normalize_match_term(alias)
+                if normalized == primary_normalized or normalized in existing:
+                    continue
+                current_aliases.append(alias)
+                existing.add(normalized)
+                added_for_concept += 1
+
+            if added_for_concept:
+                self.alias_patch_report["concepts_matched"] += 1
+                self.alias_patch_report["aliases_added"] += added_for_concept
+
+        self.logger.info(
+            json.dumps(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "level": "INFO",
+                    "event": "concept_alias_patch_applied",
+                    **self.alias_patch_report,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    def _load_mentions_blacklist(self) -> set:
+        """Load optional term blacklist for automatic MENTIONS matching."""
+        blacklist_file = self.config.get("mentions_blacklist_file")
+        if not blacklist_file:
+            return set()
+
+        blacklist_path = self._resolve_config_path(blacklist_file)
+        if not blacklist_path.exists():
+            self.logger.warning(f"MENTIONS blacklist not found: {blacklist_path}")
+            return set()
+
+        terms = set()
+        try:
+            for line in blacklist_path.read_text(encoding="utf-8").splitlines():
+                clean = line.split("#", 1)[0].strip()
+                if clean:
+                    terms.add(self._normalize_match_term(clean))
+        except Exception as e:
+            self.logger.warning(f"Failed to load MENTIONS blacklist {blacklist_path}: {e}")
+            return set()
+
+        return terms
+
     def _load_extraction_prompt(self) -> str:
         """Load prompt with schema substitution."""
-        prompt_file = PROMPTS_DIR / GRAPH_EXTRACTION_PROMPT_FILE
+        prompt_name = self.config.get("prompt_file", GRAPH_EXTRACTION_PROMPT_FILE)
+        prompt_file = Path(prompt_name)
+        if not prompt_file.is_absolute():
+            prompt_file = PROMPTS_DIR / prompt_file
 
         if not prompt_file.exists():
             self.logger.error(f"Graph extraction prompt not found: {prompt_file}")
@@ -511,12 +660,7 @@ class SliceProcessor:
             elif node_type == "Concept":
                 # For Concept nodes: always use definition from ConceptDictionary
                 concept_id = node.get("id", "")
-                concept_from_dict = None
-
-                for concept in self.concept_dict["concepts"]:
-                    if concept["concept_id"] == concept_id:
-                        concept_from_dict = concept
-                        break
+                concept_from_dict = self.concept_by_id.get(concept_id)
 
                 if concept_from_dict:
                     # Create proper Concept node with definition from dictionary
@@ -534,6 +678,7 @@ class SliceProcessor:
                         ],  # Always use definition from ConceptDictionary
                     }
                     nodes_to_add.append(concept_node)
+                    self.node_ids[concept_id] = len(self.graph_nodes) + len(nodes_to_add) - 1
                     self.logger.debug(
                         f"Added Concept node {concept_id} with definition from dictionary"
                     )
@@ -570,6 +715,14 @@ class SliceProcessor:
             target = edge.get("target", "")
             edge_type = edge.get("type", "")
 
+            # Check edge type against schema enum
+            if edge_type not in ALLOWED_EDGE_TYPES:
+                self.logger.warning(
+                    f"Dropping edge with invalid type {edge_type}: {source} -> {target}"
+                )
+                self.quality_issues["invalid_edge_types_removed"] += 1
+                continue
+
             # Check self-loop PREREQUISITE
             if edge_type == "PREREQUISITE" and source == target:
                 self.logger.warning(f"Dropping PREREQUISITE self-loop: {source}")
@@ -583,18 +736,16 @@ class SliceProcessor:
                     edge["weight"] = 0.5
 
             # Check node existence (in graph nodes or concept dictionary)
-            source_exists = source in self.node_ids or any(
-                c["concept_id"] == source for c in self.concept_dict["concepts"]
-            )
-            target_exists = target in self.node_ids or any(
-                c["concept_id"] == target for c in self.concept_dict["concepts"]
-            )
+            source_exists = source in self.node_ids
+            target_exists = target in self.node_ids
 
             if not source_exists:
                 self.logger.warning(f"Edge source not found: {source}")
+                self.quality_issues["unknown_edge_endpoints_removed"] += 1
                 continue
             if not target_exists:
                 self.logger.warning(f"Edge target not found: {target}")
+                self.quality_issues["unknown_edge_endpoints_removed"] += 1
                 continue
 
             # Check for duplicates
@@ -607,6 +758,75 @@ class SliceProcessor:
             existing_edge_keys.add(edge_key)
 
         return valid_edges
+
+    def _ensure_concept_node_in_graph(self, concept_id: str, node_offset: int = 0) -> bool:
+        """
+        Ensure a Concept node exists in the accumulated graph.
+
+        Args:
+            concept_id: ConceptDictionary ID
+            node_offset: Best known mention offset
+
+        Returns:
+            True if a node was added, False if it already existed or concept is unknown.
+        """
+        if concept_id in self.node_ids:
+            return False
+
+        concept = self.concept_by_id.get(concept_id)
+        if concept is None:
+            return False
+
+        concept_node = {
+            "id": concept_id,
+            "type": "Concept",
+            "text": concept["term"]["primary"],
+            "node_offset": max(0, int(node_offset or 0)),
+            "definition": concept["definition"],
+        }
+        self.node_ids[concept_id] = len(self.graph_nodes)
+        self.graph_nodes.append(concept_node)
+        self.stats.total_nodes = len(self.graph_nodes)
+        self.quality_issues["auto_concept_nodes_added"] += 1
+        return True
+
+    def _ensure_referenced_concept_nodes(self, patch: Dict) -> int:
+        """
+        Add Concept nodes to the patch for any edge endpoint that references ConceptDictionary.
+
+        This keeps LLM output recoverable when it creates a valid edge to a known concept but
+        forgets to include the corresponding Concept node in `nodes`.
+        """
+        patch_nodes = patch.get("nodes", [])
+        patch_node_ids = {node.get("id") for node in patch_nodes}
+        graph_node_ids = {node.get("id") for node in self.graph_nodes}
+        added = 0
+
+        for edge in patch.get("edges", []):
+            for endpoint in (edge.get("source"), edge.get("target")):
+                if (
+                    endpoint in self.concept_by_id
+                    and endpoint not in patch_node_ids
+                    and endpoint not in graph_node_ids
+                ):
+                    concept = self.concept_by_id[endpoint]
+                    patch_nodes.append(
+                        {
+                            "id": endpoint,
+                            "type": "Concept",
+                            "text": concept["term"]["primary"],
+                            "node_offset": 0,
+                            "definition": concept["definition"],
+                        }
+                    )
+                    patch_node_ids.add(endpoint)
+                    added += 1
+
+        if added:
+            self.quality_issues["auto_concept_nodes_added"] += added
+            self.logger.info(f"Added {added} missing Concept nodes referenced by edges")
+
+        return added
 
     def _add_mentions_edges(self, chunk_nodes: List[Dict]) -> int:
         """
@@ -636,6 +856,7 @@ class SliceProcessor:
 
             chunk_id = chunk["id"]
             chunk_text = chunk.get("text", "").lower()  # Case-insensitive
+            chunk_offset = int(chunk.get("node_offset", 0) or 0)
 
             for concept in self.concept_dict["concepts"]:
                 concept_id = concept["concept_id"]
@@ -648,13 +869,16 @@ class SliceProcessor:
 
                 # Search for primary term
                 primary = concept["term"]["primary"]
-                pattern = r"\b" + re.escape(primary.lower()) + r"\b"
-                if re.search(pattern, chunk_text):
-                    found = True
+                if self._normalize_match_term(primary) not in self.mentions_blacklist:
+                    pattern = r"\b" + re.escape(primary.lower()) + r"\b"
+                    if re.search(pattern, chunk_text):
+                        found = True
 
                 # Search for aliases if not found
                 if not found:
                     for alias in concept["term"].get("aliases", []):
+                        if self._normalize_match_term(alias) in self.mentions_blacklist:
+                            continue
                         pattern = r"\b" + re.escape(alias.lower()) + r"\b"
                         if re.search(pattern, chunk_text):
                             found = True
@@ -662,6 +886,7 @@ class SliceProcessor:
 
                 # Add MENTIONS edge if concept found
                 if found:
+                    self._ensure_concept_node_in_graph(concept_id, chunk_offset)
                     edge = {
                         "source": chunk_id,
                         "target": concept_id,
@@ -852,19 +1077,245 @@ class SliceProcessor:
         Returns:
             True if validation passes, False otherwise
         """
-        # Check ID uniqueness for Chunks and Assessments (but NOT Concepts)
-        chunk_assessment_ids = set()
+        try:
+            validate_graph_invariants_intermediate(
+                {"nodes": self.graph_nodes, "edges": self.graph_edges}
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Intermediate graph invariant validation failed: {e}")
+            return False
 
-        for node in self.graph_nodes:
-            if node.get("type") in ["Chunk", "Assessment"]:
-                node_id = node.get("id", "")
-                if node_id in chunk_assessment_ids:
-                    self.logger.error(f"Duplicate {node['type']} ID found: {node_id}")
-                    return False
-                chunk_assessment_ids.add(node_id)
+    def _validate_patch_quality(self, patch: Dict, slice_data: SliceData) -> Tuple[bool, List[Dict]]:
+        """
+        Validate slice patch quality before it is merged into the graph.
 
-        # Additional invariant checks can be added here
-        return True
+        This catches semantically suspicious but JSON-valid responses early enough to trigger a
+        repair-reprompt instead of silently carrying low-quality graph state forward.
+        """
+        issues = []
+        nodes = patch.get("nodes", [])
+        edges = patch.get("edges", [])
+        patch_node_ids = {node.get("id") for node in nodes if node.get("id")}
+        graph_node_ids = {node.get("id") for node in self.graph_nodes if node.get("id")}
+        known_node_ids = patch_node_ids | graph_node_ids
+
+        chunk_nodes = [node for node in nodes if node.get("type") == "Chunk"]
+        concept_nodes = [node for node in nodes if node.get("type") == "Concept"]
+
+        if len(chunk_nodes) < self.config.get("quality_min_chunk_nodes", 1):
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "missing_chunk",
+                    "message": "Patch must contain at least one Chunk node",
+                }
+            )
+
+        duplicate_patch_ids = set()
+        seen_patch_ids = set()
+        for node in nodes:
+            node_id = node.get("id")
+            if not node_id:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "type": "missing_node_id",
+                        "message": "Node without id",
+                    }
+                )
+                continue
+            if node_id in seen_patch_ids and node.get("type") != "Concept":
+                duplicate_patch_ids.add(node_id)
+            seen_patch_ids.add(node_id)
+
+        for node_id in sorted(duplicate_patch_ids):
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "duplicate_patch_node",
+                    "node_id": node_id,
+                    "message": f"Duplicate non-Concept node in patch: {node_id}",
+                }
+            )
+
+        unknown_concept_nodes = [
+            node.get("id")
+            for node in concept_nodes
+            if node.get("id") and node.get("id") not in self.concept_by_id
+        ]
+        for concept_id in sorted(set(unknown_concept_nodes)):
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "unknown_concept_node",
+                    "concept_id": concept_id,
+                    "message": f"Concept node is not in ConceptDictionary: {concept_id}",
+                }
+            )
+
+        max_edges_per_chunk = self.config.get("quality_max_edges_per_chunk", 8)
+        if chunk_nodes and len(edges) > len(chunk_nodes) * max_edges_per_chunk:
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "edge_density_too_high",
+                    "message": (
+                        f"Patch has {len(edges)} edges for {len(chunk_nodes)} chunks; "
+                        f"limit is {max_edges_per_chunk} per chunk"
+                    ),
+                }
+            )
+
+        unknown_endpoints = []
+        invalid_edge_types = []
+        missing_conditions = []
+        for edge in edges:
+            edge_type = edge.get("type")
+            if edge_type not in ALLOWED_EDGE_TYPES:
+                invalid_edge_types.append(edge_type)
+
+            for field_name in ("source", "target"):
+                endpoint = edge.get(field_name)
+                if endpoint not in known_node_ids:
+                    unknown_endpoints.append(
+                        {
+                            "field": field_name,
+                            "endpoint": endpoint,
+                            "edge_type": edge_type,
+                        }
+                    )
+
+            if edge_type in {"PREREQUISITE", "PARALLEL", "REVISION_OF"} and not edge.get(
+                "conditions"
+            ):
+                missing_conditions.append(
+                    {
+                        "source": edge.get("source"),
+                        "target": edge.get("target"),
+                        "edge_type": edge_type,
+                    }
+                )
+
+        for edge_type in sorted({str(edge_type) for edge_type in invalid_edge_types}):
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "invalid_edge_type",
+                    "edge_type": edge_type,
+                    "message": f"Invalid edge type: {edge_type}",
+                }
+            )
+
+        max_unknown_endpoints = self.config.get("quality_max_unknown_edge_endpoints", 0)
+        if len(unknown_endpoints) > max_unknown_endpoints:
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "unknown_edge_endpoints",
+                    "count": len(unknown_endpoints),
+                    "items": unknown_endpoints[:10],
+                    "message": "Edges reference nodes that are neither in the patch nor graph",
+                }
+            )
+
+        max_missing_conditions = self.config.get("quality_max_missing_conditions", 2)
+        if len(missing_conditions) > max_missing_conditions:
+            issues.append(
+                {
+                    "severity": "error",
+                    "type": "missing_conditions",
+                    "count": len(missing_conditions),
+                    "items": missing_conditions[:10],
+                    "message": "Too many important semantic edges lack conditions",
+                }
+            )
+
+        if not concept_nodes and self.config.get("quality_warn_no_concepts", True):
+            issues.append(
+                {
+                    "severity": "warning",
+                    "type": "no_concept_nodes",
+                    "slice_id": slice_data.id,
+                    "message": "Patch contains no Concept nodes",
+                }
+            )
+
+        has_errors = any(issue.get("severity") == "error" for issue in issues)
+        return not has_errors, issues
+
+    def _format_quality_repair_hint(self, issues: List[Dict]) -> str:
+        """Build concise repair instructions from patch quality issues."""
+        issue_lines = []
+        for issue in issues[:8]:
+            message = issue.get("message") or issue.get("type", "quality issue")
+            issue_lines.append(f"- {message}")
+
+        return (
+            "\nCRITICAL GRAPH QUALITY REPAIR REQUIRED:\n"
+            "The previous JSON was parseable but failed graph quality checks:\n"
+            + "\n".join(issue_lines)
+            + "\nReturn a corrected JSON object only. Keep the same slice, include at least "
+            "one Chunk, include Concept nodes for every Concept edge endpoint, use only the "
+            "9 allowed edge types, and add concise Russian `conditions` for important "
+            "PREREQUISITE/PARALLEL/REVISION_OF edges."
+        )
+
+    def _save_graph_patch_artifact(
+        self,
+        *,
+        slice_data: SliceData,
+        input_data: str,
+        response_text: str,
+        response_id: Optional[str],
+        attempt: int,
+        stage: str,
+        parsed_response: Optional[Dict] = None,
+        postprocessed_patch: Optional[Dict] = None,
+        quality_issues: Optional[List[Dict]] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Persist per-slice LLM input/response/patch artifacts for replay and audit."""
+        if not self.config.get("archive_graph_patches", True):
+            return
+
+        archive_dir_name = self.config.get("graph_patch_archive_dir", GRAPH_PATCHES_DIR_NAME)
+        archive_dir = OUTPUT_DIR / archive_dir_name
+        safe_slice_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", slice_data.id)
+        artifact_path = (
+            archive_dir / f"{slice_data.order:03d}_{safe_slice_id}_attempt_{attempt}_{stage}.json"
+        )
+
+        try:
+            input_obj: Any = json.loads(input_data)
+        except json.JSONDecodeError:
+            input_obj = input_data
+
+        artifact = {
+            "slice": {
+                "id": slice_data.id,
+                "order": slice_data.order,
+                "source_file": slice_data.source_file,
+                "slug": slice_data.slug,
+                "slice_token_start": slice_data.slice_token_start,
+                "slice_token_end": slice_data.slice_token_end,
+            },
+            "attempt": attempt,
+            "stage": stage,
+            "timestamp": datetime.now().isoformat(),
+            "response_id": response_id,
+            "input": input_obj,
+            "raw_response": response_text,
+            "parsed_response": parsed_response,
+            "postprocessed_patch": postprocessed_patch,
+            "quality_issues": quality_issues or [],
+            "error": error,
+        }
+
+        try:
+            self._write_json_atomic(artifact_path, artifact)
+        except Exception as e:
+            self.logger.warning(f"Failed to save graph patch artifact {artifact_path}: {e}")
 
     def _validate_node_uniqueness(self, graph: Dict) -> Tuple[bool, List]:
         """
@@ -894,6 +1345,408 @@ class SliceProcessor:
 
         is_valid = len(duplicates) == 0
         return is_valid, duplicates
+
+    def _calculate_graph_stats(self) -> Dict[str, Any]:
+        """Calculate aggregate graph statistics for output metadata."""
+        graph_stats = {
+            "total_nodes": len(self.graph_nodes),
+            "chunks": len([n for n in self.graph_nodes if n.get("type") == "Chunk"]),
+            "concepts": len([n for n in self.graph_nodes if n.get("type") == "Concept"]),
+            "assessments": len([n for n in self.graph_nodes if n.get("type") == "Assessment"]),
+            "total_edges": len(self.graph_edges),
+            "edge_types": {},
+        }
+
+        for edge in self.graph_edges:
+            edge_type = edge.get("type", "UNKNOWN")
+            graph_stats["edge_types"][edge_type] = (
+                graph_stats["edge_types"].get(edge_type, 0) + 1
+            )
+
+        return graph_stats
+
+    def _build_output_data(
+        self,
+        *,
+        complete: bool,
+        processed_slices: Optional[int] = None,
+        checkpoint_slice: Optional[SliceData] = None,
+        end_time: Optional[datetime] = None,
+        is_unique: Optional[bool] = None,
+        duplicates: Optional[List] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build graph output with metadata for final and checkpoint artifacts.
+
+        Args:
+            complete: True for final graph, False for recoverable checkpoints.
+            processed_slices: Effective number of successfully processed slices.
+            checkpoint_slice: Last fully integrated slice for checkpoint metadata.
+            end_time: Timestamp to use for metadata.
+            is_unique: Optional precomputed node uniqueness flag.
+            duplicates: Optional precomputed duplicate list.
+
+        Returns:
+            Graph payload ready to serialize.
+        """
+        if end_time is None:
+            end_time = datetime.now()
+
+        graph_data = {"nodes": self.graph_nodes, "edges": self.graph_edges}
+        if is_unique is None or duplicates is None:
+            is_unique, duplicates = self._validate_node_uniqueness(graph_data)
+
+        if processed_slices is None:
+            processed_slices = self.stats.processed_slices
+
+        config = self.config.copy()
+        slicer_config = self.full_config.get("slicer", {})
+        concepts_count = len(self.concept_dict.get("concepts", []))
+        duration_minutes = (end_time - self.stats.start_time).total_seconds() / 60
+
+        checkpoint_meta = {
+            "complete": complete,
+            "checkpoint_generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "last_completed_slice_id": None,
+            "last_completed_slice_order": None,
+            "last_completed_slice_token_start": None,
+            "last_completed_slice_token_end": None,
+            "processed_slices": processed_slices,
+            "total_slices": self.stats.total_slices,
+            "previous_response_id": self.previous_response_id,
+            "stats": {
+                "total_nodes": len(self.graph_nodes),
+                "total_edges": len(self.graph_edges),
+                "total_tokens_used": self.stats.total_tokens_used,
+            },
+        }
+
+        if checkpoint_slice is not None:
+            checkpoint_meta.update(
+                {
+                    "last_completed_slice_id": checkpoint_slice.id,
+                    "last_completed_slice_order": checkpoint_slice.order,
+                    "last_completed_slice_token_start": checkpoint_slice.slice_token_start,
+                    "last_completed_slice_token_end": checkpoint_slice.slice_token_end,
+                }
+            )
+
+        metadata = {
+            "_meta": {
+                "itext2kg_graph": {
+                    "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "config": {
+                        "model": config.get("model"),
+                        "prompt_file": config.get("prompt_file", GRAPH_EXTRACTION_PROMPT_FILE),
+                        "temperature": config.get("temperature"),
+                        "max_output_tokens": config.get("max_completion"),
+                        "reasoning_effort": config.get("reasoning_effort"),
+                        "overlap": slicer_config.get("overlap", 0),
+                        "slice_size": slicer_config.get("max_tokens", 5000),
+                        "auto_mentions_weight": config.get("auto_mentions_weight", 0.35),
+                        "resume_from_latest": config.get("resume_from_latest", False),
+                        "concept_alias_patch_file": config.get("concept_alias_patch_file"),
+                        "mentions_blacklist_file": config.get("mentions_blacklist_file"),
+                        "archive_graph_patches": config.get("archive_graph_patches", True),
+                    },
+                    "source": {
+                        "total_slices": self.stats.total_slices,
+                        "processed_slices": processed_slices,
+                        "total_tokens": self.total_source_tokens,
+                        "slug": self.source_slug,
+                        "concepts_used": concepts_count,
+                    },
+                    "api_usage": {
+                        "total_requests": self.api_usage["total_requests"],
+                        "total_input_tokens": self.api_usage["total_input_tokens"],
+                        "total_output_tokens": self.api_usage["total_output_tokens"],
+                        "total_tokens": self.api_usage["total_input_tokens"]
+                        + self.api_usage["total_output_tokens"],
+                    },
+                    "graph_stats": self._calculate_graph_stats(),
+                    "concept_alias_patch": self.alias_patch_report,
+                    "processing_time": {
+                        "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "duration_minutes": round(duration_minutes, 2),
+                    },
+                    "quality_issues": {
+                        "duplicate_concepts_removed": self.quality_issues[
+                            "duplicate_concepts_removed"
+                        ],
+                        "anomalous_duplicates": self.quality_issues["anomalous_duplicates"],
+                        "graph_has_duplicates": not is_unique,
+                        "remaining_duplicates": duplicates if not is_unique else [],
+                    },
+                    "checkpoint": checkpoint_meta,
+                }
+            }
+        }
+
+        return {**metadata, "nodes": self.graph_nodes, "edges": self.graph_edges}
+
+    def _write_json_atomic(self, output_path: Path, data: Dict[str, Any]) -> None:
+        """
+        Write JSON atomically by replacing the target only after a full temp write.
+
+        Args:
+            output_path: Final path to write.
+            data: JSON-serializable data.
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = output_path.with_name(f".{output_path.name}.{time.time_ns()}.tmp")
+
+        try:
+            temp_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temp_path.replace(output_path)
+        except Exception:
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            finally:
+                raise
+
+    def _checkpoint_path_for_slice(self, slice_data: SliceData) -> Path:
+        """Return deterministic checkpoint path for a completed slice."""
+        safe_slice_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", slice_data.id)
+        return (
+            OUTPUT_DIR
+            / CHECKPOINTS_DIR_NAME
+            / f"LearningChunkGraph_raw_after_{safe_slice_id}.json"
+        )
+
+    def _save_success_checkpoint(self, slice_data: SliceData, processed_slices: int) -> None:
+        """
+        Save recoverable graph artifacts after a slice is fully integrated.
+
+        Args:
+            slice_data: Last completed slice.
+            processed_slices: Effective successful slice count including slice_data.
+        """
+        output_data = self._build_output_data(
+            complete=False,
+            processed_slices=processed_slices,
+            checkpoint_slice=slice_data,
+        )
+
+        checkpoint_path = self._checkpoint_path_for_slice(slice_data)
+        latest_path = OUTPUT_DIR / LATEST_CHECKPOINT_FILENAME
+
+        self._write_json_atomic(checkpoint_path, output_data)
+        self._write_json_atomic(latest_path, output_data)
+
+        self.logger.info(
+            json.dumps(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "level": "INFO",
+                    "event": "checkpoint_saved",
+                    "slice_id": slice_data.id,
+                    "checkpoint_path": str(checkpoint_path),
+                    "latest_path": str(latest_path),
+                }
+            )
+        )
+
+    def _rebuild_node_ids(self) -> None:
+        """Rebuild node index from restored graph nodes."""
+        self.node_ids = {}
+        for index, node in enumerate(self.graph_nodes):
+            node_id = node.get("id", "")
+            if node_id and node_id not in self.node_ids:
+                self.node_ids[node_id] = index
+
+    def _slice_by_order(self, slice_files: List[Path], order: int) -> Optional[SliceData]:
+        """Find a staging slice by its order field."""
+        for slice_file in slice_files:
+            slice_data = self._load_slice(slice_file)
+            if slice_data.order == order:
+                return slice_data
+        return None
+
+    def _filter_slice_files_after_order(self, slice_files: List[Path], order: int) -> List[Path]:
+        """Return staging slice files with order greater than the restored checkpoint."""
+        remaining = []
+        for slice_file in slice_files:
+            slice_data = self._load_slice(slice_file)
+            if slice_data.order > order:
+                remaining.append(slice_file)
+        return remaining
+
+    def _int_from_meta(self, value: Any, field_name: str) -> int:
+        """Read an integer metadata value with a clear error on malformed checkpoints."""
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"Invalid checkpoint metadata: {field_name} must be an integer")
+        return value
+
+    def _restore_api_usage(self, api_usage: Dict[str, Any]) -> None:
+        """Restore API usage counters from checkpoint metadata."""
+        total_requests = api_usage.get("total_requests", 0)
+        total_input_tokens = api_usage.get("total_input_tokens", 0)
+        total_output_tokens = api_usage.get("total_output_tokens", 0)
+
+        self.api_usage = {
+            "total_requests": total_requests if isinstance(total_requests, int) else 0,
+            "total_input_tokens": total_input_tokens if isinstance(total_input_tokens, int) else 0,
+            "total_output_tokens": (
+                total_output_tokens if isinstance(total_output_tokens, int) else 0
+            ),
+        }
+
+    def _restore_quality_issues(self, quality_issues: Dict[str, Any]) -> None:
+        """Restore quality issue counters from checkpoint metadata."""
+        defaults = {
+            "duplicate_concepts_removed": 0,
+            "anomalous_duplicates": [],
+            "invalid_edge_types_removed": 0,
+            "unknown_edge_endpoints_removed": 0,
+            "auto_concept_nodes_added": 0,
+            "quality_repair_requests": 0,
+        }
+
+        restored = {}
+        for key, default_value in defaults.items():
+            value = quality_issues.get(key, default_value)
+            if isinstance(default_value, list):
+                restored[key] = value if isinstance(value, list) else []
+            else:
+                restored[key] = value if isinstance(value, int) else 0
+
+        self.quality_issues = restored
+
+    def _load_latest_checkpoint(self, slice_files: List[Path]) -> int:
+        """
+        Restore graph state from the latest successful checkpoint.
+
+        Args:
+            slice_files: Current staging slice files.
+
+        Returns:
+            Order of the last completed slice.
+
+        Raises:
+            ValueError: If checkpoint is missing or incompatible with staging.
+        """
+        checkpoint_path = OUTPUT_DIR / LATEST_CHECKPOINT_FILENAME
+        if not checkpoint_path.exists():
+            raise ValueError(f"Latest checkpoint not found: {checkpoint_path}")
+
+        try:
+            checkpoint_data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse latest checkpoint: {e}") from e
+        except OSError as e:
+            raise ValueError(f"Failed to read latest checkpoint: {e}") from e
+
+        meta = checkpoint_data.get("_meta", {}).get("itext2kg_graph", {})
+        checkpoint_meta = meta.get("checkpoint")
+        if not isinstance(checkpoint_meta, dict):
+            raise ValueError("Latest checkpoint is missing _meta.itext2kg_graph.checkpoint")
+
+        last_order = self._int_from_meta(
+            checkpoint_meta.get("last_completed_slice_order"),
+            "last_completed_slice_order",
+        )
+        processed_slices = self._int_from_meta(
+            checkpoint_meta.get("processed_slices"),
+            "processed_slices",
+        )
+        checkpoint_total = self._int_from_meta(
+            checkpoint_meta.get("total_slices"),
+            "total_slices",
+        )
+
+        if checkpoint_total != len(slice_files):
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                f"total_slices={checkpoint_total}, current={len(slice_files)}"
+            )
+
+        last_slice = self._slice_by_order(slice_files, last_order)
+        if last_slice is None:
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                f"slice order {last_order} not found"
+            )
+
+        expected_slice_id = checkpoint_meta.get("last_completed_slice_id")
+        expected_start = checkpoint_meta.get("last_completed_slice_token_start")
+        expected_end = checkpoint_meta.get("last_completed_slice_token_end")
+
+        if expected_slice_id != last_slice.id:
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                f"last_completed_slice_id={expected_slice_id}, current={last_slice.id}"
+            )
+        if expected_start != last_slice.slice_token_start:
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                "last_completed_slice_token_start does not match current staging"
+            )
+        if expected_end != last_slice.slice_token_end:
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                "last_completed_slice_token_end does not match current staging"
+            )
+
+        source_meta = meta.get("source", {})
+        expected_slug = source_meta.get("slug")
+        if expected_slug and expected_slug != "unknown" and expected_slug != last_slice.slug:
+            raise ValueError(
+                "Latest checkpoint is incompatible with staging: "
+                f"slug={expected_slug}, current={last_slice.slug}"
+            )
+
+        nodes = checkpoint_data.get("nodes")
+        edges = checkpoint_data.get("edges")
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            raise ValueError("Latest checkpoint must contain list fields: nodes and edges")
+
+        self.graph_nodes = nodes
+        self.graph_edges = edges
+        self._rebuild_node_ids()
+        self.previous_response_id = checkpoint_meta.get("previous_response_id")
+        self.last_completed_slice = last_slice
+
+        self.stats.processed_slices = processed_slices
+        self.stats.total_nodes = len(self.graph_nodes)
+        self.stats.total_edges = len(self.graph_edges)
+
+        api_usage = meta.get("api_usage", {})
+        if isinstance(api_usage, dict):
+            self._restore_api_usage(api_usage)
+            total_tokens = api_usage.get("total_tokens")
+            if isinstance(total_tokens, int):
+                self.stats.total_tokens_used = total_tokens
+            else:
+                self.stats.total_tokens_used = (
+                    self.api_usage["total_input_tokens"] + self.api_usage["total_output_tokens"]
+                )
+
+        quality_issues = meta.get("quality_issues", {})
+        if isinstance(quality_issues, dict):
+            self._restore_quality_issues(quality_issues)
+
+        self.logger.info(
+            json.dumps(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "level": "INFO",
+                    "event": "checkpoint_loaded",
+                    "checkpoint_path": str(checkpoint_path),
+                    "last_completed_slice_id": last_slice.id,
+                    "last_completed_slice_order": last_slice.order,
+                    "processed_slices": self.stats.processed_slices,
+                    "total_nodes": self.stats.total_nodes,
+                    "total_edges": self.stats.total_edges,
+                }
+            )
+        )
+
+        return last_order
 
     def _save_bad_response(
         self,
@@ -1016,6 +1869,7 @@ class SliceProcessor:
         # Get max_retries from config
         max_retries = self.config.get("max_retries", 3)
         last_error_type = None
+        last_quality_issues: List[Dict] = []
         start_time = time.time()
 
         # Retry loop for recoverable errors
@@ -1049,6 +1903,8 @@ class SliceProcessor:
                             "\nIMPORTANT: Be concise to avoid timeout. "
                             "Focus on essential nodes and edges only."
                         )
+                    elif last_error_type == "quality":
+                        repair_hint = self._format_quality_repair_hint(last_quality_issues)
 
                     response_text, response_id, usage = self.llm_client.repair_response(
                         instructions=self.extraction_prompt + repair_hint,
@@ -1085,6 +1941,15 @@ class SliceProcessor:
                 success, parsed = self._process_llm_response(response_text, slice_id)
 
                 if not success:
+                    self._save_graph_patch_artifact(
+                        slice_data=slice_data,
+                        input_data=input_data,
+                        response_text=response_text,
+                        response_id=response_id,
+                        attempt=attempt,
+                        stage="json_failed",
+                        error="JSON validation failed",
+                    )
                     last_error_type = "json"
                     if attempt == max_retries:
                         # CRITICAL: graph cannot continue without slice
@@ -1112,15 +1977,60 @@ class SliceProcessor:
                         return False  # Will lead to EXIT_RUNTIME_ERROR
                     continue  # Next attempt
 
-                # Success! Confirm response
-                self.llm_client.confirm_response()
-
                 # JSON is valid, apply post-processing to fix IDs
                 if parsed and "chunk_graph_patch" in parsed:
                     patch = parsed["chunk_graph_patch"]
 
                     # NEW: Replace temporary IDs with final position-based IDs
                     self._assign_final_ids(patch, slice_data)
+                    self._ensure_referenced_concept_nodes(patch)
+
+                    quality_ok, quality_issues = self._validate_patch_quality(patch, slice_data)
+                    if not quality_ok:
+                        self.quality_issues["quality_repair_requests"] += 1
+                        last_error_type = "quality"
+                        last_quality_issues = quality_issues
+                        self._save_graph_patch_artifact(
+                            slice_data=slice_data,
+                            input_data=input_data,
+                            response_text=response_text,
+                            response_id=response_id,
+                            attempt=attempt,
+                            stage="quality_failed",
+                            parsed_response=parsed,
+                            postprocessed_patch=patch,
+                            quality_issues=quality_issues,
+                        )
+
+                        if attempt == max_retries:
+                            current_time = datetime.now().strftime("%H:%M:%S")
+                            print(
+                                f"[{current_time}] ERROR    | ❌ "
+                                f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                                f"{slice_id} | Graph quality failed after {max_retries} retries"
+                            )
+                            self.logger.error(
+                                f"Graph quality failed for slice {slice_id}: {quality_issues}"
+                            )
+                            self._save_temp_dumps(f"quality_failure_{slice_id}")
+                            return False
+
+                        continue
+
+                    self._save_graph_patch_artifact(
+                        slice_data=slice_data,
+                        input_data=input_data,
+                        response_text=response_text,
+                        response_id=response_id,
+                        attempt=attempt,
+                        stage="accepted",
+                        parsed_response=parsed,
+                        postprocessed_patch=patch,
+                        quality_issues=quality_issues,
+                    )
+
+                    # Success! Confirm response only after JSON and quality validation.
+                    self.llm_client.confirm_response()
 
                     # Position validation and repair are no longer needed - IDs are now correct
                     self._add_to_graph(patch, slice_data)
@@ -1133,6 +2043,22 @@ class SliceProcessor:
 
                     # Update previous_response_id ONLY on success
                     self.previous_response_id = response_id
+                    self.last_completed_slice = slice_data
+
+                    # Persist the recoverable graph state after the slice is fully integrated.
+                    processed_slices = self.stats.processed_slices + 1
+                    try:
+                        self._save_success_checkpoint(slice_data, processed_slices)
+                    except Exception as e:
+                        self.logger.error(f"Failed to save checkpoint after {slice_id}: {e}")
+                        current_time = datetime.now().strftime("%H:%M:%S")
+                        print(
+                            f"[{current_time}] ERROR    | ❌ "
+                            f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                            f"{slice_id} | Checkpoint save failed"
+                        )
+                        self._save_temp_dumps(f"checkpoint_failure_{slice_id}")
+                        return False
 
                     # Log success
                     elapsed = int(time.time() - start_time)
@@ -1193,7 +2119,19 @@ class SliceProcessor:
             except (openai.RateLimitError, openai.APIError) as e:
                 # These are handled in llm_client with their own retry
                 self.logger.error(f"API error processing slice {slice_id}: {e}")
-                raise  # Pass up
+                current_time = datetime.now().strftime("%H:%M:%S")
+                print(
+                    f"[{current_time}] ERROR    | ❌ "
+                    f"{slice_order:03d}/{self.stats.total_slices:03d} | "
+                    f"{slice_id} | API error: {type(e).__name__}"
+                )
+                if self.previous_response_id:
+                    print(
+                        f"[{current_time}] FAILED   | ❌ Cannot continue with response chain "
+                        f"{self.previous_response_id}"
+                    )
+                self._save_temp_dumps(f"api_error_{slice_id}")
+                return False  # Will lead to EXIT_RUNTIME_ERROR
 
             except Exception as e:
                 # Unexpected errors - CRITICAL for graph
@@ -1252,8 +2190,40 @@ class SliceProcessor:
             f"model={model} | tpm={tpm_limit // 1000}k"
         )
 
+        slice_files_to_process = slice_files
+        resume_from_latest = self.config.get("resume_from_latest", False)
+        latest_checkpoint_path = OUTPUT_DIR / LATEST_CHECKPOINT_FILENAME
+        should_resume = resume_from_latest is True or (
+            resume_from_latest == "auto" and latest_checkpoint_path.exists()
+        )
+        if resume_from_latest == "auto" and not latest_checkpoint_path.exists():
+            print(f"[{timestamp}] RESUME   | auto | no checkpoint found, starting fresh")
+
+        if should_resume:
+            try:
+                last_completed_order = self._load_latest_checkpoint(slice_files)
+                slice_files_to_process = self._filter_slice_files_after_order(
+                    slice_files, last_completed_order
+                )
+            except ValueError as e:
+                self.logger.error(f"Failed to resume from latest checkpoint: {e}")
+                print(f"ERROR: {e}")
+                return EXIT_INPUT_ERROR
+            except Exception as e:
+                self.logger.error(f"Unexpected resume error: {e}")
+                print(f"ERROR: Failed to resume from latest checkpoint: {e}")
+                return EXIT_INPUT_ERROR
+
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(
+                f"[{timestamp}] RESUME   | latest checkpoint | "
+                f"last={self.last_completed_slice.id if self.last_completed_slice else 'unknown'} | "
+                f"processed={self.stats.processed_slices}/{self.stats.total_slices} | "
+                f"remaining={len(slice_files_to_process)}"
+            )
+
         # Process each slice
-        for slice_file in slice_files:
+        for slice_file in slice_files_to_process:
             success = self._process_single_slice(slice_file)
 
             if success:
@@ -1280,81 +2250,13 @@ class SliceProcessor:
         # Save results
         output_path = OUTPUT_DIR / "LearningChunkGraph_raw.json"
         try:
-            # Calculate graph statistics
-            graph_stats = {
-                "total_nodes": len(self.graph_nodes),
-                "chunks": len([n for n in self.graph_nodes if n.get("type") == "Chunk"]),
-                "concepts": len([n for n in self.graph_nodes if n.get("type") == "Concept"]),
-                "assessments": len([n for n in self.graph_nodes if n.get("type") == "Assessment"]),
-                "total_edges": len(self.graph_edges),
-                "edge_types": {},
-            }
-
-            # Count edge types
-            for edge in self.graph_edges:
-                edge_type = edge.get("type", "UNKNOWN")
-                graph_stats["edge_types"][edge_type] = (
-                    graph_stats["edge_types"].get(edge_type, 0) + 1
-                )
-
-            # Get config values safely
-            config = self.config.copy()
-            slicer_config = self.full_config.get("slicer", {})
-
-            # Get concepts count from ConceptDictionary
-            concepts_count = len(self.concept_dict.get("concepts", []))
-
-            # Collect metadata
-            end_time = datetime.now()
-            duration_minutes = (end_time - self.stats.start_time).total_seconds() / 60
-
-            metadata = {
-                "_meta": {
-                    "itext2kg_graph": {
-                        "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "config": {
-                            "model": config.get("model"),
-                            "temperature": config.get("temperature"),
-                            "max_output_tokens": config.get("max_completion"),
-                            "reasoning_effort": config.get("reasoning_effort"),
-                            "overlap": slicer_config.get("overlap", 0),
-                            "slice_size": slicer_config.get("max_tokens", 5000),
-                            "auto_mentions_weight": config.get("auto_mentions_weight", 0.35),
-                        },
-                        "source": {
-                            "total_slices": self.stats.total_slices,
-                            "processed_slices": self.stats.processed_slices,
-                            "total_tokens": self.total_source_tokens,
-                            "slug": self.source_slug,
-                            "concepts_used": concepts_count,
-                        },
-                        "api_usage": {
-                            "total_requests": self.api_usage["total_requests"],
-                            "total_input_tokens": self.api_usage["total_input_tokens"],
-                            "total_output_tokens": self.api_usage["total_output_tokens"],
-                            "total_tokens": self.api_usage["total_input_tokens"]
-                            + self.api_usage["total_output_tokens"],
-                        },
-                        "graph_stats": graph_stats,
-                        "processing_time": {
-                            "start": self.stats.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "duration_minutes": round(duration_minutes, 2),
-                        },
-                        "quality_issues": {
-                            "duplicate_concepts_removed": self.quality_issues[
-                                "duplicate_concepts_removed"
-                            ],
-                            "anomalous_duplicates": self.quality_issues["anomalous_duplicates"],
-                            "graph_has_duplicates": not is_unique,
-                            "remaining_duplicates": duplicates if not is_unique else [],
-                        },
-                    }
-                }
-            }
-
-            # Merge metadata with graph data
-            output_data = {**metadata, "nodes": self.graph_nodes, "edges": self.graph_edges}
+            output_data = self._build_output_data(
+                complete=True,
+                processed_slices=self.stats.processed_slices,
+                checkpoint_slice=self.last_completed_slice,
+                is_unique=is_unique,
+                duplicates=duplicates,
+            )
 
             # Validate basic structure before saving
             if not self.graph_nodes:
@@ -1362,8 +2264,7 @@ class SliceProcessor:
             if not self.graph_edges:
                 self.logger.warning("No edges in final graph")
 
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(output_data, f, ensure_ascii=False, indent=2)
+            self._write_json_atomic(output_path, output_data)
 
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"[{timestamp}] SUCCESS  | ✅ Results saved to /data/out/")

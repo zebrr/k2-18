@@ -12,7 +12,6 @@ import json
 import shutil
 # Добавляем src в path для импорта
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -27,27 +26,26 @@ class TestSlicerIntegration:
     """Интеграционные тесты для slicer.py."""
 
     @pytest.fixture
-    def temp_project_dir(self, monkeypatch):
+    def temp_project_dir(self, tmp_path, monkeypatch):
         """Создает временную структуру проекта для тестов."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+        temp_path = tmp_path
 
-            # Создаем структуру директорий
-            raw_dir = temp_path / "data" / "raw"
-            staging_dir = temp_path / "data" / "staging"
-            raw_dir.mkdir(parents=True)
-            staging_dir.mkdir(parents=True)
+        # Создаем структуру директорий
+        raw_dir = temp_path / "data" / "raw"
+        staging_dir = temp_path / "data" / "staging"
+        raw_dir.mkdir(parents=True)
+        staging_dir.mkdir(parents=True)
 
-            # Копируем тестовые файлы
-            fixtures_dir = Path(__file__).parent / "fixtures"
-            for fixture_file in fixtures_dir.glob("*"):
-                if fixture_file.is_file():
-                    shutil.copy2(fixture_file, raw_dir)
+        # Копируем тестовые файлы
+        fixtures_dir = Path(__file__).parent / "fixtures"
+        for fixture_file in fixtures_dir.glob("*"):
+            if fixture_file.is_file():
+                shutil.copy2(fixture_file, raw_dir)
 
-            # Меняем рабочую директорию для slicer.py
-            monkeypatch.chdir(temp_path)
+        # Меняем рабочую директорию для slicer.py
+        monkeypatch.chdir(temp_path)
 
-            yield temp_path
+        return temp_path
 
     def test_full_workflow_no_overlap(self, temp_project_dir):
         """Тест полного workflow без перекрытий."""

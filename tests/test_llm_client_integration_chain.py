@@ -20,10 +20,15 @@ load_dotenv()
 pytestmark = pytest.mark.integration
 
 
+def has_real_api_key() -> bool:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    return api_key.startswith("sk-") and not api_key.startswith("sk-test")
+
+
 def get_test_config():
     """Получить конфигурацию для тестов."""
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if not has_real_api_key():
         pytest.skip("OPENAI_API_KEY not set")
 
     return {
@@ -41,7 +46,7 @@ def get_test_config():
     }
 
 
-@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="API key required")
+@pytest.mark.skipif(not has_real_api_key(), reason="API key required")
 class TestResponseChainWindowIntegration:
     """Интеграционные тесты управления цепочкой ответов с реальным API"""
 

@@ -11,7 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import tomli
+try:
+    import tomllib as tomli
+except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
+    import tomli
 
 try:
     from colorama import Fore, Style, init

@@ -13,9 +13,29 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from src.utils.exit_codes import EXIT_INPUT_ERROR, EXIT_SUCCESS
+
+
+def fake_embeddings(texts, config):
+    """Deterministic local embeddings for integration tests without API calls."""
+    vectors = []
+    for text in texts:
+        normalized = text.lower().strip()
+        if not normalized:
+            vector = [0.0, 0.0, 0.0, 0.0]
+        elif "variable" in normalized or "variables" in normalized:
+            vector = [1.0, 0.0, 0.0, 0.0]
+        elif "for loop" in normalized or "for loops" in normalized:
+            vector = [0.0, 1.0, 0.0, 0.0]
+        elif "python is great for data science" in normalized:
+            vector = [0.0, 0.0, 1.0, 0.0]
+        else:
+            vector = [0.0, 0.0, 0.0, 1.0]
+        vectors.append(vector)
+    return np.asarray(vectors, dtype=np.float32)
 
 
 def create_test_graph_with_semantic_duplicates():
@@ -213,7 +233,8 @@ class TestDedupIntegrationWithTemp:
 
         # Запускаем dedup
         from src.dedup import main
-        exit_code = main()
+        with patch("src.dedup.get_embeddings", side_effect=fake_embeddings):
+            exit_code = main()
         
         assert exit_code == EXIT_SUCCESS
 
@@ -300,7 +321,8 @@ class TestDedupIntegrationWithTemp:
         
         # Запускаем dedup
         from src.dedup import main
-        exit_code = main()
+        with patch("src.dedup.get_embeddings", side_effect=fake_embeddings):
+            exit_code = main()
         
         assert exit_code == EXIT_SUCCESS
         

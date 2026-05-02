@@ -1,0 +1,78 @@
+{
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A: Introduction to weighted graphs. This node demonstrates how weights affect graph metrics.",
+      "node_offset": 0,
+      "difficulty": 1,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 1.0,
+      "pagerank": 0.333333,
+      "betweenness_centrality": 0.5,
+      "out-closeness": 0.360036,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 1,
+      "educational_importance": 0.333333
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B: Advanced weighted graph algorithms. This node receives strong prerequisite from A.",
+      "node_offset": 100,
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 1.0,
+      "pagerank": 0.333333,
+      "betweenness_centrality": 0.5,
+      "out-closeness": 0.240010,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 4,
+      "educational_importance": 0.333333
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C: Practical examples of weighted graphs. This node provides examples for B.",
+      "node_offset": 200,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 1.0,
+      "pagerank": 0.333333,
+      "betweenness_centrality": 0.5,
+      "out-closeness": 0.449944,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 2,
+      "educational_importance": 0.333333
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PREREQUISITE",
+      "weight": 0.9,
+      "inverse_weight": 1.111111
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "EXAMPLE_OF",
+      "weight": 0.3,
+      "inverse_weight": 3.333333
+    },
+    {
+      "source": "C",
+      "target": "A",
+      "type": "ELABORATES",
+      "weight": 0.6,
+      "inverse_weight": 1.666667
+    }
+  ]
+}

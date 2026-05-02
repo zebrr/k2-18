@@ -5,6 +5,7 @@ Tests for anomaly_detector module.
 import copy
 import json
 import math
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import mock_open, patch
@@ -213,7 +214,7 @@ strict_mode = false
 
     with patch("pathlib.Path.exists", return_value=True):
         with patch("builtins.open", mock_open(read_data=config_content)):
-            with patch("tomli.load") as mock_tomli:
+            with patch("viz.anomaly_detector.tomli.load") as mock_tomli:
                 mock_tomli.return_value = {
                     "anomaly_detection": {
                         "pagerank_sum_tolerance": 0.01,
@@ -490,36 +491,40 @@ def test_json_report_generation(valid_graph):
     with tempfile.TemporaryDirectory() as tmpdir:
         logs_dir = Path(tmpdir) / "viz" / "logs"
         logs_dir.mkdir(parents=True)
+        config_path = Path(tmpdir) / "viz" / "config.toml"
+        config_path.write_text("[anomaly_detection]\nsave_json_report = true\n", encoding="utf-8")
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("pathlib.Path.mkdir"):
-                with patch("pathlib.Path", return_value=logs_dir):
-                    detector = AnomalyDetector()
-                    detector.graph_data = valid_graph
-                    detector.graph_file = "test_graph.json"
-                    detector.run_critical_checks()
-                    detector.calculate_statistics()
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmpdir)
+            detector = AnomalyDetector()
+            detector.graph_data = valid_graph
+            detector.graph_file = "test_graph.json"
+            detector.run_critical_checks()
+            detector.calculate_statistics()
 
-                    # Mock file writing
-                    written_data = {}
+            # Mock file writing
+            written_data = {}
 
-                    def mock_write(data, f, **kwargs):
-                        written_data["report"] = data
+            def mock_write(data, f, **kwargs):
+                written_data["report"] = data
 
-                    with patch("json.dump", side_effect=mock_write):
-                        with patch("builtins.open", mock_open()):
-                            detector.save_json_report()
+            with patch("json.dump", side_effect=mock_write):
+                with patch("builtins.open", mock_open()):
+                    detector.save_json_report()
 
-                    if "report" in written_data:
-                        report = written_data["report"]
-                        assert "timestamp" in report
-                        assert "graph_file" in report
-                        assert "summary" in report
-                        assert "critical" in report
-                        assert "warnings" in report
-                        assert "info" in report
-                        assert "statistics" in report
-                        assert "config" in report
+            if "report" in written_data:
+                report = written_data["report"]
+                assert "timestamp" in report
+                assert "graph_file" in report
+                assert "summary" in report
+                assert "critical" in report
+                assert "warnings" in report
+                assert "info" in report
+                assert "statistics" in report
+                assert "config" in report
+        finally:
+            os.chdir(original_cwd)
 
 
 @pytest.mark.viz

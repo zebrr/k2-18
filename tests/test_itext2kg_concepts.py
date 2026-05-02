@@ -60,6 +60,33 @@ class TestSliceProcessor:
         assert processor.stats.total_slices == 0
         assert processor.stats.total_concepts == 0
 
+    def test_loads_configured_prompt_file(self, mock_config, tmp_path):
+        """Test loading extraction prompt selected by config."""
+        mock_config["itext2kg_concepts"]["prompt_file"] = "itext2kg_concepts_extraction_general.md"
+
+        with patch("src.itext2kg_concepts.LOGS_DIR", tmp_path / "logs"):
+            with patch("src.itext2kg_concepts.PROMPTS_DIR", tmp_path / "prompts"):
+                with patch("src.itext2kg_concepts.SCHEMAS_DIR", tmp_path / "schemas"):
+                    (tmp_path / "logs").mkdir()
+                    (tmp_path / "prompts").mkdir()
+                    (tmp_path / "schemas").mkdir()
+
+                    (tmp_path / "prompts" / "itext2kg_concepts_extraction.md").write_text(
+                        "Default prompt {concept_dictionary_schema}", encoding="utf-8"
+                    )
+                    (tmp_path / "prompts" / "itext2kg_concepts_extraction_general.md").write_text(
+                        "General prompt {concept_dictionary_schema}", encoding="utf-8"
+                    )
+                    (tmp_path / "schemas" / "ConceptDictionary.schema.json").write_text(
+                        json.dumps({"$schema": "test-schema"}), encoding="utf-8"
+                    )
+
+                    with patch("src.itext2kg_concepts.OpenAIClient"):
+                        processor = SliceProcessor(mock_config)
+
+        assert "General prompt" in processor.extraction_prompt
+        assert "Default prompt" not in processor.extraction_prompt
+
     def test_format_tokens(self, processor):
         """Test token formatting."""
         assert processor._format_tokens(123) == "123"

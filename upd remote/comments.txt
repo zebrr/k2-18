@@ -1,0 +1,137 @@
+Работаем с k2-18-clean
+
+Детально проанализируй проект K2-18 в текущем репозитории. 
+Сфокусируйся только на архитектурных, программных и содержательных аспектах репозитория: код, структура пайплайна, LLM-клиент, конфиги, схемы, тесты, документация, промпты, визуализация, надежность и поддерживаемость.
+
+Не анализируй продуктовую стратегию, рынок, пользователей, монетизацию и use cases как PM-гипотезы.
+
+Сначала проведи read-only ревью без изменений файлов. 
+Верни:
+1. карту текущей архитектуры;
+2. таблицу проблем с severity;
+3. список quick wins;
+4. среднесрочный план рефакторинга;
+5. какие файлы стоит менять первыми и почему;
+6. какие тесты нужно добавить.
+
+Show more
+11:12 AM
+
+
+
+Worked for 4m 51s
+Файлы не менял. Ревью делал read-only по /home/nikita/git/k2-18-clean; это не git-репозиторий, git status там падает с not a git repository.
+
+1. Карта Архитектуры
+Текущий основной пайплайн:
+
+data/raw/*.md|txt
+→ 
+src/slicer.py (line 523)
+ режет текст на data/staging/*.slice.json
+→ 
+src/itext2kg_concepts.py (line 50)
+ извлекает data/out/ConceptDictionary.json
+→ 
+src/itext2kg_graph.py (line 47)
+ строит LearningChunkGraph_raw.json, делает checkpoint/resume
+→ 
+src/dedup.py (line 459)
+ дедуплицирует узлы/ребра в LearningChunkGraph_dedup.json
+→ 
+src/refiner_longrange.py (line 1415)
+ добавляет дальние связи в LearningChunkGraph_longrange.json.
+
+Визуализация живет отдельно в viz/: входы вручную копируются в viz/data/in/, дальше graph2metrics, graph_fix, anomaly_detector, graph2html, graph2viewer.
+
+Конфиг основной: 
+src/config.toml (line 1)
+.
+Загрузка/валидация: 
+src/utils/config.py (line 79)
+.
+LLM-клиент: 
+src/utils/llm_client.py (line 312)
+.
+Embeddings: 
+src/utils/llm_embeddings.py (line 21)
+.
+Схемы: src/schemas/ConceptDictionary.schema.json, src/schemas/LearningChunkGraph.schema.json.
+Промпты: src/prompts/*.
+Тесты покрывают отдельные модули, но есть устаревшие мок-контракты и смешение импортов utils.* / src.utils.*.
+
+2. Таблица Проблем
+
+Severity	Area	Evidence	Problem	Recommendation
+High	Architecture	src/slicer.py, itext2kg_concepts.py, itext2kg_graph.py, dedup.py, refiner_longrange.py	Нет единого оркестратора и stage contract; пути захардкожены по CLI-модулям	Ввести тонкий pipeline/orchestrator со stage manifest, входами/выходами и валидацией артефактов
+High	Prompting	
+src/refiner_longrange.py (line 603)
+, src/prompts/refiner_longrange_fw.md	Refiner всегда грузит management-промпты, игнорируя general/domain config	Сделать prompt_file_fw/bw конфигурируемыми и синхронизировать default с src/config.toml
+High	Reliability	
+src/refiner_longrange.py (line 818)
+После JSON/timeout failures refiner может вернуть partial result и сохранить граф как успешный	Разделить partial artifact и successful output; fatal ошибки должны давать non-zero exit
+High	Schema	LearningChunkGraph.schema.json, 
+validation.py (line 106)
+Схема слишком мягкая: weight optional, difficulty optional, нет проверки циклов PREREQUISITE	Ужесточить schema + добавить invariant checks
+Medium	Performance	
+itext2kg_graph.py (line 410)
+, 
+itext2kg_concepts.py (line 219)
+Полный ConceptDictionary отправляется в каждый LLM-запрос; auto-mentions растет как chunks * concepts	Ввести выборку релевантных концептов по slice/embedding/index и ограничить контекст
+Medium	Provider	
+llm_client.py (line 312)
+, 
+llm_embeddings.py (line 57)
+OpenAI Responses SDK и provider-specific параметры протекают в ядро	Ввести LLMProvider / EmbeddingProvider protocols и fake providers для тестов
+Medium	Config	
+src/utils/config.py (line 111)
+Viz config определяется эвристикой и почти не валидируется; основной config/docs расходятся	Разделить main/viz loaders и валидаторы; привести README/specs к реальному config
+Medium	Code Quality	itext2kg_graph.py 2332 LOC, refiner_longrange.py 1716 LOC, llm_client.py 1204 LOC	Модули смешивают CLI, I/O, LLM, repair, validation, metadata	Выделить чистые сервисы: parsing, graph patch, validation, checkpoint, provider
+Medium	Testing	
+tests/test_cli_main.py (line 75)
+Моки не совпадают с актуальными API, часть тестов skipped как hanging	Обновить CLI-тесты и заменить hanging-сценарии на контролируемые fake providers
+Medium	Docs	README.md, docs/K2-18 Architecture.md, docs/K2-18 LLM Reference.md	Документация содержит устаревшие имена секций, файлов и ограничения resume	Сначала исправить техническую документацию под текущий код
+3. Quick Wins
+
+Исправить drift в README.md, docs/K2-18 Architecture.md, docs/K2-18 LLM Reference.md: реальные секции [itext2kg_concepts], [itext2kg_graph], max_completion, requirements-dev.txt, актуальные prompt filenames.
+Синхронизировать Python target: README говорит 3.11+, а pyproject.toml/ruff/mypy настроены на 3.8.
+Сделать refiner prompt files конфигурируемыми; минимум заменить hardcoded refiner_longrange_fw.md/bw.md на general defaults.
+В refiner_longrange не перетирать LLM conditions технической строкой added_by=...; метаданные лучше класть отдельно.
+В dedup.py и refiner_longrange.py использовать atomic write, как уже сделано в graph stage.
+Обновить tests/test_cli_main.py, где мок get_embeddings возвращает старый tuple-контракт.
+Добавить проверку циклов PREREQUISITE в src/utils/validation.py.
+4. Среднесрочный План Рефакторинга
+
+Stage contracts и orchestration: описать артефакты Slice, ConceptDictionary, LearningChunkGraph, GraphPatch; добавить единый runner, который знает порядок стадий, пути, resume и schema validation.
+Provider abstraction: вынести OpenAI Responses API за интерфейс; ядро pipeline должно работать с LLMProvider и EmbeddingProvider, тесты — с fake provider.
+Prompt registry: конфигурируемый выбор prompt family для concepts/graph/refiner, golden fixtures на ожидаемый JSON.
+Resumability: добавить checkpoint/resume в concepts, dedup embedding cache, refiner checkpoints по pass/node.
+Validation hardening: schema + invariant validation на каждом stage boundary, включая edge weights, difficulty, duplicate IDs, prerequisite cycles.
+Viz decomposition: разбить viz/graph2metrics.py на загрузку/валидацию, метрики, path-finder/demo, CLI.
+5. Файлы, Которые Стоит Менять Первыми
+
+
+src/refiner_longrange.py (line 603)
+ — самый высокий риск корректности: hardcoded domain prompts, partial success, потеря conditions.
+
+src/utils/validation.py (line 106)
+ и src/schemas/*.schema.json — усиление контрактов сразу защитит все стадии.
+
+src/utils/config.py (line 79)
+ и src/config.toml — убрать drift и сделать prompt/provider настройки явными.
+
+src/itext2kg_graph.py (line 47)
+ — после тестов выделять patch parsing, quality checks, auto-mentions и checkpoint logic.
+tests/test_cli_main.py — привести тестовый контракт к реальному поведению, иначе дальнейшие изменения будут слабо защищены.
+6. Тесты, Которые Нужно Добавить
+
+Schema/invariants: цикл PREREQUISITE, missing weight, missing difficulty для Chunk/Assessment, duplicate node IDs, invalid edge endpoints.
+Refiner: выбор prompt files из config; max retries не сохраняет successful output; conditions сохраняются; malformed non-list LLM response отклоняется.
+Graph stage: fake LLM patch с неизвестным concept endpoint; auto-created concept node metadata; duplicate edge filtering; resume rejects incompatible slice order/config.
+Concepts stage: checkpoint/resume после успешных slices; merge aliases без дублей; repair loop на invalid JSON.
+Dedup: корректность edge rewrite, self-loop removal, FAISS metric policy, embedding cache key by model+text hash.
+Config: env API key precedence, invalid prompt path, отдельная валидация main config и viz config.
+End-to-end: полный pipeline на tiny fixture через fake LLM/embeddings, без реальных API вызовов, с validation после каждого артефакта.
+Проверка
+Read-only команды: rg --files, rg, sed, nl, wc -l, find, git status.
+Тесты не запускал и файлы не менял, чтобы сохранить режим чистого ревью.

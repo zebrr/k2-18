@@ -381,7 +381,9 @@ class TestLoadVendorContent:
                 
                 assert "/* vendor/cytoscape.min.js */" in result
                 assert "custom-plugin" not in result
-                logger.warning.assert_any_call(f"Vendor file not found: {viz_dir}/vendor/custom-plugin.js")
+                logger.warning.assert_any_call(
+                    f"Vendor file not found: {viz_dir / 'vendor' / 'custom-plugin.js'}"
+                )
 
 
 @pytest.mark.viz

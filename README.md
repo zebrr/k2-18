@@ -83,7 +83,7 @@ For detailed documentation, see [Visualization Module Guide](./viz/README.md).
 - Python 3.11+
 - OpenAI API access (Responses/Embeddings API)
 - Memory: Not tested (entire corpus processed in memory)
-- OS: Windows, MacOS
+- OS: Ubuntu/Linux, Windows, macOS
 
 ## Installation
 
@@ -118,7 +118,7 @@ set OPENAI_API_KEY=your-api-key       # Windows
 pip install -r requirements-dev.txt
 
 # Run tests
-pytest tests/
+python -m pytest
 ```
 
 ## Quick Start
@@ -249,11 +249,16 @@ mypy src/
 source .venv/bin/activate  # Linux/macOS
 .venv\Scripts\activate     # Windows
 
-# Run all tests but integration (fast!)
-pytest tests/ -v -m "not integration"
+# Run deterministic local suite
+python -m pytest
 
-# Full test suite incl. integration (~5-7m and require OpenAI API key)
-pytest tests/ -v
+# Run only non-API tests explicitly
+python -m pytest -m "not integration"
+
+# Run API integration tests on a machine with a real OpenAI key
+export OPENAI_API_KEY="sk-..."      # Linux/macOS
+set OPENAI_API_KEY=sk-...           # Windows cmd
+python -m pytest -m integration
 
 ```
 Test markers:

@@ -1,0 +1,45 @@
+{
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A: Introduction to weighted graphs. This node demonstrates how weights affect graph metrics.",
+      "node_offset": 0,
+      "difficulty": 1
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B: Advanced weighted graph algorithms. This node receives strong prerequisite from A.",
+      "node_offset": 100,
+      "difficulty": 3
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C: Practical examples of weighted graphs. This node provides examples for B.",
+      "node_offset": 200,
+      "difficulty": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PREREQUISITE",
+      "weight": 0.9
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "EXAMPLE_OF",
+      "weight": 0.3
+    },
+    {
+      "source": "C",
+      "target": "A",
+      "type": "ELABORATES",
+      "weight": 0.6
+    }
+  ]
+}

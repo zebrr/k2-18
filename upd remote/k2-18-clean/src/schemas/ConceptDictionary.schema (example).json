@@ -1,0 +1,28 @@
+{
+  "concepts": [
+    {
+      "concept_id": "python_variable",
+      "term": {
+        "primary": "Переменная",
+        "aliases": ["variable", "переменная в Python", "var"]
+      },
+      "definition": "Именованная область памяти для хранения данных, которая может изменяться во время выполнения программы"
+    },
+    {
+      "concept_id": "python_function",
+      "term": {
+        "primary": "Функция",
+        "aliases": ["function", "функция Python", "def"]
+      },
+      "definition": "Блок организованного кода, который выполняет конкретную задачу и может быть вызван по имени"
+    },
+    {
+      "concept_id": "python_list",
+      "term": {
+        "primary": "Список",
+        "aliases": ["list", "массив", "список Python"]
+      },
+      "definition": "Упорядоченная изменяемая коллекция элементов, заключенная в квадратные скобки"
+    }
+  ]
+}

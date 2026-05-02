@@ -158,6 +158,38 @@ class TestSliceProcessor:
             assert processor.node_ids == {}
             assert processor.previous_response_id is None
 
+    def test_loads_configured_prompt_file(self, sample_config, sample_concept_dict, tmp_path):
+        """Test loading graph extraction prompt selected by config."""
+        sample_config["itext2kg_graph"]["prompt_file"] = "itext2kg_graph_extraction_general.md"
+
+        concept_path = tmp_path / "out" / "ConceptDictionary.json"
+        with open(concept_path, "w", encoding="utf-8") as f:
+            json.dump(sample_concept_dict, f)
+
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir(exist_ok=True)
+        (prompt_dir / "itext2kg_graph_extraction.md").write_text(
+            "Default prompt {learning_chunk_graph_schema}", encoding="utf-8"
+        )
+        (prompt_dir / "itext2kg_graph_extraction_general.md").write_text(
+            "General prompt {learning_chunk_graph_schema}", encoding="utf-8"
+        )
+
+        schema_path = tmp_path / "schemas" / "LearningChunkGraph.schema.json"
+        schema_path.parent.mkdir(exist_ok=True)
+        schema_path.write_text('{"test": "schema"}', encoding="utf-8")
+
+        import src.itext2kg_graph as module
+
+        module.PROMPTS_DIR = prompt_dir
+        module.SCHEMAS_DIR = tmp_path / "schemas"
+
+        with patch("src.itext2kg_graph.OpenAIClient"):
+            processor = SliceProcessor(sample_config)
+
+        assert "General prompt" in processor.extraction_prompt
+        assert "Default prompt" not in processor.extraction_prompt
+
     def test_load_concept_dictionary_not_found(self, sample_config, tmp_path):
         """Test error when ConceptDictionary not found."""
         with patch("src.itext2kg_graph.OpenAIClient"):
@@ -422,7 +454,7 @@ class TestSliceProcessor:
         processor, _ = processor_with_mocks
 
         # Add nodes to graph
-        processor.node_ids = {"test:c:1000": 0}
+        processor.node_ids = {"test:c:1000": 0, "test:p:stack": 1}
 
         edges = [
             {"source": "test:c:1000", "target": "test:p:stack", "type": "MENTIONS", "weight": 1.0}
@@ -430,6 +462,20 @@ class TestSliceProcessor:
 
         valid = processor._validate_edges(edges)
         assert len(valid) == 1
+
+    def test_validate_edges_invalid_type(self, processor_with_mocks):
+        """Test dropping edges with types outside schema enum."""
+        processor, _ = processor_with_mocks
+
+        processor.node_ids = {"test:c:1000": 0, "test:p:stack": 1}
+
+        edges = [
+            {"source": "test:c:1000", "target": "test:p:stack", "type": "CRITIQUES", "weight": 0.8}
+        ]
+
+        valid = processor._validate_edges(edges)
+        assert valid == []
+        assert processor.quality_issues["invalid_edge_types_removed"] == 1
 
     def test_validate_edges_self_loop_prerequisite(self, processor_with_mocks):
         """Test dropping PREREQUISITE self-loops."""
@@ -510,16 +556,46 @@ class TestSliceProcessor:
         assert added == 0  # No new edges
         assert len(processor.graph_edges) == 1  # Still just one edge
 
+    def test_add_mentions_edges_skips_blacklisted_alias(self, processor_with_mocks):
+        """Test automatic MENTIONS ignores generic blacklisted aliases."""
+        processor, _ = processor_with_mocks
+        processor.mentions_blacklist = {"stack"}
+
+        chunks = [{"id": "test:c:1000", "type": "Chunk", "text": "Stack is mentioned"}]
+
+        added = processor._add_mentions_edges(chunks)
+
+        assert added == 0
+        assert processor.graph_edges == []
+
+    def test_add_mentions_edges_adds_missing_concept_node(self, processor_with_mocks):
+        """Test automatic MENTIONS keeps graph endpoints materialized as Concept nodes."""
+        processor, _ = processor_with_mocks
+
+        processor.graph_nodes = [{"id": "test:c:1000", "type": "Chunk", "text": "стек", "node_offset": 5}]
+        processor.node_ids = {"test:c:1000": 0}
+
+        added = processor._add_mentions_edges(processor.graph_nodes)
+
+        assert added == 1
+        assert "test:p:stack" in processor.node_ids
+        assert any(node["id"] == "test:p:stack" for node in processor.graph_nodes)
+
     def test_validate_graph_intermediate_valid(self, processor_with_mocks):
         """Test intermediate validation with valid graph."""
         processor, _ = processor_with_mocks
 
         processor.graph_nodes = [
-            {"id": "test:c:1000", "type": "Chunk"},
-            {"id": "test:c:2000", "type": "Chunk"},
-            {"id": "test:q:3000:0", "type": "Assessment"},
-            {"id": "test:p:stack", "type": "Concept"},  # Duplicate Concepts allowed
-            {"id": "test:p:stack", "type": "Concept"},
+            {"id": "test:c:1000", "type": "Chunk", "text": "A", "node_offset": 0},
+            {"id": "test:c:2000", "type": "Chunk", "text": "B", "node_offset": 10},
+            {"id": "test:q:3000:0", "type": "Assessment", "text": "Q", "node_offset": 20},
+            {
+                "id": "test:p:stack",
+                "type": "Concept",
+                "text": "Stack",
+                "node_offset": 0,
+            },  # Duplicate Concepts allowed
+            {"id": "test:p:stack", "type": "Concept", "text": "Stack", "node_offset": 5},
         ]
 
         assert processor._validate_graph_intermediate() is True
@@ -584,6 +660,96 @@ class TestSliceProcessor:
         assert processor.previous_response_id == "resp_1"
         assert len(processor.graph_nodes) == 1
 
+    def test_process_single_slice_saves_success_checkpoint(
+        self, processor_with_mocks, sample_slice, tmp_path
+    ):
+        """Test that each successful slice persists recoverable graph artifacts."""
+        processor, mock_client = processor_with_mocks
+        processor.stats.total_slices = 3
+
+        slice_file = tmp_path / "staging" / "slice_001.slice.json"
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        mock_client.create_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Stack checkpoint test",
+                                "node_offset": 100,
+                                "difficulty": 2,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            ),
+            "resp_1",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        success = processor._process_single_slice(slice_file)
+
+        assert success is True
+
+        checkpoint_file = (
+            tmp_path
+            / "out"
+            / "checkpoints"
+            / "LearningChunkGraph_raw_after_slice_001.json"
+        )
+        latest_file = tmp_path / "out" / "LearningChunkGraph_raw_latest.json"
+
+        assert checkpoint_file.exists()
+        assert latest_file.exists()
+
+        with open(latest_file, encoding="utf-8") as f:
+            latest_graph = json.load(f)
+
+        checkpoint_meta = latest_graph["_meta"]["itext2kg_graph"]["checkpoint"]
+        assert checkpoint_meta["complete"] is False
+        assert checkpoint_meta["last_completed_slice_id"] == "slice_001"
+        assert checkpoint_meta["last_completed_slice_order"] == 1
+        assert checkpoint_meta["last_completed_slice_token_start"] == 1000
+        assert checkpoint_meta["last_completed_slice_token_end"] == 1500
+        assert checkpoint_meta["processed_slices"] == 1
+        assert checkpoint_meta["total_slices"] == 3
+        assert checkpoint_meta["previous_response_id"] == "resp_1"
+        assert latest_graph["nodes"][0]["id"] == "test:c:1100"
+
+        with open(checkpoint_file, encoding="utf-8") as f:
+            checkpoint_graph = json.load(f)
+
+        assert checkpoint_graph == latest_graph
+
+        archive_file = (
+            tmp_path / "out" / "graph_patches" / "001_slice_001_attempt_0_accepted.json"
+        )
+        assert archive_file.exists()
+        with open(archive_file, encoding="utf-8") as f:
+            artifact = json.load(f)
+        assert artifact["slice"]["id"] == "slice_001"
+        assert artifact["stage"] == "accepted"
+        assert artifact["raw_response"]
+
+    def test_write_json_atomic_replaces_existing_file(self, processor_with_mocks, tmp_path):
+        """Test atomic JSON writer replaces target and leaves no temp files behind."""
+        processor, _ = processor_with_mocks
+        output_file = tmp_path / "out" / "atomic.json"
+        output_file.write_text('{"old": true}', encoding="utf-8")
+
+        processor._write_json_atomic(output_file, {"new": True})
+
+        with open(output_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert data == {"new": True}
+        assert list(output_file.parent.glob(".atomic.json.*.tmp")) == []
+
     def test_process_single_slice_json_repair(self, processor_with_mocks, sample_slice, tmp_path):
         """Test repair for JSON parsing errors."""
         processor, mock_client = processor_with_mocks
@@ -627,6 +793,74 @@ class TestSliceProcessor:
         assert success is True
         assert mock_client.repair_response.called
         assert processor.previous_response_id == "resp_2"  # Uses repair_id
+
+    def test_process_single_slice_quality_repair(
+        self, processor_with_mocks, sample_slice, tmp_path
+    ):
+        """Test repair for JSON-valid but graph-invalid patch."""
+        processor, mock_client = processor_with_mocks
+
+        slice_file = tmp_path / "staging" / "slice_001.slice.json"
+        with open(slice_file, "w", encoding="utf-8") as f:
+            json.dump(sample_slice, f)
+
+        mock_client.create_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Bad endpoint test",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [
+                            {
+                                "source": "chunk_1",
+                                "target": "test:p:not-in-dictionary",
+                                "type": "MENTIONS",
+                                "weight": 0.4,
+                            }
+                        ],
+                    }
+                }
+            ),
+            "resp_bad",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+        mock_client.repair_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Good repaired patch",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            ),
+            "resp_good",
+            Mock(total_tokens=50, input_tokens=25, output_tokens=20, reasoning_tokens=5),
+        )
+
+        success = processor._process_single_slice(slice_file)
+
+        assert success is True
+        assert mock_client.repair_response.called
+        assert processor.previous_response_id == "resp_good"
+        assert processor.quality_issues["quality_repair_requests"] == 1
+        assert (
+            tmp_path / "out" / "graph_patches" / "001_slice_001_attempt_0_quality_failed.json"
+        ).exists()
 
     def test_process_single_slice_id_repair(self, processor_with_mocks, sample_slice, tmp_path):
         """Test that IDs are automatically fixed via post-processing (no repair needed)."""
@@ -1136,12 +1370,197 @@ class TestSliceProcessor:
         assert "processing_time" in graph["_meta"]["itext2kg_graph"]
         assert "config" in graph["_meta"]["itext2kg_graph"]
         assert "auto_mentions_weight" in graph["_meta"]["itext2kg_graph"]["config"]
+        assert graph["_meta"]["itext2kg_graph"]["checkpoint"]["complete"] is True
 
         # Check data structure
         assert "nodes" in graph
         assert "edges" in graph
         assert len(graph["nodes"]) > 0
         assert len(graph["edges"]) > 0
+
+        latest_file = tmp_path / "out" / "LearningChunkGraph_raw_latest.json"
+        assert latest_file.exists()
+        with open(latest_file, encoding="utf-8") as f:
+            latest_graph = json.load(f)
+        assert latest_graph["_meta"]["itext2kg_graph"]["checkpoint"]["complete"] is False
+
+    def test_run_resume_from_latest_checkpoint(self, processor_with_mocks, tmp_path):
+        """Test resume restores graph state and processes only remaining slices."""
+        processor, mock_client = processor_with_mocks
+        processor.config["resume_from_latest"] = True
+
+        slices = [
+            {
+                "id": "slice_001",
+                "order": 1,
+                "source_file": "test.md",
+                "slug": "test",
+                "text": "First slice with Stack",
+                "slice_token_start": 1000,
+                "slice_token_end": 1500,
+            },
+            {
+                "id": "slice_002",
+                "order": 2,
+                "source_file": "test.md",
+                "slug": "test",
+                "text": "Second slice",
+                "slice_token_start": 1500,
+                "slice_token_end": 2000,
+            },
+            {
+                "id": "slice_003",
+                "order": 3,
+                "source_file": "test.md",
+                "slug": "test",
+                "text": "Third slice",
+                "slice_token_start": 2000,
+                "slice_token_end": 2500,
+            },
+        ]
+
+        for slice_data in slices:
+            slice_file = tmp_path / "staging" / f"{slice_data['id']}.slice.json"
+            with open(slice_file, "w", encoding="utf-8") as f:
+                json.dump(slice_data, f)
+
+        completed_slice = SliceData(**slices[1])
+        processor.stats.total_slices = 3
+        processor.stats.processed_slices = 2
+        processor.graph_nodes = [
+            {
+                "id": "test:c:1100",
+                "type": "Chunk",
+                "text": "Existing chunk with Stack",
+                "node_offset": 100,
+                "difficulty": 2,
+            }
+        ]
+        processor.graph_edges = []
+        processor.previous_response_id = "resp_2"
+        processor.last_completed_slice = completed_slice
+        processor.api_usage = {
+            "total_requests": 2,
+            "total_input_tokens": 100,
+            "total_output_tokens": 50,
+        }
+        processor.source_slug = "test"
+        checkpoint_data = processor._build_output_data(
+            complete=False,
+            processed_slices=2,
+            checkpoint_slice=completed_slice,
+        )
+        processor._write_json_atomic(
+            tmp_path / "out" / "LearningChunkGraph_raw_latest.json",
+            checkpoint_data,
+        )
+
+        # Prove run() restores from disk rather than reusing in-memory state.
+        processor.stats = ProcessingStats()
+        processor.graph_nodes = []
+        processor.graph_edges = []
+        processor.node_ids = {}
+        processor.previous_response_id = None
+        processor.last_completed_slice = None
+        processor.api_usage = {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        }
+
+        mock_client.create_response.return_value = (
+            json.dumps(
+                {
+                    "chunk_graph_patch": {
+                        "nodes": [
+                            {
+                                "id": "chunk_1",
+                                "type": "Chunk",
+                                "text": "Third slice chunk",
+                                "node_offset": 100,
+                                "difficulty": 3,
+                            }
+                        ],
+                        "edges": [
+                            {
+                                "source": "chunk_1",
+                                "target": "test:c:1100",
+                                "type": "ELABORATES",
+                                "weight": 0.7,
+                            }
+                        ],
+                    }
+                }
+            ),
+            "resp_3",
+            Mock(total_tokens=100, input_tokens=50, output_tokens=40, reasoning_tokens=10),
+        )
+
+        exit_code = processor.run()
+
+        assert exit_code == EXIT_SUCCESS
+        mock_client.create_response.assert_called_once()
+        assert mock_client.create_response.call_args.kwargs["previous_response_id"] == "resp_2"
+        assert processor.stats.processed_slices == 3
+        assert processor.previous_response_id == "resp_3"
+
+        elaborates_edges = [e for e in processor.graph_edges if e.get("type") == "ELABORATES"]
+        assert len(elaborates_edges) == 1
+        assert elaborates_edges[0]["target"] == "test:c:1100"
+
+        output_file = tmp_path / "out" / "LearningChunkGraph_raw.json"
+        with open(output_file, encoding="utf-8") as f:
+            graph = json.load(f)
+
+        checkpoint_meta = graph["_meta"]["itext2kg_graph"]["checkpoint"]
+        assert checkpoint_meta["complete"] is True
+        assert checkpoint_meta["processed_slices"] == 3
+        assert checkpoint_meta["last_completed_slice_id"] == "slice_003"
+
+    def test_run_resume_rejects_staging_mismatch(self, processor_with_mocks, tmp_path):
+        """Test resume stops when checkpoint does not match current staging."""
+        processor, mock_client = processor_with_mocks
+        processor.config["resume_from_latest"] = True
+
+        current_slice = {
+            "id": "slice_001",
+            "order": 1,
+            "source_file": "test.md",
+            "slug": "test",
+            "text": "Changed staging",
+            "slice_token_start": 1000,
+            "slice_token_end": 1500,
+        }
+        with open(tmp_path / "staging" / "slice_001.slice.json", "w", encoding="utf-8") as f:
+            json.dump(current_slice, f)
+
+        checkpoint_slice = SliceData(
+            id="slice_001",
+            order=1,
+            source_file="test.md",
+            slug="test",
+            text="Original staging",
+            slice_token_start=999,
+            slice_token_end=1500,
+        )
+        processor.stats.total_slices = 1
+        processor.stats.processed_slices = 1
+        processor.graph_nodes = [{"id": "test:c:999", "type": "Chunk", "text": "Old"}]
+        processor.source_slug = "test"
+        checkpoint_data = processor._build_output_data(
+            complete=False,
+            processed_slices=1,
+            checkpoint_slice=checkpoint_slice,
+        )
+        processor._write_json_atomic(
+            tmp_path / "out" / "LearningChunkGraph_raw_latest.json",
+            checkpoint_data,
+        )
+
+        exit_code = processor.run()
+
+        assert exit_code == EXIT_INPUT_ERROR
+        mock_client.create_response.assert_not_called()
 
     def test_run_slice_failure(self, processor_with_mocks, sample_slice, tmp_path):
         """Test run with slice processing failure."""

@@ -10,6 +10,42 @@ from src.itext2kg_graph import SliceProcessor
 from src.utils.llm_client import ResponseUsage
 
 
+def valid_graph_response(response_id="response_id"):
+    return (
+        json.dumps(
+            {
+                "chunk_graph_patch": {
+                    "nodes": [
+                        {
+                            "id": "test:c:0",
+                            "type": "Chunk",
+                            "text": "Test content",
+                            "node_offset": 0,
+                        },
+                        {
+                            "id": "test:p:concept1",
+                            "type": "Concept",
+                            "text": "Test Concept",
+                            "definition": "Test definition",
+                            "node_offset": 0,
+                        },
+                    ],
+                    "edges": [
+                        {
+                            "source": "test:c:0",
+                            "target": "test:p:concept1",
+                            "type": "MENTIONS",
+                            "weight": 1.0,
+                        }
+                    ],
+                }
+            }
+        ),
+        response_id,
+        ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30),
+    )
+
+
 class TestGraphTimeoutRetryMechanism:
     """Test TimeoutError retry mechanism for graph module."""
 
@@ -88,30 +124,11 @@ class TestGraphTimeoutRetryMechanism:
         }
         slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
 
-        # Mock llm_client to raise TimeoutError on first 2 attempts, then succeed
-        attempt_count = [0]
-        
-        def side_effect(*args, **kwargs):
-            attempt_count[0] += 1
-            if attempt_count[0] <= 2:
-                raise TimeoutError("Request timeout")
-            else:
-                # Return valid response on 3rd attempt
-                return (
-                    json.dumps({
-                        "chunk_graph_patch": {
-                            "nodes": [],
-                            "edges": []
-                        }
-                    }),
-                    "response_id_3",
-                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
-                )
-        
-        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
-            side_effect() if attempt_count[0] == 0 else None
-        )
-        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.create_response.side_effect = TimeoutError("Request timeout")
+        processor.llm_client.repair_response.side_effect = [
+            TimeoutError("Request timeout"),
+            valid_graph_response("response_id_3"),
+        ]
         processor.llm_client.confirm_response.return_value = None
 
         # Process the slice with mocked sleep
@@ -178,11 +195,7 @@ class TestGraphTimeoutRetryMechanism:
             call_count[0] += 1
             # First slice succeeds
             if call_count[0] == 1:
-                return (
-                    json.dumps({"chunk_graph_patch": {"nodes": [], "edges": []}}),
-                    f"response_id_{call_count[0]}",
-                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
-                )
+                return valid_graph_response(f"response_id_{call_count[0]}")
             # Second slice fails with timeout
             else:
                 raise TimeoutError("Request timeout")
@@ -220,33 +233,15 @@ class TestGraphTimeoutRetryMechanism:
         }
         slice_file.write_text(json.dumps(slice_data), encoding="utf-8")
 
-        # Mock different errors in sequence
-        attempt_count = [0]
-        
-        def side_effect(*args, **kwargs):
-            attempt_count[0] += 1
-            if attempt_count[0] == 1:
-                # First attempt: TimeoutError
-                raise TimeoutError("Request timeout")
-            elif attempt_count[0] == 2:
-                # Second attempt: Invalid JSON
-                return (
-                    "Invalid JSON response",
-                    "response_id_2",
-                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
-                )
-            else:
-                # Third attempt: Success
-                return (
-                    json.dumps({"chunk_graph_patch": {"nodes": [], "edges": []}}),
-                    "response_id_3",
-                    ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30)
-                )
-
-        processor.llm_client.create_response.side_effect = lambda *args, **kwargs: (
-            side_effect() if attempt_count[0] == 0 else None
-        )
-        processor.llm_client.repair_response.side_effect = side_effect
+        processor.llm_client.create_response.side_effect = TimeoutError("Request timeout")
+        processor.llm_client.repair_response.side_effect = [
+            (
+                "Invalid JSON response",
+                "response_id_2",
+                ResponseUsage(input_tokens=10, output_tokens=20, reasoning_tokens=0, total_tokens=30),
+            ),
+            valid_graph_response("response_id_3"),
+        ]
         processor.llm_client.confirm_response.return_value = None
 
         # Process the slice

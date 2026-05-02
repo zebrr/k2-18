@@ -14,7 +14,6 @@ import shutil
 
 # Добавляем src в path для импорта
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -29,21 +28,20 @@ class TestSlicerLargeFiles:
     """Тесты slicer.py для больших файлов."""
 
     @pytest.fixture
-    def temp_project_dir(self, monkeypatch):
+    def temp_project_dir(self, tmp_path, monkeypatch):
         """Создает временную структуру проекта для тестов."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+        temp_path = tmp_path
 
-            # Создаем структуру директорий
-            raw_dir = temp_path / "data" / "raw"
-            staging_dir = temp_path / "data" / "staging"
-            raw_dir.mkdir(parents=True)
-            staging_dir.mkdir(parents=True)
+        # Создаем структуру директорий
+        raw_dir = temp_path / "data" / "raw"
+        staging_dir = temp_path / "data" / "staging"
+        raw_dir.mkdir(parents=True)
+        staging_dir.mkdir(parents=True)
 
-            # Меняем рабочую директорию для slicer.py
-            monkeypatch.chdir(temp_path)
+        # Меняем рабочую директорию для slicer.py
+        monkeypatch.chdir(temp_path)
 
-            yield temp_path, raw_dir, staging_dir
+        return temp_path, raw_dir, staging_dir
 
     @pytest.mark.slow
     @pytest.mark.timeout(60)  # Таймаут 60 секунд

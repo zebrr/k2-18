@@ -158,7 +158,11 @@ class SliceProcessor:
 
     def _load_extraction_prompt(self) -> str:
         """Load prompt with schema substitution."""
-        prompt_path = PROMPTS_DIR / EXTRACTION_PROMPT_FILE
+        prompt_file = self.config.get("prompt_file", EXTRACTION_PROMPT_FILE)
+        prompt_path = Path(prompt_file)
+        if not prompt_path.is_absolute():
+            prompt_path = PROMPTS_DIR / prompt_path
+
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
@@ -899,6 +903,7 @@ class SliceProcessor:
                         "generated_at": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                         "config": {
                             "model": config.get("model"),
+                            "prompt_file": config.get("prompt_file", EXTRACTION_PROMPT_FILE),
                             "temperature": config.get("temperature"),
                             "max_output_tokens": config.get("max_completion"),
                             "reasoning_effort": config.get("reasoning_effort"),

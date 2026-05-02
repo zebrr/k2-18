@@ -1,0 +1,205 @@
+{
+  "_meta": {
+    "test_graph": true,
+    "description": "Bridge graph with expected metrics",
+    "expected_properties": {
+      "bridge_node": "D",
+      "bridge_betweenness": "maximum shared with C and E",
+      "clusters": 2,
+      "critical_edges": ["C→D", "D→E"]
+    }
+  },
+  "nodes": [
+    {
+      "id": "A",
+      "type": "Chunk",
+      "text": "Node A in cluster 1",
+      "node_offset": 0,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 2,
+      "degree_centrality": 0.5,
+      "pagerank": 0.0575,
+      "betweenness_centrality": 0.0333,
+      "out-closeness": 0.4,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 2,
+      "educational_importance": 0.05594
+    },
+    {
+      "id": "B",
+      "type": "Chunk",
+      "text": "Node B in cluster 1",
+      "node_offset": 10,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.333,
+      "pagerank": 0.0459,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.375,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 2,
+      "educational_importance": 0.05594
+    },
+    {
+      "id": "C",
+      "type": "Chunk",
+      "text": "Node C in cluster 1 (connects to bridge)",
+      "node_offset": 20,
+      "difficulty": 3,
+      "degree_in": 2,
+      "degree_out": 2,
+      "degree_centrality": 0.667,
+      "pagerank": 0.0848,
+      "betweenness_centrality": 0.3,
+      "out-closeness": 0.5,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 5,
+      "educational_importance": 0.15104
+    },
+    {
+      "id": "D",
+      "type": "Chunk",
+      "text": "Bridge node D connecting two clusters",
+      "node_offset": 30,
+      "difficulty": 3,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.333,
+      "pagerank": 0.0575,
+      "betweenness_centrality": 0.3,
+      "out-closeness": 0.3,
+      "component_id": 0,
+      "prerequisite_depth": 2,
+      "learning_effort": 8,
+      "educational_importance": 0.18432
+    },
+    {
+      "id": "E",
+      "type": "Chunk",
+      "text": "Node E in cluster 2 (connects from bridge)",
+      "node_offset": 40,
+      "difficulty": 3,
+      "degree_in": 2,
+      "degree_out": 2,
+      "degree_centrality": 0.667,
+      "pagerank": 0.3135,
+      "betweenness_centrality": 0.3,
+      "out-closeness": 0.333,
+      "component_id": 0,
+      "prerequisite_depth": 3,
+      "learning_effort": 11,
+      "educational_importance": 0.21261
+    },
+    {
+      "id": "F",
+      "type": "Chunk",
+      "text": "Node F in cluster 2",
+      "node_offset": 50,
+      "difficulty": 2,
+      "degree_in": 1,
+      "degree_out": 1,
+      "degree_centrality": 0.333,
+      "pagerank": 0.1547,
+      "betweenness_centrality": 0.0,
+      "out-closeness": 0.222,
+      "component_id": 0,
+      "prerequisite_depth": 0,
+      "learning_effort": 2,
+      "educational_importance": 0.05594
+    },
+    {
+      "id": "G",
+      "type": "Chunk",
+      "text": "Node G in cluster 2",
+      "node_offset": 60,
+      "difficulty": 2,
+      "degree_in": 2,
+      "degree_out": 1,
+      "degree_centrality": 0.5,
+      "pagerank": 0.2861,
+      "betweenness_centrality": 0.0333,
+      "out-closeness": 0.222,
+      "component_id": 0,
+      "prerequisite_depth": 1,
+      "learning_effort": 4,
+      "educational_importance": 0.28421
+    }
+  ],
+  "edges": [
+    {
+      "source": "A",
+      "target": "B",
+      "type": "PARALLEL",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "B",
+      "target": "C",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "C",
+      "target": "A",
+      "type": "REFER_BACK",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "C",
+      "target": "D",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "D",
+      "target": "E",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "E",
+      "target": "F",
+      "type": "PARALLEL",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "F",
+      "target": "G",
+      "type": "PREREQUISITE",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "G",
+      "target": "E",
+      "type": "REFER_BACK",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "A",
+      "target": "C",
+      "type": "ELABORATES",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    },
+    {
+      "source": "E",
+      "target": "G",
+      "type": "ELABORATES",
+      "weight": 1.0,
+      "inverse_weight": 1.0
+    }
+  ]
+}

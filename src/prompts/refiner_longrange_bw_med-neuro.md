@@ -84,7 +84,7 @@ You **MUST** evaluate edge types in this exact order:
   * `TESTS`: `Node A` evaluates knowledge from a `Node B`. You must be able to name the knowledge that has to be applied to complete the task; a term mentioned as background in the task statement is not enough.
   * `EXAMPLE_OF`: `Node A` is a specific, concrete example of a general principle from `Node B`. You must be able to name which general statement of `Node B` `Node A` demonstrates; a disease's membership in a broad class does not by itself make an educational illustration.
   * `PARALLEL`: `Node A` and `Node B` present alternative approaches or methodologies for the same clinical or educational task. Two methods in one section or two diseases with similar presentations do not meet this criterion by themselves, and the edge does not assert that the approaches are interchangeable: their conditions of applicability stay in the text.
-  * `MENTIONS`: `Node A` briefly references `Node B` without elaboration; `Node A` assumes `Node B` is known from elsewhere. Thematic closeness by itself is not enough, and a mention does not assert that the mentioned notion is present or true in the described situation ("тремор не обнаружен" still mentions tremor).
+  * `MENTIONS`: `Node A` briefly mentions the subject of `Node B` without elaboration or an explicit reference to where it was or will be explained; `Node A` assumes `Node B` is known from elsewhere. Thematic closeness by itself is not enough, and a mention does not assert that the mentioned notion is present or true in the described situation ("тремор не обнаружен" still mentions tremor).
 
 3. Only if NO other semantic link applies, check for navigational edges:
   * `REFER_BACK`: `Node A` explicitly refers back to a concept that was fully explained in an earlier `Node B`. There must be an explicit reference to the earlier material; re-using a term is not a reference back, and a fragment that deepens the earlier explanation is `ELABORATES` even when it says "как обсуждалось ранее".
@@ -134,9 +134,9 @@ Example 4: PARALLEL
 - **Relationship**: A→B, PARALLEL, weight=0.6 (альтернативные подходы к одной задаче — иммунотерапии; условия применения остаются в тексте)
 
 Example 5: REFER_BACK
-- **Node A**: "Как мы видели при разборе рефлекторной дуги, рефлекс снижается при перерыве любого её звена, поэтому арефлексия при полинейропатии закономерна"
+- **Node A**: "Строение рефлекторной дуги сухожильного рефлекса разобрано в предыдущем разделе."
 - **Node B**: "Рефлекторная дуга сухожильного рефлекса: мышечное веретено — афферентное волокно — мотонейрон переднего рога — эфферентное волокно — мышца; при перерыве любого звена рефлекс снижается или выпадает"
-- **Relationship**: A→B, REFER_BACK, weight=0.4 (A ссылается на ранее объяснённое в B, не углубляя его)
+- **Relationship**: A→B, REFER_BACK, weight=0.4 (явная отсылка к предыдущему объяснению в B; A не развивает тему и не приводит клинический пример)
 
 Example 6: MENTIONS
 - **Node A**: "Дифференциальный диагноз острого нарушения сознания включает гипогликемию, отравления, эпилептический статус, менингит и структурное поражение мозга"

@@ -75,12 +75,13 @@ You are an LLM agent tasked with extracting educational concepts from neurology 
 
 **ID Conventions for Concepts**
 
-- All `concept_id` must be unique; if an ID collision occurs, append the smallest numeric suffix (`-1`, `-2`, etc.) to ensure uniqueness.
+- New concepts must receive an ID not already used in the input ConceptDictionary or output; resolve collisions with the smallest available numeric suffix (`-1`, `-2`, etc.).
+- Alias updates must reuse the existing `concept_id`; include each ID only once in the output.
 - ID pattern: `${slug}:p:${slugified_primary_term}` where slugification is lower-cased, transliterated, `[a-z0-9-]`, spaces replaced with `-`.
 ```
 Example:
 slug = "med-neuro101", primary_term = "Тремор покоя" → slugified = "tremor-pokoya", ID = med-neuro101:p:tremor-pokoya
-If ID already exists → med-neuro101:p:tremor-pokoya-1
+If ID already belongs to a different concept → med-neuro101:p:tremor-pokoya-1
 ```
 
 ## Core Principles
@@ -116,7 +117,7 @@ A concept must be **reusable** beyond the single observation in which it appears
      * The `definition` field **MUST** be filled in (1–2 sentences)
    - If a concept already exists:
      * **DO NOT** add it to `concepts_added.concepts`
-     * Only add if you're adding **new aliases** that don't exist yet
+     * Only add if you're adding **new aliases** that don't exist yet; reuse its existing `concept_id`
      * Even if you think the definition could be better, **DO NOT** recreate the concept
    - When you find a term that relates to an existing concept, check:
      * Does it have its own separate definition/explanation? → **New concept**
@@ -154,12 +155,12 @@ A concept must be **reusable** beyond the single observation in which it appears
 
 - Halt processing and return output as soon as all new/updated concepts from the `slice.text` have been exhaustively and accurately extracted and output in the correct format.
 - Regenerate output if any formatting or schema rules are violated.
-- Verify that no concept in `concepts_added` has a `concept_id` that already exists in the input ConceptDictionary. If found, you must regenerate the ID with a numeric suffix.
+- Verify that new concepts do not reuse any ID from the input ConceptDictionary or another output entry; resolve collisions with a numeric suffix. Alias updates MUST retain the existing ID and MUST NOT create a new one.
 
 ## Examples
 
 ### Example: New concept extraction
-**Slice.text**: "Миастения (myasthenia gravis) — аутоиммунное заболевание нервно-мышечного соединения: антитела к ацетилхолиновым рецепторам постсинаптической мембраны нарушают передачу возбуждения с нерва на мышцу, поэтому слабость нарастает при повторных сокращениях и уменьшается после отдыха."
+**Slice.text**: "Миастения (myasthenia gravis) — аутоиммунное заболевание нервно-мышечного соединения: аутоантитела нарушают передачу возбуждения с нерва на мышцу; чаще всего они направлены против ацетилхолиновых рецепторов постсинаптической мембраны. Слабость нарастает при повторных сокращениях и уменьшается после отдыха."
 **ConceptDictionary**: empty
 **Output**:
 ```json
@@ -172,7 +173,7 @@ A concept must be **reusable** beyond the single observation in which it appears
           "primary": "Миастения",
           "aliases": ["myasthenia gravis", "MG", "миастения гравис"]
         },
-        "definition": "Аутоиммунное заболевание нервно-мышечного соединения, при котором антитела к ацетилхолиновым рецепторам постсинаптической мембраны нарушают передачу возбуждения с нерва на мышцу; проявляется слабостью, нарастающей при повторных сокращениях и уменьшающейся после отдыха"
+        "definition": "Аутоиммунное заболевание нервно-мышечного соединения, при котором аутоантитела нарушают передачу возбуждения с нерва на мышцу; чаще всего они направлены против ацетилхолиновых рецепторов постсинаптической мембраны. Проявляется слабостью, нарастающей при повторных сокращениях и уменьшающейся после отдыха"
       }
     ]
   }
@@ -213,9 +214,9 @@ A concept must be **reusable** beyond the single observation in which it appears
 ```
 
 ### Example: Discarding a minor term
-**Slice.text**: "Для скрининга когнитивных нарушений применяют Монреальскую шкалу оценки когнитивных функций. Деменция — приобретённое снижение когнитивных функций, которое нарушает самостоятельность в повседневной деятельности и не объясняется делирием или другим психическим расстройством."
+**Slice.text**: "В протоколе также упомянута MoCA. Деменция — приобретённое снижение когнитивных функций, которое нарушает самостоятельность в повседневной деятельности и не объясняется делирием или другим психическим расстройством."
 **ConceptDictionary**: contains "concept_id": "med-neuro101:p:dementsiya"
-**Analysis**: The concept "деменция" already exists. The term "Монреальская шкала оценки когнитивных функций" is mentioned only as the screening tool in use; the slice does not disclose what it assesses or how it is scored. It should not be added unless it gets its own disclosure.
+**Analysis**: The concept "деменция" already exists. MoCA is only named; the slice does not explain its meaning, properties, mechanism, purpose or essential distinctions. It should not be added without such disclosure.
 **Output**:
 ```json
 {

@@ -1,4 +1,4 @@
-# Concepts Extraction v4.2-gpt-5 @ Neurology (with Core Principles)
+# Concepts Extraction v4.3-gpt-5 @ Neurology (with Core Principles)
 
 ## Role and Objective
 
@@ -94,11 +94,12 @@ A concept is an **independent medical notion** that can be explained, distinguis
 Extract it when the text discloses its meaning, its properties or its essential distinctions.
 
 **Pattern recognition:**
-- A specific disease, drug, anatomical structure or sign can be a concept of its own → membership in a broader category is NOT a reason to skip it
+- A specific disease, anatomical structure or sign can be a concept of its own → membership in a broader category is NOT a reason to skip it
+- Drugs: the concept is the drug class ("агонисты дофаминовых рецепторов", "СИОЗС"). An individual active substance becomes a concept only when the text assigns it a role of its own that the class does not carry: an indication or contraindication of its own, a phenomenon or regimen tied to it, an explicit contrast with the other members of its class. A substance named as an example or as a member of a list stays in the chunk text
 - A general concept and its substantively distinguishable subtype may coexist in the dictionary → keep both when the text explains the distinction (e.g., "тремор" and "тремор покоя")
 - The test for splitting: which essential medical distinction would be lost if the two were merged into one entry? → the text explains that distinction → separate concepts; the names denote the same thing in this context → one concept with aliases
 
-**Do NOT** apply the rule "categories over instances" literally: a disease, a drug or a structure is a unit of knowledge in its own right, not a mere instance of a category.
+**Do NOT** apply the rule "categories over instances" literally to diseases and structures: a disease or a structure is a unit of knowledge in its own right, not a mere instance of a category. For drugs the rule holds: the class is the unit of knowledge, the substance is an instance unless the text gives it a role of its own.
 
 ### Principle 2: Transferable, Not Necessarily Universal
 
@@ -108,7 +109,7 @@ A concept must be **reusable** beyond the single observation in which it appears
 
 ## Reasoning Steps
 
-1. Identify key candidate **concepts** - distinct anatomical structures and systems (a nerve, a pathway, a nucleus, a functional system), normal functions and processes, pathological processes and mechanisms, symptoms and signs, syndromes, diseases and their substantively distinguishable subtypes, diagnostic means (an examination method, a diagnostic test, a scale, a criteria set), and treatment or rehabilitation means (an intervention, a drug class, an active substance) that appear in the `slice.text`. Prioritize terms that are highlighted (e.g., in bold or italics) and immediately followed by their definition.
+1. Identify key candidate **concepts** - distinct anatomical structures and systems (a nerve, a pathway, a nucleus, a functional system), normal functions and processes, pathological processes and mechanisms, symptoms and signs, syndromes, diseases and their substantively distinguishable subtypes, diagnostic means (an examination method, a diagnostic test, a scale, a criteria set), and treatment or rehabilitation means (an intervention, a drug class; an active substance only when the text assigns it a role of its own — see Principle 1) that appear in the `slice.text`. Prioritize terms that are highlighted (e.g., in bold or italics) and immediately followed by their definition.
 
 2. **CRITICAL:** Internally check if candidate concepts already exist in the ConceptDictionary (by meaning and context) before adding.
    - If a concept is completely new term/definition (not found in ConceptDictionary):
@@ -302,6 +303,36 @@ A concept must be **reusable** beyond the single observation in which it appears
           "aliases": ["рефлекс Бабинского", "Babinski sign", "разгибательный подошвенный рефлекс"]
         },
         "definition": "Патологический стопный рефлекс: разгибание большого пальца при штриховом раздражении наружного края подошвы; у взрослых указывает на поражение кортикоспинального (пирамидного) пути"
+      }
+    ]
+  }
+}
+```
+
+### Example: Drug class as a concept, listed substances stay in the text
+**Slice.text**: "При депрессии у пациентов с БП рекомендуются селективные ингибиторы обратного захвата серотонина (СИОЗС) — антидепрессанты, избирательно блокирующие обратный захват серотонина в синапсе; они не усиливают паркинсонизм и хорошо переносятся. К ним относятся сертралин, пароксетин, флуоксетин, циталопрам. При психотических нарушениях допустимы только атипичные антипсихотики; препаратом выбора остаётся клозапин — единственный антипсихотик, не усиливающий двигательные симптомы БП, назначение которого требует контроля числа лейкоцитов из-за риска агранулоцитоза."
+**ConceptDictionary**: contains "concept_id": "med-neuro101:p:atipichnye-antipsihotiki"
+**Analysis**: The class СИОЗС is disclosed (mechanism, why it suits БП) and becomes a concept. Сертралин, пароксетин, флуоксетин and циталопрам are named only as members of the class: nothing in the text distinguishes one from another, so they stay in the chunk text and are not added. Клозапин is a member of an existing class, but the text gives it a role of its own — the only antipsychotic that does not worsen motor symptoms, with a safety requirement specific to it — so it becomes a concept; the class remains a separate entry.
+**Output**:
+```json
+{
+  "concepts_added": {
+    "concepts": [
+      {
+        "concept_id": "med-neuro101:p:siozs",
+        "term": {
+          "primary": "Селективные ингибиторы обратного захвата серотонина",
+          "aliases": ["СИОЗС", "SSRI", "selective serotonin reuptake inhibitors"]
+        },
+        "definition": "Класс антидепрессантов, избирательно блокирующих обратный захват серотонина в синапсе; при болезни Паркинсона не усиливают паркинсонизм и хорошо переносятся"
+      },
+      {
+        "concept_id": "med-neuro101:p:klozapin",
+        "term": {
+          "primary": "Клозапин",
+          "aliases": ["clozapine", "азалептин"]
+        },
+        "definition": "Атипичный антипсихотик, препарат выбора при психотических нарушениях у пациентов с болезнью Паркинсона: единственный антипсихотик, не усиливающий двигательные симптомы; требует контроля числа лейкоцитов из-за риска агранулоцитоза"
       }
     ]
   }
